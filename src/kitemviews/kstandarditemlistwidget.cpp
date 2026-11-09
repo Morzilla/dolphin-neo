@@ -208,7 +208,7 @@ qreal KStandardItemListWidgetInformant::preferredRoleColumnWidth(const QByteArra
     qreal width = KStandardItemListWidget::columnPadding(option);
     if (role != "text") {
         // dolphin-neo: extra room between the columns of the details view (DOLPHIN_NEO_COLGAP, pixels)
-        static const int gap = qEnvironmentVariableIsSet("DOLPHIN_NEO_COLGAP") ? qEnvironmentVariableIntValue("DOLPHIN_NEO_COLGAP") : 28;
+        static const int gap = neoSettingInt("COLGAP", 28);
         width += gap;
     }
 
@@ -537,7 +537,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         //   fill (default)     large solid letters in the row colour, faint
         //   outline            hollow letters: a thin outline that thins out to the right, barely filled
         //   label              small, widely spaced capitals in the full row colour
-        static const QByteArray siglaStyle = qgetenv("DOLPHIN_NEO_SIGLA").toLower();
+        static const QByteArray siglaStyle = neoSetting("SIGLA").toLower().toLatin1();
         const qreal rowHeight = size().height();
         if (siglaStyle == "label") {
             QFont labelFont(m_customizedFont);

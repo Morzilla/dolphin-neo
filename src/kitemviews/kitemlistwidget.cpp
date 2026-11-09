@@ -102,6 +102,39 @@ QVariant KItemListWidget::value(const QByteArray &key) const
     return m_data.value(key);
 }
 
+QString neoSetting(const char *name, const QString &fallback)
+{
+    const QByteArray variable = QByteArray("DOLPHIN_NEO_") + name;
+    if (qEnvironmentVariableIsSet(variable.constData())) {
+        return qEnvironmentVariable(variable.constData());
+    }
+    return KSharedConfig::openConfig()->group(QStringLiteral("DolphinNeo")).readEntry(name, fallback);
+}
+
+int neoSettingInt(const char *name, int fallback)
+{
+    bool ok = false;
+    const int value = neoSetting(name).toInt(&ok);
+    return ok ? value : fallback;
+}
+
+void setNeoSetting(const char *name, const QString &value)
+{
+    KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNeo"));
+    if (value.isEmpty()) {
+        group.deleteEntry(name);
+    } else {
+        group.writeEntry(name, value);
+    }
+    group.sync();
+}
+
+bool neoSettingFromEnvironment(const char *name)
+{
+    const QByteArray variable = QByteArray("DOLPHIN_NEO_") + name;
+    return qEnvironmentVariableIsSet(variable.constData());
+}
+
 namespace
 {
 NeoRowStyle neoRowStyleFromName(const QByteArray &name, NeoRowStyle fallback)
@@ -140,7 +173,7 @@ void setNeoRowStyle(NeoRowStyle style)
 
 bool neoTwoLineList()
 {
-    static const bool columns = qgetenv("DOLPHIN_NEO_LIST").toLower() == "columns";
+    static const bool columns = neoSetting("LIST").toLower() == QLatin1String("columns");
     return !columns && QGuiApplication::layoutDirection() == Qt::LeftToRight;
 }
 
@@ -200,13 +233,13 @@ int KItemListWidget::neoActionAt(const QPointF &pos) const
 
 bool neoTiles()
 {
-    static const bool off = qgetenv("DOLPHIN_NEO_TILES").toLower() == "off";
+    static const bool off = neoSetting("TILES").toLower() == QLatin1String("off");
     return !off;
 }
 
 bool neoNoIcons()
 {
-    static const bool show = qgetenv("DOLPHIN_NEO_ICONS").toLower() == "show";
+    static const bool show = neoSetting("ICONS").toLower() == QLatin1String("show");
     return !show && neoTwoLineList();
 }
 

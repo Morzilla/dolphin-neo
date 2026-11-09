@@ -11,6 +11,7 @@
 #include "dolphin_generalsettings.h"
 #include "dolphinmainwindow.h"
 #include "interface/interfacesettingspage.h"
+#include "neo/neosettingspage.h"
 #include "trash/trashsettingspage.h"
 #include "viewmodes/viewsettingspage.h"
 #if HAVE_KUSERFEEDBACK
@@ -92,6 +93,13 @@ DolphinSettingsDialog::DolphinSettingsDialog(const QUrl &url, QWidget *parent, K
         connect(feedbackSettingsPage, &UserFeedbackSettingsPage::changed, this, &DolphinSettingsDialog::enableApply);
     }
 #endif
+
+    // dolphin-neo
+    auto *neoSettingsPage = new NeoSettingsPage(this);
+    KPageWidgetItem *neoSettingsFrame = addPage(neoSettingsPage, QStringLiteral("Neo"));
+    neoSettingsFrame->setIcon(QIcon::fromTheme(QStringLiteral("preferences-desktop-theme")));
+    connect(neoSettingsPage, &NeoSettingsPage::changed, this, &DolphinSettingsDialog::enableApply);
+    m_pages.append(neoSettingsPage);
 
     m_pages.append(interfaceSettingsPage);
     m_pages.append(viewSettingsPage);

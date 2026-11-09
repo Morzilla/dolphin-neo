@@ -6,6 +6,8 @@
 
 #include "dolphindockwidget.h"
 
+#include "kitemviews/kitemlistwidget.h"
+
 #include <KConfig>
 #include <KConfigGroup>
 #include <KIO/Global>
@@ -38,7 +40,7 @@ int neoEnvInt(const char *name, int fallback)
 }
 bool neoGlassPlain()
 {
-    static const bool plain = qgetenv("DOLPHIN_NEO_SIDEBAR").toLower() == "plain";
+    static const bool plain = neoSetting("SIDEBAR").toLower() == QLatin1String("plain");
     return plain;
 }
 
@@ -46,14 +48,14 @@ bool neoGlassPlain()
 // window position on screen. DOLPHIN_NEO_GLASS_MODE=live: the card is a hole showing the compositor's real blur.
 bool neoGlassImageMode()
 {
-    static const bool live = qgetenv("DOLPHIN_NEO_GLASS_MODE").toLower() == "live";
+    static const bool live = neoSetting("GLASS_MODE").toLower() == QLatin1String("live");
     return !live;
 }
 
 // The image behind the glass: DOLPHIN_NEO_GLASS_IMAGE, else the Plasma wallpaper of that screen.
 QString neoBackdropPath(const QScreen *screen)
 {
-    const QString custom = qEnvironmentVariable("DOLPHIN_NEO_GLASS_IMAGE");
+    const QString custom = neoSetting("GLASS_IMAGE");
     if (!custom.isEmpty()) {
         return custom;
     }
@@ -102,20 +104,20 @@ QPixmap neoBackdrop(const QScreen *screen)
 {
     static QHash<QString, QPixmap> cache;
     const QSize screenSize = screen->geometry().size();
-    const QString key = screen->name() + QLatin1Char(':') + QString::number(screenSize.width()) + QLatin1Char('x') + QString::number(screenSize.height());
+    const int blur = qBound(0, neoSettingInt("GLASS_BLUR", 45), 100); // how soft the backdrop is
+    const QString path = neoBackdropPath(screen);
+    const QString key = screen->name() + QLatin1Char(':') + QString::number(screenSize.width()) + QLatin1Char('x') + QString::number(screenSize.height())
+        + QLatin1Char(':') + QString::number(blur) + QLatin1Char(':') + path;
     const auto cached = cache.constFind(key);
     if (cached != cache.constEnd()) {
         return *cached;
     }
 
     QPixmap result;
-    const QString path = neoBackdropPath(screen);
     if (!path.isEmpty()) {
         QImageReader reader(path);
         reader.setAutoTransform(true);
-        // DOLPHIN_NEO_GLASS_BLUR: 0-100, how soft the backdrop is (default 45). The blur comes from resampling
-        // through a very small image: the stronger the blur, the smaller that image.
-        static const int blur = neoEnvInt("DOLPHIN_NEO_GLASS_BLUR", 45);
+        // the blur comes from resampling through a very small image: the stronger the blur, the smaller that image
         const QSize tiny = (screenSize / (12 + blur * 2)).expandedTo(QSize(4, 4));
         const QSize original = reader.size();
         if (original.isValid() && !tiny.isEmpty()) {
@@ -341,7 +343,7 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
         const qreal factor = qreal(backdrop.width()) / currentScreen->geometry().width();
         painter.drawPixmap(card, backdrop, QRectF(onScreen * factor, card.size() * factor));
         QColor tint = palette().color(QPalette::Window);
-        tint.setAlphaF(1.0 - m_glass / 100.0);
+        tint.setAlphaF(1.0 - qBound(0, neoSettingInt("GLASS", 55), 100) / 100.0); // how much of the picture shows
         painter.fillRect(card, tint);
         painter.restore();
     } else {

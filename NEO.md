@@ -50,8 +50,10 @@ neo/build.sh                     # installs into ~/.local/dolphin-neo
 neo/dolphin-neo --new-window
 ```
 
-Settings are environment variables, documented in [`neo/dolphin-neo.conf.example`](neo/dolphin-neo.conf.example);
-the launcher reads them from `~/.config/dolphin-neo.conf`. `neo/dolphinui.rc.example` is a toolbar layout with
+Settings are in Dolphin's own settings dialog, on a page called **Neo** (stored in `dolphinrc`, group
+`DolphinNeo`). Every setting can also be forced with a `DOLPHIN_NEO_*` environment variable, documented in
+[`neo/dolphin-neo.conf.example`](neo/dolphin-neo.conf.example); the launcher reads those from
+`~/.config/dolphin-neo.conf`, and a variable that is set wins over the dialog. `neo/dolphinui.rc.example` is a toolbar layout with
 the New Folder, Up and Root buttons (copy it to `~/.local/share/kxmlgui5/dolphin/dolphinui.rc`).
 
 ## State of things
@@ -62,13 +64,13 @@ the New Folder, Up and Root buttons (copy it to `~/.local/share/kxmlgui5/dolphin
   they should go through i18n.
 - File kinds and their abbreviations come from the file extension, not from the MIME type.
 - The filter menu is skipped in folders with more than 4000 items.
-- Everything lives behind `DOLPHIN_NEO_*` switches read at start-up, not in the settings dialog.
+- Most settings on the Neo page are read at start-up; only the sidebar picture and the row style apply at once.
 - All changes are marked with `dolphin-neo` comments in the source.
 
 ## Contributing
 
-Issues and pull requests are welcome. Good first steps: the i18n of the hardcoded strings, a proper settings
-page, Wayland and light-theme testing, and content summaries on the second line (pages, dimensions, row
+Issues and pull requests are welcome. Good first steps: the i18n of the hardcoded strings, live
+settings, Wayland and light-theme testing, and content summaries on the second line (pages, dimensions, row
 counts) from KFileMetaData.
 
 ## Licence

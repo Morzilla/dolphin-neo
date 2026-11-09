@@ -11,6 +11,8 @@
 
 #include "placespanel.h"
 
+#include "kitemviews/kitemlistwidget.h"
+
 #include "dolphin_generalsettings.h"
 #include "dolphin_placespanelsettings.h"
 #include "dolphinplacesmodelsingleton.h"
@@ -84,7 +86,7 @@ PlacesPanel::PlacesPanel(QWidget *parent)
 
     // dolphin-neo: the disk usage box at the bottom of the card replaces the "Devices" section (internal disks);
     // removable devices keep their own section. DOLPHIN_NEO_DEVICES=show keeps the section.
-    if (qgetenv("DOLPHIN_NEO_DEVICES").toLower() != "show" && qgetenv("DOLPHIN_NEO_SIDEBAR").toLower() != "plain") {
+    if (neoSetting("DEVICES").toLower() != QLatin1String("show") && neoSetting("SIDEBAR").toLower() != QLatin1String("plain")) {
         // KFilePlacesView decides row visibility itself on model changes, so hide the rows again right after it
         auto hideDevices = [this, placesModel] {
             QTimer::singleShot(0, this, [this, placesModel] {
@@ -122,7 +124,7 @@ PlacesPanel::~PlacesPanel() = default;
 void PlacesPanel::paintEvent(QPaintEvent *event)
 {
     KFilePlacesView::paintEvent(event);
-    static const bool plain = qgetenv("DOLPHIN_NEO_SIDEBAR").toLower() == "plain";
+    static const bool plain = neoSetting("SIDEBAR").toLower() == QLatin1String("plain");
     const auto *placesModel = qobject_cast<KFilePlacesModel *>(model());
     if (plain || !placesModel) {
         return;

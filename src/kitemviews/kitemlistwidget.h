@@ -21,6 +21,17 @@
 class KItemListSelectionToggle;
 
 /**
+ * dolphin-neo settings. A value comes from the environment variable DOLPHIN_NEO_<NAME> if it is set,
+ * else from dolphinrc, group DolphinNeo, key <NAME> (written by the settings page), else it is the fallback.
+ */
+DOLPHIN_EXPORT QString neoSetting(const char *name, const QString &fallback = QString());
+DOLPHIN_EXPORT int neoSettingInt(const char *name, int fallback);
+/** Store a value in dolphinrc; an empty value removes it. */
+DOLPHIN_EXPORT void setNeoSetting(const char *name, const QString &value);
+/** True if the environment decides this setting, so the stored value is ignored. */
+DOLPHIN_EXPORT bool neoSettingFromEnvironment(const char *name);
+
+/**
  * dolphin-neo: how the row background is drawn in views that use row
  * backgrounds (the details view). Chosen with DOLPHIN_NEO_ROWS:
  * card (default), line, stripe (stock Dolphin) or none.

@@ -1,0 +1,178 @@
+/*
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#include "neosettingspage.h"
+
+#include "kitemviews/kitemlistwidget.h"
+
+#include <KUrlRequester>
+
+#include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QFormLayout>
+#include <QGraphicsView>
+#include <QLabel>
+#include <QSlider>
+
+// The labels are in Italian for now, like the other dolphin-neo strings; they should go through i18n.
+
+NeoSettingsPage::NeoSettingsPage(QWidget *parent)
+    : SettingsPageBase(parent)
+{
+    auto *form = new QFormLayout(this);
+    auto heading = [this, form](const QString &text) {
+        auto *label = new QLabel(text, this);
+        QFont bold = label->font();
+        bold.setBold(true);
+        label->setFont(bold);
+        label->setContentsMargins(0, 10, 0, 2);
+        form->addRow(label);
+    };
+
+    heading(QStringLiteral("Barra laterale"));
+    m_glassPanel = new QCheckBox(QStringLiteral("Pannello a vetro *"), this);
+    form->addRow(QString(), m_glassPanel);
+    m_liveBlur = new QCheckBox(QStringLiteral("Usa il blur vero del desktop al posto dell'immagine *"), this);
+    form->addRow(QString(), m_liveBlur);
+    m_devices = new QCheckBox(QStringLiteral("Mostra la sezione «Dispositivi» *"), this);
+    form->addRow(QString(), m_devices);
+
+    m_image = new KUrlRequester(this);
+    m_image->setMode(KFile::File | KFile::ExistingOnly | KFile::LocalOnly);
+    m_image->setPlaceholderText(QStringLiteral("Sfondo del desktop"));
+    m_image->setToolTip(QStringLiteral("Immagine mostrata, sfocata, dietro la barra laterale. Vuoto: lo sfondo del desktop di ogni schermo."));
+    form->addRow(QStringLiteral("Immagine della barra laterale:"), m_image);
+
+    m_glass = new QSlider(Qt::Horizontal, this);
+    m_glass->setRange(0, 100);
+    form->addRow(QStringLiteral("Quanto si vede l'immagine:"), m_glass);
+
+    m_blur = new QSlider(Qt::Horizontal, this);
+    m_blur->setRange(0, 100);
+    form->addRow(QStringLiteral("Sfocatura dell'immagine:"), m_blur);
+
+    heading(QStringLiteral("Elenco dei file"));
+    m_twoLines = new QCheckBox(QStringLiteral("Righe su due linee, senza colonne *"), this);
+    form->addRow(QString(), m_twoLines);
+
+    m_rows = new QComboBox(this);
+    m_rows->addItem(QStringLiteral("Schede"), QStringLiteral("card"));
+    m_rows->addItem(QStringLiteral("Aperte, separate da un filo"), QStringLiteral("open"));
+    m_rows->addItem(QStringLiteral("Filo che sfuma ai lati"), QStringLiteral("line"));
+    m_rows->addItem(QStringLiteral("Strisce alternate (Dolphin originale)"), QStringLiteral("stripe"));
+    m_rows->addItem(QStringLiteral("Nessuno sfondo"), QStringLiteral("none"));
+    form->addRow(QStringLiteral("Righe dell'elenco:"), m_rows);
+
+    m_sigla = new QComboBox(this);
+    m_sigla->addItem(QStringLiteral("Piena e tenue"), QStringLiteral("fill"));
+    m_sigla->addItem(QStringLiteral("Solo contorno"), QStringLiteral("outline"));
+    m_sigla->addItem(QStringLiteral("Etichetta piccola"), QStringLiteral("label"));
+    form->addRow(QStringLiteral("Sigla del tipo di file *:"), m_sigla);
+
+    m_icons = new QCheckBox(QStringLiteral("Mostra le icone nell'elenco al posto della sigla *"), this);
+    form->addRow(QString(), m_icons);
+
+    heading(QStringLiteral("Vista a icone"));
+    m_tiles = new QCheckBox(QStringLiteral("Tessere scure con anteprime arrotondate *"), this);
+    form->addRow(QString(), m_tiles);
+
+    auto *note = new QLabel(QStringLiteral("* Vale dal prossimo avvio di Dolphin. Una variabile DOLPHIN_NEO_… impostata all'avvio ha la precedenza: la voce corrispondente qui è disattivata."), this);
+    note->setWordWrap(true);
+    note->setEnabled(false);
+    form->addRow(note);
+
+    loadSettings();
+
+    // what the environment decides cannot be changed here
+    m_image->setEnabled(!neoSettingFromEnvironment("GLASS_IMAGE"));
+    m_glass->setEnabled(!neoSettingFromEnvironment("GLASS"));
+    m_blur->setEnabled(!neoSettingFromEnvironment("GLASS_BLUR"));
+    m_rows->setEnabled(!neoSettingFromEnvironment("ROWS"));
+    m_sigla->setEnabled(!neoSettingFromEnvironment("SIGLA"));
+    m_icons->setEnabled(!neoSettingFromEnvironment("ICONS"));
+    m_tiles->setEnabled(!neoSettingFromEnvironment("TILES"));
+    m_twoLines->setEnabled(!neoSettingFromEnvironment("LIST"));
+    m_glassPanel->setEnabled(!neoSettingFromEnvironment("SIDEBAR"));
+    m_liveBlur->setEnabled(!neoSettingFromEnvironment("GLASS_MODE"));
+    m_devices->setEnabled(!neoSettingFromEnvironment("DEVICES"));
+
+    connect(m_image, &KUrlRequester::textChanged, this, &NeoSettingsPage::changed);
+    connect(m_glass, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
+    connect(m_blur, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
+    connect(m_rows, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
+    connect(m_sigla, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
+    connect(m_icons, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
+    connect(m_tiles, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
+    connect(m_twoLines, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
+    connect(m_glassPanel, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
+    connect(m_liveBlur, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
+    connect(m_devices, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
+}
+
+NeoSettingsPage::~NeoSettingsPage() = default;
+
+void NeoSettingsPage::loadSettings()
+{
+    m_image->setText(neoSetting("GLASS_IMAGE"));
+    m_glass->setValue(qBound(0, neoSettingInt("GLASS", 55), 100));
+    m_blur->setValue(qBound(0, neoSettingInt("GLASS_BLUR", 45), 100));
+    static const NeoRowStyle order[] = {NeoRowStyle::Card, NeoRowStyle::Open, NeoRowStyle::Line, NeoRowStyle::Stripe, NeoRowStyle::None};
+    for (int i = 0; i < 5; ++i) {
+        if (order[i] == neoRowStyle()) {
+            m_rows->setCurrentIndex(i);
+        }
+    }
+    m_twoLines->setChecked(neoSetting("LIST").toLower() != QLatin1String("columns"));
+    m_glassPanel->setChecked(neoSetting("SIDEBAR").toLower() != QLatin1String("plain"));
+    m_liveBlur->setChecked(neoSetting("GLASS_MODE").toLower() == QLatin1String("live"));
+    m_devices->setChecked(neoSetting("DEVICES").toLower() == QLatin1String("show"));
+    m_sigla->setCurrentIndex(qMax(0, m_sigla->findData(neoSetting("SIGLA", QStringLiteral("fill")).toLower())));
+    m_icons->setChecked(neoSetting("ICONS").toLower() == QLatin1String("show"));
+    m_tiles->setChecked(neoSetting("TILES").toLower() != QLatin1String("off"));
+}
+
+void NeoSettingsPage::applySettings()
+{
+    setNeoSetting("GLASS_IMAGE", m_image->text().trimmed());
+    setNeoSetting("GLASS", QString::number(m_glass->value()));
+    setNeoSetting("GLASS_BLUR", QString::number(m_blur->value()));
+    setNeoSetting("SIGLA", m_sigla->currentData().toString());
+    setNeoSetting("ICONS", m_icons->isChecked() ? QStringLiteral("show") : QString());
+    setNeoSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
+    setNeoSetting("LIST", m_twoLines->isChecked() ? QString() : QStringLiteral("columns"));
+    setNeoSetting("SIDEBAR", m_glassPanel->isChecked() ? QString() : QStringLiteral("plain"));
+    setNeoSetting("GLASS_MODE", m_liveBlur->isChecked() ? QStringLiteral("live") : QString());
+    setNeoSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
+    if (m_rows->isEnabled()) {
+        static const NeoRowStyle order[] = {NeoRowStyle::Card, NeoRowStyle::Open, NeoRowStyle::Line, NeoRowStyle::Stripe, NeoRowStyle::None};
+        setNeoRowStyle(order[qBound(0, m_rows->currentIndex(), 4)]);
+    }
+
+    // sidebar and row style apply at once: repaint everything
+    const QWidgetList widgets = QApplication::allWidgets();
+    for (QWidget *widget : widgets) {
+        widget->update();
+        if (auto *graphicsView = qobject_cast<QGraphicsView *>(widget)) {
+            graphicsView->viewport()->update();
+        }
+    }
+}
+
+void NeoSettingsPage::restoreDefaults()
+{
+    m_image->clear();
+    m_glass->setValue(55);
+    m_blur->setValue(45);
+    m_rows->setCurrentIndex(0);
+    m_sigla->setCurrentIndex(0);
+    m_icons->setChecked(false);
+    m_tiles->setChecked(true);
+    m_twoLines->setChecked(true);
+    m_glassPanel->setChecked(true);
+    m_liveBlur->setChecked(false);
+    m_devices->setChecked(false);
+}
+
+#include "moc_neosettingspage.cpp"
