@@ -614,7 +614,8 @@ protected:
         Q_UNUSED(event)
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
-        QColor fill = palette().color(QPalette::Window).lighter(118);
+        const QColor window = palette().color(QPalette::Window);
+        QColor fill = neoIsDark(palette()) ? window.lighter(118) : window.darker(104);
         QColor border = palette().color(QPalette::WindowText);
         border.setAlphaF(0.16);
         painter.setPen(QPen(border, 1));

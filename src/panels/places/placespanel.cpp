@@ -168,13 +168,17 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
         if (headerHeight < metrics.height() || title.text.isEmpty()) {
             continue;
         }
-        const int pillHeight = qMin(headerHeight, metrics.height() + 6);
+        // The pill must hide the original title completely: it is as tall as the title area, opaque, and at least
+        // as wide as the original text (which uses the normal font).
+        const int pillHeight = qMax(metrics.height() + 6, headerHeight - 3);
         const QRect header(title.rect.left(), title.rect.top(), title.rect.width(), headerHeight);
-        const QRect pill(header.left() + 2, header.bottom() - pillHeight + 3, metrics.horizontalAdvance(title.text) + 22, pillHeight);
+        const int pillWidth = qMax(metrics.horizontalAdvance(title.text) + 22, fontMetrics().horizontalAdvance(title.text) + 20);
+        const QRect pill(header.left() + 1, header.bottom() - pillHeight + 1, qMin(pillWidth, header.width() - 2), pillHeight);
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(12, 13, 15, 168));
+        const bool dark = neoIsDark(palette());
+        painter.setBrush(dark ? QColor(22, 23, 26, 242) : QColor(255, 255, 255, 244));
         painter.drawRoundedRect(pill, pillHeight / 2.0, pillHeight / 2.0);
-        painter.setPen(QColor(236, 239, 244));
+        painter.setPen(dark ? QColor(236, 239, 244) : QColor(35, 38, 41));
         painter.drawText(pill, Qt::AlignCenter, title.text);
     }
 }

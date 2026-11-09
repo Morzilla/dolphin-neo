@@ -7,6 +7,7 @@
 
 #include "settings/settingspagebase.h"
 
+class KColorButton;
 class KUrlRequester;
 class QCheckBox;
 class QComboBox;
@@ -41,6 +42,9 @@ private:
     QCheckBox *m_glassPanel;
     QComboBox *m_backdrop;
     QSlider *m_lavaSpeed;
+    QSlider *m_lavaSize;
+    QComboBox *m_lavaColours;
+    KColorButton *m_lavaColour[3];
     QCheckBox *m_devices;
 };
 

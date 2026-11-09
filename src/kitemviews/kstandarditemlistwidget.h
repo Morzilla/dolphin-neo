@@ -289,6 +289,7 @@ private:
     QString m_neoSigla; // file type abbreviation drawn as a watermark
     QString m_neoIconName; // type icon drawn, faint, before the abbreviation
     QPixmap m_neoIcon;
+    bool m_neoIconFaded = false;
     QColor m_neoTint; // colour of the file's category
     QByteArray m_neoDateRole; // the date role shown at the right edge, if any
     QRectF m_neoBarRect; // size bar

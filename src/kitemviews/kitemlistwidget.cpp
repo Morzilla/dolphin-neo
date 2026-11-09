@@ -237,6 +237,18 @@ bool neoTiles()
     return !off;
 }
 
+bool neoIsDark(const QPalette &palette)
+{
+    return palette.color(QPalette::Window).lightnessF() < 0.5;
+}
+
+QColor neoAccent(const QColor &colour, bool dark)
+{
+    float h, s, l;
+    colour.getHslF(&h, &s, &l);
+    return QColor::fromHslF(h < 0 ? 0 : h, dark ? s : qMin(1.0f, s * 1.15f + 0.05f), dark ? qMax(l, 0.64f) : qMin(l, 0.40f));
+}
+
 bool neoNoIcons()
 {
     static const bool show = neoSetting("ICONS").toLower() == QLatin1String("show");
@@ -256,9 +268,10 @@ void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
         painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(0, 0, 0, 66));
+        const bool dark = neoIsDark(m_styleOption.palette);
+        painter->setBrush(dark ? QColor(0, 0, 0, 66) : QColor(0, 0, 0, 14)); // darker than the view on either scheme
         painter->drawRoundedRect(card, 5, 5);
-        painter->setPen(QPen(QColor(255, 255, 255, 11), 1));
+        painter->setPen(QPen(dark ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
         painter->drawLine(QPointF(card.left() + 5, card.top() + 0.5), QPointF(card.right() - 5, card.top() + 0.5));
         painter->restore();
     } else if (m_alternateBackground && neoRowStyle() == NeoRowStyle::Open) {
@@ -849,8 +862,8 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
     } else {
         style()->drawPrimitive(QStyle::PE_PanelItemViewItem, &viewItemOption, painter, widget);
 
-        // Focus decoration
-        if (current) {
+        // Focus decoration (dolphin-neo: not in the two-line list, where it shows as a light line under the row)
+        if (current && !(m_alternateBackground && neoTwoLineList())) {
             QStyleOptionFocusRect focusRectOption;
             initStyleOption(&focusRectOption);
             focusRectOption.state = QStyle::State_HasFocus;

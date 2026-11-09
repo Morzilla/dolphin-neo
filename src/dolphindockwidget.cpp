@@ -105,22 +105,33 @@ bool neoGlassLavaMode()
     return neoSetting("GLASS_MODE").toLower() == QLatin1String("lava");
 }
 
-// One frame of the lava lamp, drawn small: a few soft blobs of colour that drift and breathe very slowly.
-// It is painted scaled up, which blurs it. `seconds` is the animation time.
-QImage neoLavaFrame(const QSize &size, const QList<QColor> &colours, const QColor &base, qreal seconds)
+// One frame of the lava lamp, drawn small and painted scaled up, which blurs it. The blobs live in screen
+// coordinates, as if a slowly moving picture lay behind the whole desktop: `region` is the part of the screen
+// behind the card, so moving the window slides the blobs under it. `seconds` is the animation time.
+QImage neoLavaFrame(const QSize &size, const QList<QColor> &colours, const QColor &base, qreal seconds, const QRectF &region, const QSizeF &screen)
 {
+    // LAVA_SIZE 10-100: how large the blobs are (default 55)
+    const qreal sizeFactor = 0.30 + qBound(10, neoSettingInt("LAVA_SIZE", 55), 100) / 100.0 * 0.60;
     QImage frame(size, QImage::Format_ARGB32_Premultiplied);
     frame.fill(base);
+    if (colours.isEmpty() || region.isEmpty() || screen.isEmpty()) {
+        return frame;
+    }
     QPainter painter(&frame);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(Qt::NoPen);
-    const qreal w = size.width(), h = size.height();
-    for (int i = 0; i < colours.size(); ++i) {
-        // every blob has its own slow periods (about one to two and a half minutes) and phases
-        const qreal periodX = 70.0 + 23.0 * i, periodY = 95.0 + 31.0 * ((i * 3) % 5), periodR = 60.0 + 17.0 * i;
-        const QPointF centre(w * (0.5 + 0.40 * qSin(2 * M_PI * seconds / periodX + i * 1.7)), h * (0.5 + 0.44 * qCos(2 * M_PI * seconds / periodY + i * 2.3)));
-        const qreal radius = qMax(w, h * 0.45) * (0.62 + 0.14 * qSin(2 * M_PI * seconds / periodR + i));
-        QColor inner = colours.at(i), mid = colours.at(i), outer = colours.at(i);
+    // map screen coordinates to the frame
+    painter.scale(size.width() / region.width(), size.height() / region.height());
+    painter.translate(-region.topLeft());
+    const int blobs = qMax(9, int(colours.size()) * 4); // enough of them that every part of the screen has some
+    for (int i = 0; i < blobs; ++i) {
+        // every blob has its own home on the screen, slow periods (about one to three minutes) and phases
+        const qreal homeX = (i * 0.618034) - qFloor(i * 0.618034), homeY = (i * 0.381966 + 0.2) - qFloor(i * 0.381966 + 0.2);
+        const qreal periodX = 70.0 + 23.0 * (i % 5), periodY = 95.0 + 31.0 * ((i * 3) % 5), periodR = 60.0 + 17.0 * (i % 4);
+        const QPointF centre(screen.width() * (homeX + 0.16 * qSin(2 * M_PI * seconds / periodX + i * 1.7)),
+                             screen.height() * (homeY + 0.20 * qCos(2 * M_PI * seconds / periodY + i * 2.3)));
+        const qreal radius = screen.height() * 0.42 * (sizeFactor + 0.14 * qSin(2 * M_PI * seconds / periodR + i));
+        QColor inner = colours.at(i % colours.size()), mid = inner, outer = inner;
         inner.setAlphaF(0.90);
         mid.setAlphaF(0.42);
         outer.setAlphaF(0.0);
@@ -134,11 +145,15 @@ QImage neoLavaFrame(const QSize &size, const QList<QColor> &colours, const QColo
     return frame;
 }
 
-// The colours of the lava: taken from the (blurred) backdrop picture so that they suit the desktop, or a fixed set.
+// The colours of the lava. LAVA_COLORS is empty for the default set (the teal, amber and indigo glows of the
+// design mockup), "wallpaper" to take them from the blurred backdrop picture, or a comma-separated list of
+// colours such as "#2f6f8f,#8a5a2c,#3c4a78".
 QList<QColor> neoLavaColours(const QPixmap &backdrop, QColor *base)
 {
-    QList<QColor> colours;
-    if (!backdrop.isNull()) {
+    *base = QColor(16, 18, 22);
+    const QString spec = neoSetting("LAVA_COLORS").trimmed().toLower();
+    if (spec == QLatin1String("wallpaper") && !backdrop.isNull()) {
+        QList<QColor> colours;
         const QImage image = backdrop.toImage();
         static const QPointF spots[] = {{0.15, 0.2}, {0.8, 0.25}, {0.5, 0.55}, {0.2, 0.85}, {0.85, 0.8}};
         qreal red = 0, green = 0, blue = 0;
@@ -152,9 +167,18 @@ QList<QColor> neoLavaColours(const QPixmap &backdrop, QColor *base)
             colours.append(QColor::fromHsvF(hue < 0 ? 0 : hue, qMin(1.0f, saturation * 1.3f + 0.08f), qBound(0.45f, value * 1.1f, 0.92f)));
         }
         *base = QColor::fromRgbF(red / 5 * 0.45, green / 5 * 0.45, blue / 5 * 0.45);
-    } else {
-        colours = {QColor(123, 94, 167), QColor(176, 86, 122), QColor(201, 138, 90), QColor(74, 111, 165), QColor(63, 143, 138)};
-        *base = QColor(28, 30, 38);
+        return colours;
+    }
+    QList<QColor> colours;
+    const QStringList names = spec.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString &name : names) {
+        const QColor colour(name.trimmed());
+        if (colour.isValid()) {
+            colours.append(colour);
+        }
+    }
+    if (colours.isEmpty()) {
+        colours = {QColor(0x2f, 0x6f, 0x8f), QColor(0x8a, 0x5a, 0x2c), QColor(0x3c, 0x4a, 0x78)};
     }
     return colours;
 }
@@ -415,7 +439,12 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
         const qreal speed = qBound(0, neoSettingInt("LAVA_SPEED", 30), 100) / 30.0;
         QColor base;
         const QList<QColor> colours = neoLavaColours(backdrop, &base);
-        const QImage frame = neoLavaFrame((card.size() / 8).toSize().expandedTo(QSize(8, 8)), colours, base, clock.elapsed() / 1000.0 * speed);
+        if (!neoIsDark(palette())) {
+            base = base.lighter(520); // a pale ground under the blobs on a light scheme
+        }
+        const QRectF onScreen = currentScreen ? QRectF(QPointF(mapToGlobal(card.topLeft().toPoint()) - currentScreen->geometry().topLeft()), card.size()) : card;
+        const QSizeF screenSize = currentScreen ? QSizeF(currentScreen->geometry().size()) : card.size();
+        const QImage frame = neoLavaFrame((card.size() / 8).toSize().expandedTo(QSize(8, 8)), colours, base, clock.elapsed() / 1000.0 * speed, onScreen, screenSize);
         QPainterPath clip;
         clip.addRoundedRect(card, radius, radius);
         painter.save();
@@ -463,9 +492,16 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
 
     // rim: bright towards the top-left, fading along the diagonal, a faint return at the bottom-right
     QLinearGradient rim(card.topLeft(), card.bottomRight());
-    rim.setColorAt(0.0, QColor(255, 255, 255, 105));
-    rim.setColorAt(0.45, QColor(255, 255, 255, 22));
-    rim.setColorAt(1.0, QColor(255, 255, 255, 55));
+    if (neoIsDark(palette())) {
+        rim.setColorAt(0.0, QColor(255, 255, 255, 105));
+        rim.setColorAt(0.45, QColor(255, 255, 255, 22));
+        rim.setColorAt(1.0, QColor(255, 255, 255, 55));
+    } else {
+        // on a light scheme the edge is a soft shadow line with a highlight where the light comes from
+        rim.setColorAt(0.0, QColor(255, 255, 255, 230));
+        rim.setColorAt(0.45, QColor(0, 0, 0, 26));
+        rim.setColorAt(1.0, QColor(0, 0, 0, 48));
+    }
     painter.setBrush(Qt::NoBrush);
     painter.setPen(QPen(QBrush(rim), 1));
     painter.drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
@@ -481,7 +517,7 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
         if (storage.isValid() && storage.bytesTotal() > 0 && card.height() > 200) {
             const QRectF box(card.left() + 8, card.bottom() - 8 - 54, card.width() - 16, 54);
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(0, 0, 0, 62));
+            painter.setBrush(neoIsDark(palette()) ? QColor(0, 0, 0, 62) : QColor(255, 255, 255, 130));
             painter.drawRoundedRect(box, 10, 10);
 
             const qreal used = 1.0 - qreal(storage.bytesAvailable()) / qreal(storage.bytesTotal());
@@ -495,7 +531,7 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
 
             const QRectF groove(box.left() + 10, box.bottom() - 16, box.width() - 20, 6);
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(255, 255, 255, 44));
+            painter.setBrush(neoIsDark(palette()) ? QColor(255, 255, 255, 44) : QColor(0, 0, 0, 36));
             painter.drawRoundedRect(groove, 3, 3);
             painter.setBrush(used > 0.9 ? QColor(224, 145, 79) : palette().color(QPalette::Highlight));
             painter.drawRoundedRect(QRectF(groove.topLeft(), QSizeF(qMax(6.0, groove.width() * used), groove.height())), 3, 3);

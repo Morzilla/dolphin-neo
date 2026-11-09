@@ -6,12 +6,14 @@
 
 #include "kitemviews/kitemlistwidget.h"
 
+#include <KColorButton>
 #include <KUrlRequester>
 
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QGraphicsView>
 #include <QLabel>
 #include <QSlider>
@@ -42,6 +44,27 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     m_lavaSpeed = new QSlider(Qt::Horizontal, this);
     m_lavaSpeed->setRange(5, 100);
     form->addRow(QStringLiteral("Velocità della lava lamp:"), m_lavaSpeed);
+    m_lavaSize = new QSlider(Qt::Horizontal, this);
+    m_lavaSize->setRange(10, 100);
+    form->addRow(QStringLiteral("Grandezza delle macchie:"), m_lavaSize);
+    m_lavaColours = new QComboBox(this);
+    m_lavaColours->addItem(QStringLiteral("Petrolio, ambra e indaco (come nel mockup)"), QString());
+    m_lavaColours->addItem(QStringLiteral("Dallo sfondo del desktop"), QStringLiteral("wallpaper"));
+    m_lavaColours->addItem(QStringLiteral("Personalizzati"), QStringLiteral("custom"));
+    form->addRow(QStringLiteral("Colori della lava lamp:"), m_lavaColours);
+    auto *colourRow = new QHBoxLayout();
+    for (KColorButton *&button : m_lavaColour) {
+        button = new KColorButton(this);
+        colourRow->addWidget(button);
+        connect(button, &KColorButton::changed, this, &NeoSettingsPage::changed);
+    }
+    colourRow->addStretch();
+    form->addRow(QString(), colourRow);
+    connect(m_lavaColours, &QComboBox::currentIndexChanged, this, [this](int index) {
+        for (KColorButton *button : m_lavaColour) {
+            button->setEnabled(index == 2); // only the custom set uses them
+        }
+    });
     m_devices = new QCheckBox(QStringLiteral("Mostra la sezione «Dispositivi» *"), this);
     form->addRow(QString(), m_devices);
 
@@ -116,6 +139,8 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     connect(m_glassPanel, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
     connect(m_backdrop, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
     connect(m_lavaSpeed, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
+    connect(m_lavaSize, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
+    connect(m_lavaColours, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
     connect(m_devices, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
 }
 
@@ -136,6 +161,17 @@ void NeoSettingsPage::loadSettings()
     m_glassPanel->setChecked(neoSetting("SIDEBAR").toLower() != QLatin1String("plain"));
     m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(neoSetting("GLASS_MODE").toLower())));
     m_lavaSpeed->setValue(qBound(5, neoSettingInt("LAVA_SPEED", 30), 100));
+    m_lavaSize->setValue(qBound(10, neoSettingInt("LAVA_SIZE", 55), 100));
+    static const char *const defaults[3] = {"#2f6f8f", "#8a5a2c", "#3c4a78"};
+    const QString spec = neoSetting("LAVA_COLORS").trimmed().toLower();
+    const QStringList custom = spec.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    const bool isCustom = !spec.isEmpty() && spec != QLatin1String("wallpaper");
+    for (int i = 0; i < 3; ++i) {
+        const QColor colour(isCustom && i < custom.size() ? custom.at(i).trimmed() : QString::fromLatin1(defaults[i]));
+        m_lavaColour[i]->setColor(colour.isValid() ? colour : QColor(QString::fromLatin1(defaults[i])));
+        m_lavaColour[i]->setEnabled(isCustom);
+    }
+    m_lavaColours->setCurrentIndex(spec.isEmpty() ? 0 : spec == QLatin1String("wallpaper") ? 1 : 2);
     m_devices->setChecked(neoSetting("DEVICES").toLower() == QLatin1String("show"));
     m_sigla->setCurrentIndex(qMax(0, m_sigla->findData(neoSetting("SIGLA", QStringLiteral("fill")).toLower())));
     m_icons->setChecked(neoSetting("ICONS").toLower() == QLatin1String("show"));
@@ -154,6 +190,12 @@ void NeoSettingsPage::applySettings()
     setNeoSetting("SIDEBAR", m_glassPanel->isChecked() ? QString() : QStringLiteral("plain"));
     setNeoSetting("GLASS_MODE", m_backdrop->currentData().toString());
     setNeoSetting("LAVA_SPEED", QString::number(m_lavaSpeed->value()));
+    setNeoSetting("LAVA_SIZE", QString::number(m_lavaSize->value()));
+    const int colours = m_lavaColours->currentIndex();
+    setNeoSetting("LAVA_COLORS",
+                  colours == 0   ? QString()
+                  : colours == 1 ? QStringLiteral("wallpaper")
+                                 : QStringLiteral("%1,%2,%3").arg(m_lavaColour[0]->color().name(), m_lavaColour[1]->color().name(), m_lavaColour[2]->color().name()));
     setNeoSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
     if (m_rows->isEnabled()) {
         static const NeoRowStyle order[] = {NeoRowStyle::Card, NeoRowStyle::Open, NeoRowStyle::Line, NeoRowStyle::Stripe, NeoRowStyle::None};
@@ -183,6 +225,8 @@ void NeoSettingsPage::restoreDefaults()
     m_glassPanel->setChecked(true);
     m_backdrop->setCurrentIndex(0);
     m_lavaSpeed->setValue(30);
+    m_lavaSize->setValue(55);
+    m_lavaColours->setCurrentIndex(0);
     m_devices->setChecked(false);
 }
 

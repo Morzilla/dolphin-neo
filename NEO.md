@@ -59,8 +59,8 @@ the New Folder, Up and Root buttons (copy it to `~/.local/share/kxmlgui5/dolphin
 
 ## State of things
 
-- Developed and tested on X11 with KWin, Plasma 6, a dark colour scheme and the Kvantum style. Other set-ups,
-  Wayland and light themes in particular, are untested. The "live" glass mode uses X11 calls.
+- Developed on X11 with KWin, Plasma 6, a dark colour scheme and the Kvantum style. The fork's own painting
+  adapts to light colour schemes (checked once with Breeze Light); Wayland is untested. The "live" glass mode uses X11 calls.
 - The kind-of-file names in the filter menu and the labels in the preview card are hardcoded in Italian;
   they should go through i18n.
 - File kinds and their abbreviations come from the file extension, not from the MIME type.

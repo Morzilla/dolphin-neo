@@ -491,9 +491,10 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
         painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(0, 0, 0, 62));
+        const bool darkScheme = neoIsDark(styleOption().palette);
+        painter->setBrush(darkScheme ? QColor(0, 0, 0, 62) : QColor(0, 0, 0, 14));
         painter->drawRoundedRect(tile, 12, 12);
-        painter->setPen(QPen(QColor(255, 255, 255, 11), 1));
+        painter->setPen(QPen(darkScheme ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
         painter->drawLine(QPointF(tile.left() + 12, tile.top() + 0.5), QPointF(tile.right() - 12, tile.top() + 0.5));
         painter->restore();
     }
@@ -505,7 +506,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         const QRectF rowRect = openRows ? selectionRectFull() : selectionRectFull().adjusted(3, 3, -3, -3);
         qreal x0 = rowRect.left() + (openRows ? 16 : 10);
         QFont watermarkFont(m_customizedFont);
-        watermarkFont.setPixelSize(qMax(12, qRound(size().height() * (neoRowStyle() == NeoRowStyle::Open ? 0.58 : 0.50))));
+        watermarkFont.setPixelSize(qMax(12, qRound(size().height() * 0.50)));
         watermarkFont.setWeight(QFont::Black);
         watermarkFont.setLetterSpacing(QFont::PercentageSpacing, 94);
         const qreal fade = QFontMetricsF(watermarkFont).horizontalAdvance(m_neoSigla) + m_customizedFontMetrics.height() * 1.5;
@@ -526,9 +527,9 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         painter->fillRect(rowRect, wash);
 
         // the type icon, faint, then the abbreviation
-        if (!m_neoIcon.isNull() && !openRows) {
+        if (!m_neoIcon.isNull()) {
             const qreal iconSide = m_neoIcon.width() / m_neoIcon.devicePixelRatio();
-            painter->setOpacity(0.38);
+            painter->setOpacity(0.55); // the pixmap itself already fades from left to right
             painter->drawPixmap(QPointF(x0, (size().height() - iconSide) / 2.0), m_neoIcon);
             painter->setOpacity(1.0);
             x0 += iconSide + 8;
@@ -551,7 +552,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
             painter->drawText(QRectF(x0, 0, fade * 2, rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
         } else if (siglaStyle != "outline") {
             QColor ink = m_neoTint;
-            ink.setAlphaF(0.36);
+            ink.setAlphaF(neoIsDark(styleOption().palette) ? 0.36 : 0.30);
             painter->setFont(watermarkFont);
             painter->setPen(ink);
             painter->drawText(QRectF(x0, -rowHeight, fade * 2, 3 * rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
@@ -1906,11 +1907,24 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             if (iconName != m_neoIconName || m_neoIcon.isNull() || qRound(m_neoIcon.width() / m_neoIcon.devicePixelRatio()) != iconSide) {
                 m_neoIconName = iconName;
                 m_neoIcon = iconName.isEmpty() ? QPixmap() : QIcon::fromTheme(iconName).pixmap(QSize(iconSide, iconSide), KItemViewsUtils::devicePixelRatio(this));
+                m_neoIconFaded = false;
             }
             // the row, the abbreviation and the size bar take the main colour of the type icon
+            const bool darkScheme = neoIsDark(styleOption().palette);
             const QColor iconColor = neoIconColor(iconName, m_neoIcon);
-            if (iconColor.isValid()) {
-                m_neoTint = iconColor;
+            m_neoTint = neoAccent(iconColor.isValid() ? iconColor : m_neoTint, darkScheme);
+            if (!m_neoIcon.isNull() && !m_neoIconFaded) {
+                // watermark: the icon fades out from left to right (done once, after its colour was read)
+                QPainter fade(&m_neoIcon);
+                fade.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+                const qreal side = m_neoIcon.width() / m_neoIcon.devicePixelRatio();
+                QLinearGradient mask(0, 0, side, 0);
+                mask.setColorAt(0.0, QColor(0, 0, 0, 255));
+                mask.setColorAt(0.45, QColor(0, 0, 0, 200));
+                mask.setColorAt(1.0, QColor(0, 0, 0, 30));
+                fade.fillRect(QRectF(0, 0, side, side), mask);
+                fade.end();
+                m_neoIconFaded = true;
             }
         } else {
             m_neoSigla.clear();

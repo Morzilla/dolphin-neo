@@ -14,6 +14,7 @@
 
 #include <QBitArray>
 #include <QColor>
+#include <QPalette>
 #include <QGraphicsWidget>
 #include <QStyle>
 #include <QTimer>
@@ -52,6 +53,11 @@ DOLPHIN_EXPORT bool neoTwoLineList();
  * (a watermark), the size has a bar and hovering a row shows its actions. DOLPHIN_NEO_ICONS=show keeps the icons.
  */
 DOLPHIN_EXPORT bool neoNoIcons();
+
+/** dolphin-neo: is this a dark colour scheme? The fork's own painting picks its shades from the answer. */
+DOLPHIN_EXPORT bool neoIsDark(const QPalette &palette);
+/** dolphin-neo: \a colour made readable as an accent on the scheme: lightened on dark, darkened on light. */
+DOLPHIN_EXPORT QColor neoAccent(const QColor &colour, bool dark);
 
 /** dolphin-neo: in the icons view every item is a dark rounded tile and previews have rounded corners. DOLPHIN_NEO_TILES=off disables. */
 DOLPHIN_EXPORT bool neoTiles();
