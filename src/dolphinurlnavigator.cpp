@@ -16,6 +16,7 @@
 #include <KUrlComboBox>
 
 #include <QAbstractButton>
+#include <QApplication>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLayout>
@@ -32,6 +33,20 @@ DolphinUrlNavigator::DolphinUrlNavigator(const QUrl &url, QWidget *parent)
     const GeneralSettings *settings = GeneralSettings::self();
     setUrlEditable(settings->editableUrl());
     setShowFullPath(settings->showFullPath());
+
+    // dolphin-neo: when the keyboard focus leaves the edit field for another widget of the same window
+    // (a click on the file view, for example), go back to the breadcrumb. Not when the location bar is
+    // configured to be always editable, and not for popups such as the completion list.
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget *old, QWidget *now) {
+        if (!isUrlEditable() || GeneralSettings::editableUrl() || !old || !now) {
+            return;
+        }
+        const bool wasInEditor = old == editor() || editor()->isAncestorOf(old);
+        const bool staysInBar = now == this || isAncestorOf(now);
+        if (wasInEditor && !staysInBar && now->window() == window()) {
+            setUrlEditable(false);
+        }
+    });
     setHomeUrl(Dolphin::homeUrl());
     setPlacesSelectorVisible(DolphinUrlNavigatorsController::placesSelectorVisible());
     editor()->setCompletionMode(KCompletion::CompletionMode(settings->urlCompletionMode()));

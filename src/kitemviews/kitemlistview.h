@@ -189,6 +189,7 @@ public:
      */
     std::optional<int> itemAt(const QPointF &pos) const;
     bool isAboveSelectionToggle(int index, const QPointF &pos) const;
+    int neoActionAt(int index, const QPointF &pos) const; // dolphin-neo: inline row action under pos (0 none, 1 open, 2 menu)
     bool isAboveExpansionToggle(int index, const QPointF &pos) const;
     bool isAboveText(int index, const QPointF &pos) const;
 

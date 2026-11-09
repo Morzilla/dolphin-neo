@@ -387,7 +387,7 @@ void KItemListView::setGeometry(const QRectF &rect)
         if (m_headerWidget->automaticColumnResizing()) {
             applyAutomaticColumnWidths();
         } else {
-            const qreal requiredWidth = m_headerWidget->leftPadding() + columnWidthsSum() + m_headerWidget->rightPadding();
+            const qreal requiredWidth = neoTwoLineList() ? 0 : (m_headerWidget->leftPadding() + columnWidthsSum() + m_headerWidget->rightPadding()); // dolphin-neo: no columns
             const QSizeF dynamicItemSize(qMax(newSize.width(), requiredWidth), m_itemSize.height());
             m_layouter->setItemSize(dynamicItemSize);
         }
@@ -439,6 +439,12 @@ std::optional<int> KItemListView::itemAt(const QPointF &pos) const
     }
 
     return std::nullopt;
+}
+
+int KItemListView::neoActionAt(int index, const QPointF &pos) const
+{
+    const KItemListWidget *widget = m_visibleItems.value(index);
+    return widget ? widget->neoActionAt(widget->mapFromItem(this, pos)) : 0;
 }
 
 bool KItemListView::isAboveSelectionToggle(int index, const QPointF &pos) const
@@ -2361,6 +2367,11 @@ void KItemListView::updateAlternateBackgrounds()
 void KItemListView::updateAlternateBackgroundForWidget(KItemListWidget *widget)
 {
     bool enabled = useAlternateBackgrounds();
+    if (enabled && neoRowStyle() != NeoRowStyle::Stripe) {
+        // dolphin-neo: every row draws its own background (card or line), none are skipped
+        widget->setAlternateBackground(neoRowStyle() != NeoRowStyle::None);
+        return;
+    }
     if (enabled) {
         const int index = widget->index();
         enabled = (index & 0x1) > 0;
@@ -2437,7 +2448,7 @@ QHash<QByteArray, qreal> KItemListView::preferredColumnWidths(const KItemRangeLi
 void KItemListView::applyColumnWidthsFromHeader()
 {
     // Apply the new size to the layouter
-    const qreal requiredWidth = m_headerWidget->leftPadding() + columnWidthsSum() + m_headerWidget->rightPadding();
+    const qreal requiredWidth = neoTwoLineList() ? 0 : (m_headerWidget->leftPadding() + columnWidthsSum() + m_headerWidget->rightPadding()); // dolphin-neo: no columns
     const QSizeF dynamicItemSize(qMax(size().width(), requiredWidth), m_itemSize.height());
     m_layouter->setItemSize(dynamicItemSize);
 
@@ -2557,7 +2568,7 @@ void KItemListView::applyAutomaticColumnWidths()
         requiredWidth -= firstColumnWidth - shrinkedFirstColumnWidth;
     }
 
-    dynamicItemSize.rwidth() = qMax(requiredWidth, availableWidth);
+    dynamicItemSize.rwidth() = neoTwoLineList() ? availableWidth : qMax(requiredWidth, availableWidth); // dolphin-neo: rows never exceed the view
 
     m_layouter->setItemSize(dynamicItemSize);
 

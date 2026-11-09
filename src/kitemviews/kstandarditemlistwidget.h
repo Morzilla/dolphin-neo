@@ -111,6 +111,7 @@ public:
     QRectF selectionRectCore() const override;
     QRectF expansionToggleRect() const override;
     QRectF selectionToggleRect() const override;
+    int neoActionAt(const QPointF &pos) const override;
     QPixmap createDragPixmap(const QStyleOptionGraphicsItem *option, QWidget *widget = nullptr) override;
     /** @see KItemListWidget::startActivateSoonAnimation() */
     void startActivateSoonAnimation(int timeUntilActivation) override;
@@ -283,6 +284,17 @@ private:
     QRectF m_iconRect; // Cache for KItemListWidget::iconRect()
 
     QRectF m_textRect;
+
+    // dolphin-neo: icon-less row (see neoNoIcons())
+    QString m_neoSigla; // file type abbreviation drawn as a watermark
+    QString m_neoIconName; // type icon drawn, faint, before the abbreviation
+    QPixmap m_neoIcon;
+    QColor m_neoTint; // colour of the file's category
+    QByteArray m_neoDateRole; // the date role shown at the right edge, if any
+    QRectF m_neoBarRect; // size bar
+    qreal m_neoBarFraction = -1;
+    QRectF m_neoActionsRect; // where the hover actions go
+    QGraphicsWidget *m_neoActions = nullptr;
 
     QList<QByteArray> m_sortedVisibleRoles;
 

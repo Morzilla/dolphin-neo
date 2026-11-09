@@ -9,6 +9,8 @@
 
 #include <QDockWidget>
 
+class QTimer;
+
 /**
  * @brief Extends QDockWidget to be able to get locked.
  */
@@ -32,10 +34,20 @@ protected:
      * Make sure we do not emit QDockWidget::visibilityChanged() signals whenever Dolphin's window is minimized or restored.
      */
     bool event(QEvent *event) override;
+    void paintEvent(QPaintEvent *event) override; // dolphin-neo: glass panel
+    bool eventFilter(QObject *watched, QEvent *event) override; // dolphin-neo: repaint when the window moves
+    void timerEvent(QTimerEvent *event) override; // dolphin-neo: refresh the disk usage box
 
 private:
+    /** dolphin-neo: average luminance (0-1) of what lies behind the glass card, or -1 if unknown. */
+    qreal backdropLuminance() const;
+    /** dolphin-neo: adapt the glass transparency to the backdrop. */
+    void updateGlass();
+
     bool m_locked;
     QWidget *m_dockTitleBar;
+    QTimer *m_glassTimer = nullptr;
+    qreal m_glass = 75; // share (0-100) of the window tint removed under the card
 };
 
 #endif

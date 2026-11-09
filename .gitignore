@@ -29,3 +29,6 @@ apidocs
 doxygen.log
 .directory
 .cmake/
+
+# dolphin-neo
+/build-neo/

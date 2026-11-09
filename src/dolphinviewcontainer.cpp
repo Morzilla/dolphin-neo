@@ -17,7 +17,9 @@
 #include "dolphinplacesmodelsingleton.h"
 #include "filterbar/filterbar.h"
 #include "global.h"
+#include "kitemviews/kfileitemmodel.h"
 #include "kitemviews/kitemlistcontainer.h"
+#include "kitemviews/kitemlistwidget.h"
 #include "search/bar.h"
 #include "selectionmode/topbar.h"
 #include "statusbar/dolphinstatusbar.h"
@@ -28,7 +30,9 @@
 #include <KFilePlacesModel>
 #include <KIO/JobUiDelegateFactory>
 #include <KIO/MkpathJob>
+#include <KIO/ApplicationLauncherJob>
 #include <KIO/OpenUrlJob>
+#include <KIO/PreviewJob>
 #include <KLocalizedString>
 #include <KProtocolManager>
 #include <KShell>
@@ -40,8 +44,32 @@
 #include <QApplication>
 #include <QDesktopServices>
 #include <QDropEvent>
+#include <QGraphicsView>
 #include <QGridLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QActionGroup>
+#include <QMenu>
+#include <QToolButton>
+#include <QClipboard>
+#include <QDir>
+#include <QFile>
+#include <QFontDatabase>
 #include <QGuiApplication>
+
+#include <cmath>
+#include <QImageReader>
+#include <QProcess>
+#include <QStandardPaths>
+#include <QTemporaryDir>
+#include <QLocale>
+#include <QStackedLayout>
+#include <QWheelEvent>
+#include <QKeyEvent>
+#include <QMimeDatabase>
+#include <QPainter>
+#include <QPushButton>
+#include <QVBoxLayout>
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QStyle>
@@ -60,12 +88,664 @@ struct LayoutStructure {
     int adminBar = 1;
     int messageWidget = 2;
     int selectionModeTopBar = 3;
-    int view = 4;
-    int selectionModeBottomBar = 5;
-    int filterBar = 6;
-    int statusBar = 7;
+    int sortBar = 4; // dolphin-neo
+    int view = 5;
+    int selectionModeBottomBar = 6;
+    int filterBar = 7;
+    int statusBar = 8;
 };
 constexpr LayoutStructure positionFor;
+
+// dolphin-neo: a layout that puts its items one after the other and wraps to a new line when the width runs out
+class NeoFlowLayout : public QLayout
+{
+public:
+    NeoFlowLayout(QWidget *parent, int hSpacing, int vSpacing)
+        : QLayout(parent)
+        , m_hSpacing(hSpacing)
+        , m_vSpacing(vSpacing)
+    {
+    }
+    ~NeoFlowLayout() override
+    {
+        while (QLayoutItem *item = takeAt(0)) {
+            delete item;
+        }
+    }
+    void addItem(QLayoutItem *item) override
+    {
+        m_items.append(item);
+    }
+    int count() const override
+    {
+        return m_items.size();
+    }
+    QLayoutItem *itemAt(int index) const override
+    {
+        return m_items.value(index);
+    }
+    QLayoutItem *takeAt(int index) override
+    {
+        return (index >= 0 && index < m_items.size()) ? m_items.takeAt(index) : nullptr;
+    }
+    Qt::Orientations expandingDirections() const override
+    {
+        return {};
+    }
+    bool hasHeightForWidth() const override
+    {
+        return true;
+    }
+    int heightForWidth(int width) const override
+    {
+        return doLayout(QRect(0, 0, width, 0), true);
+    }
+    void setGeometry(const QRect &rect) override
+    {
+        QLayout::setGeometry(rect);
+        doLayout(rect, false);
+    }
+    QSize sizeHint() const override
+    {
+        return minimumSize();
+    }
+    QSize minimumSize() const override
+    {
+        QSize size;
+        for (const QLayoutItem *item : m_items) {
+            size = size.expandedTo(item->minimumSize());
+        }
+        const QMargins margins = contentsMargins();
+        return size + QSize(margins.left() + margins.right(), margins.top() + margins.bottom());
+    }
+
+private:
+    int doLayout(const QRect &rect, bool testOnly) const
+    {
+        const QMargins margins = contentsMargins();
+        const QRect area = rect.adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom());
+        int y = area.y();
+        int i = 0;
+        while (i < m_items.size()) {
+            // take as many items as fit on this line (at least one)
+            int x = area.x();
+            int lineHeight = 0;
+            int last = i;
+            while (last < m_items.size()) {
+                const QSize hint = m_items.at(last)->sizeHint();
+                if (last > i && x + hint.width() > area.right() + 1) {
+                    break;
+                }
+                x += hint.width() + m_hSpacing;
+                lineHeight = qMax(lineHeight, hint.height());
+                ++last;
+            }
+            if (!testOnly) {
+                x = area.x();
+                for (int k = i; k < last; ++k) {
+                    const QSize hint = m_items.at(k)->sizeHint();
+                    m_items.at(k)->setGeometry(QRect(x, y + (lineHeight - hint.height()) / 2, hint.width(), hint.height()));
+                    x += hint.width() + m_hSpacing;
+                }
+            }
+            y += lineHeight + m_vSpacing;
+            i = last;
+        }
+        return y - m_vSpacing - rect.y() + margins.bottom();
+    }
+
+    QList<QLayoutItem *> m_items;
+    int m_hSpacing;
+    int m_vSpacing;
+};
+
+// dolphin-neo: the bar above the two-line list, which has no column header. On one line (wrapping when narrow):
+// "Sort by" — one button per visible role, clicking the active one reverses the order;
+// "Filtri" — a button with a menu of filters: all, files only, and one per kind of file, each with its count.
+class NeoSortBar : public QWidget
+{
+public:
+    NeoSortBar(DolphinView *view, QWidget *parent)
+        : QWidget(parent)
+        , m_view(view)
+    {
+        m_flow = new NeoFlowLayout(this, 4, 4);
+        m_flow->setContentsMargins(14, 4, 14, 6);
+
+        connect(view, &DolphinView::sortRoleChanged, this, [this] {
+            rebuild();
+        });
+        connect(view, &DolphinView::sortOrderChanged, this, [this] {
+            rebuild();
+        });
+        connect(view, &DolphinView::visibleRolesChanged, this, [this] {
+            rebuild();
+        });
+        connect(view, &DolphinView::modeChanged, this, [this] {
+            rebuild();
+        });
+        connect(view, &DolphinView::urlChanged, this, [this] {
+            // a new folder starts unfiltered
+            if (m_active != All) {
+                m_active = All;
+                m_view->setMimeTypeFilters({});
+            }
+        });
+        connect(view, &DolphinView::directoryLoadingCompleted, this, [this] {
+            count();
+        });
+        connect(view, &DolphinView::itemCountChanged, this, [this] {
+            count();
+        });
+        count();
+    }
+
+private:
+    // what the filter shows: everything, files only (no folders), or one NeoKind::Category
+    enum { All = -1, FilesOnly = NeoKind::CategoryCount };
+
+    QToolButton *chip(const QString &text, bool checked)
+    {
+        auto *button = new QToolButton(this);
+        button->setAutoRaise(true);
+        button->setCheckable(true);
+        button->setChecked(checked);
+        button->setText(text);
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        m_flow->addWidget(button);
+        return button;
+    }
+
+    void caption(const QString &text)
+    {
+        auto *label = new QLabel(text, this);
+        label->setEnabled(false); // dimmed, it is only a caption
+        label->setContentsMargins(0, 0, 6, 0);
+        m_flow->addWidget(label);
+    }
+
+    void rebuild()
+    {
+        while (QLayoutItem *item = m_flow->takeAt(0)) {
+            if (item->widget()) {
+                item->widget()->hide();
+                item->widget()->deleteLater(); // a button may be in the middle of its own click
+            }
+            delete item;
+        }
+        const bool list = m_view->viewMode() == DolphinView::DetailsView;
+
+        // ---- sorting
+        caption(i18nc("@action:inmenu View", "Sort By"));
+        QList<QByteArray> roles = m_view->visibleRoles();
+        roles.removeAll("text");
+        roles.prepend("text");
+        const QList<KFileItemModel::RoleInfo> rolesInfo = KFileItemModel::rolesInformation();
+        const QByteArray sortRole = m_view->sortRole();
+        for (const QByteArray &role : std::as_const(roles)) {
+            QString text = QString::fromLatin1(role);
+            for (const KFileItemModel::RoleInfo &info : rolesInfo) {
+                if (info.role == role) {
+                    text = info.translation;
+                    break;
+                }
+            }
+            QToolButton *button = chip(text, role == sortRole);
+            if (role == sortRole) {
+                button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+                const bool ascending = m_view->sortOrder() == Qt::AscendingOrder;
+                button->setIcon(QIcon::fromTheme(ascending ? QStringLiteral("view-sort-ascending") : QStringLiteral("view-sort-descending")));
+            }
+            connect(button, &QToolButton::clicked, this, [this, role] {
+                if (m_view->sortRole() == role) {
+                    m_view->setSortOrder(m_view->sortOrder() == Qt::AscendingOrder ? Qt::DescendingOrder : Qt::AscendingOrder);
+                } else {
+                    m_view->setSortRole(role);
+                }
+            });
+        }
+
+        // ---- filters
+        if (m_total == 0 || m_total > 4000) {
+            m_flow->invalidate();
+            return;
+        }
+        auto *gap = new QWidget(this);
+        gap->setFixedWidth(22);
+        m_flow->addWidget(gap);
+
+        // one button that opens a menu with the filters; its label says which one is active
+        static const char *const labels[NeoKind::CategoryCount] = {"Cartelle", "Immagini", "Documenti", "Fogli", "Archivi", "Audio e video", "Codice e dati", "Pacchetti", "Altro"};
+        auto *button = new QToolButton(this);
+        button->setAutoRaise(true);
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button->setIcon(QIcon::fromTheme(QStringLiteral("view-filter")));
+        button->setPopupMode(QToolButton::InstantPopup);
+        button->setCheckable(true);
+        button->setChecked(m_active != All); // highlighted while something is filtered out
+        auto *menu = new QMenu(button);
+        auto *group = new QActionGroup(menu);
+        QString current = QStringLiteral("Tutti");
+        auto entry = [&](const QString &label, int number, int what) {
+            QAction *action = menu->addAction(QStringLiteral("%1\t%2").arg(label).arg(number));
+            action->setCheckable(true);
+            action->setChecked(m_active == what);
+            group->addAction(action);
+            if (m_active == what) {
+                current = label;
+            }
+            connect(action, &QAction::triggered, this, [this, what] {
+                setActive(what);
+            });
+        };
+        entry(QStringLiteral("Tutti"), m_total, All);
+        const int folders = m_counts[NeoKind::Folder];
+        if (folders > 0 && folders < m_total) {
+            entry(QStringLiteral("File"), m_total - folders, FilesOnly);
+        }
+        menu->addSeparator();
+        for (int i = 0; i < NeoKind::CategoryCount; ++i) {
+            if (m_counts[i] > 0) {
+                entry(QString::fromUtf8(labels[i]), m_counts[i], i);
+            }
+        }
+        button->setMenu(menu);
+        button->setText(QStringLiteral("Filtri: %1").arg(current));
+        m_flow->addWidget(button);
+
+        if (!list) {
+            m_flow->invalidate();
+            return;
+        }
+        // row style: cards or open rows; the choice is remembered
+        const bool open = neoRowStyle() == NeoRowStyle::Open;
+        auto *rows = new QToolButton(this);
+        rows->setAutoRaise(true);
+        rows->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        rows->setIcon(QIcon::fromTheme(open ? QStringLiteral("view-list-text") : QStringLiteral("view-list-details")));
+        rows->setText(open ? QStringLiteral("Righe: aperte") : QStringLiteral("Righe: schede"));
+        connect(rows, &QToolButton::clicked, this, [this, open] {
+            setNeoRowStyle(open ? NeoRowStyle::Card : NeoRowStyle::Open);
+            const QList<QGraphicsView *> graphicsViews = m_view->findChildren<QGraphicsView *>();
+            for (QGraphicsView *graphicsView : graphicsViews) {
+                graphicsView->viewport()->update();
+            }
+            rebuild();
+        });
+        m_flow->addWidget(rows);
+        m_flow->invalidate();
+    }
+
+    // Count the items of each kind. Only while no filter is active: a filtered view no longer lists the rest.
+    void count()
+    {
+        if (m_active != All) {
+            return;
+        }
+        const KFileItemList items = m_view->items();
+        for (int i = 0; i < NeoKind::CategoryCount; ++i) {
+            m_counts[i] = 0;
+            m_mimeTypes[i].clear();
+        }
+        m_total = items.count();
+        if (m_total <= 4000) { // asking thousands of files for their type would stall the window
+            for (const KFileItem &item : items) {
+                const NeoKind::Category category = neoKindFor(item.text(), item.isDir()).category;
+                ++m_counts[category];
+                const QString mimeType = item.mimetype();
+                if (!m_mimeTypes[category].contains(mimeType)) {
+                    m_mimeTypes[category].append(mimeType);
+                }
+            }
+        }
+        rebuild();
+    }
+
+    void setActive(int what)
+    {
+        m_active = what;
+        QStringList mimeTypes;
+        if (what == FilesOnly) {
+            for (int i = 0; i < NeoKind::CategoryCount; ++i) {
+                if (i != NeoKind::Folder) {
+                    mimeTypes += m_mimeTypes[i];
+                }
+            }
+            mimeTypes.removeDuplicates();
+        } else if (what != All) {
+            mimeTypes = m_mimeTypes[what];
+        }
+        m_view->setMimeTypeFilters(mimeTypes);
+        rebuild();
+    }
+
+    DolphinView *m_view;
+    NeoFlowLayout *m_flow;
+    int m_active = All;
+    int m_total = 0;
+    int m_counts[NeoKind::CategoryCount] = {};
+    QStringList m_mimeTypes[NeoKind::CategoryCount];
+};
+
+// dolphin-neo: a picture that fits its area, zooms with the mouse wheel around the pointer and pans by dragging
+class NeoZoomImage : public QWidget
+{
+public:
+    explicit NeoZoomImage(QWidget *parent)
+        : QWidget(parent)
+    {
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        setMinimumSize(200, 120);
+    }
+
+    void setPixmap(const QPixmap &pixmap, bool keepView = false)
+    {
+        m_pixmap = pixmap;
+        if (!keepView) {
+            m_zoom = 1.0;
+            m_offset = QPointF();
+        }
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event)
+        if (m_pixmap.isNull()) {
+            return;
+        }
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.drawPixmap(target(), m_pixmap, QRectF(m_pixmap.rect()));
+    }
+
+    void wheelEvent(QWheelEvent *event) override
+    {
+        if (m_pixmap.isNull()) {
+            return;
+        }
+        const qreal oldZoom = m_zoom;
+        m_zoom = qBound(1.0, m_zoom * std::pow(1.2, event->angleDelta().y() / 120.0), 12.0);
+        // keep the point under the pointer where it is
+        const QPointF fromCentre = event->position() - QPointF(width(), height()) / 2.0;
+        m_offset = fromCentre - (fromCentre - m_offset) * (m_zoom / oldZoom);
+        clampOffset();
+        update();
+        event->accept();
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        m_dragFrom = event->position();
+        event->accept();
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (event->buttons() & Qt::LeftButton) {
+            m_offset += event->position() - m_dragFrom;
+            m_dragFrom = event->position();
+            clampOffset();
+            update();
+        }
+    }
+
+private:
+    QSizeF fitted() const
+    {
+        return QSizeF(m_pixmap.size()).scaled(QSizeF(size()), Qt::KeepAspectRatio) * m_zoom;
+    }
+    QRectF target() const
+    {
+        const QSizeF s = fitted();
+        return QRectF(QPointF((width() - s.width()) / 2.0, (height() - s.height()) / 2.0) + m_offset, s);
+    }
+    void clampOffset()
+    {
+        const QSizeF s = fitted();
+        const qreal maxX = qMax(0.0, (s.width() - width()) / 2.0);
+        const qreal maxY = qMax(0.0, (s.height() - height()) / 2.0);
+        m_offset = QPointF(qBound(-maxX, m_offset.x(), maxX), qBound(-maxY, m_offset.y(), maxY));
+    }
+
+    QPixmap m_pixmap;
+    qreal m_zoom = 1.0;
+    QPointF m_offset;
+    QPointF m_dragFrom;
+};
+
+// dolphin-neo: a card with a preview of one item and its main actions, shown over the list right under the item's row.
+// Text files show their first lines, folders their first entries, everything else the thumbnail KIO can make.
+class NeoPreviewCard : public QWidget
+{
+public:
+    NeoPreviewCard(DolphinView *view, QWidget *parent)
+        : QWidget(parent)
+        , m_view(view)
+    {
+        auto *layout = new QHBoxLayout(this);
+        layout->setContentsMargins(16, 14, 16, 14);
+        layout->setSpacing(18);
+
+        m_preview = new QLabel(this);
+        m_preview->setTextFormat(Qt::PlainText);
+        m_preview->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        m_preview->setMinimumSize(200, 120);
+        m_image = new NeoZoomImage(this);
+        m_stack = new QStackedLayout();
+        m_stack->addWidget(m_preview);
+        m_stack->addWidget(m_image);
+        layout->addLayout(m_stack, 1);
+
+        auto *side = new QVBoxLayout();
+        side->setSpacing(6);
+        m_title = new QLabel(this);
+        QFont bold = m_title->font();
+        bold.setBold(true);
+        m_title->setFont(bold);
+        m_meta = new QLabel(this);
+        m_meta->setWordWrap(true);
+        m_meta->setEnabled(false); // dimmed
+        side->addWidget(m_title);
+        side->addWidget(m_meta);
+        side->addStretch();
+        auto button = [this, side](const QString &text, std::function<void()> action) {
+            auto *b = new QPushButton(text, this);
+            connect(b, &QPushButton::clicked, this, [this, action] {
+                hide();
+                action();
+            });
+            side->addWidget(b);
+            return b;
+        };
+        button(QStringLiteral("Apri"), [this] {
+            Q_EMIT m_view->itemActivated(m_item);
+        })->setDefault(true);
+        button(QStringLiteral("Apri con…"), [this] {
+            auto *job = new KIO::ApplicationLauncherJob(); // no application given: asks which one
+            job->setUrls({m_item.url()});
+            job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
+            job->start();
+        });
+        button(QStringLiteral("Rinomina"), [this] {
+            m_view->renameSelectedItems(); // the controller selected the item before asking for the preview
+        });
+        button(QStringLiteral("Copia percorso"), [this] {
+            QGuiApplication::clipboard()->setText(m_item.isLocalFile() ? m_item.localPath() : m_item.url().toDisplayString());
+        });
+        auto *sideWidget = new QWidget(this);
+        sideWidget->setLayout(side);
+        sideWidget->setFixedWidth(230);
+        layout->addWidget(sideWidget);
+
+        qApp->installEventFilter(this);
+        hide();
+    }
+
+    void showFor(const KFileItem &item, const QRect &rowRect)
+    {
+        // a second click on the same preview button closes the card (the press already hid it)
+        if (m_hiddenAt.isValid() && m_hiddenAt.elapsed() < 400 && item.url() == m_item.url()) {
+            m_hiddenAt.invalidate();
+            return;
+        }
+        m_item = item;
+        m_title->setText(m_title->fontMetrics().elidedText(item.text(), Qt::ElideMiddle, 226));
+        m_title->setToolTip(item.text());
+        m_meta->setText(QStringLiteral("%1\n%2\n%3").arg(item.mimeComment(), item.isDir() ? QString() : KIO::convertSize(item.size()), QLocale().toString(item.time(KFileItem::ModificationTime), QLocale::ShortFormat)));
+        fillPreview();
+
+        QWidget *host = parentWidget();
+        const int height = 296;
+        const QPoint below = host->mapFromGlobal(rowRect.bottomLeft());
+        int y = below.y() + 2;
+        if (y + height > host->height() - 6) {
+            y = host->mapFromGlobal(rowRect.topLeft()).y() - height - 2; // no room below: open above the row
+        }
+        setGeometry(below.x() + 3, qMax(4, y), qMax(420, rowRect.width() - 6), height);
+        show();
+        raise();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event)
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        QColor fill = palette().color(QPalette::Window).lighter(118);
+        QColor border = palette().color(QPalette::WindowText);
+        border.setAlphaF(0.16);
+        painter.setPen(QPen(border, 1));
+        painter.setBrush(fill);
+        painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12);
+    }
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (isVisible()) {
+            if (event->type() == QEvent::MouseButtonPress) {
+                const auto *mouse = static_cast<QMouseEvent *>(event);
+                if (!QRect(mapToGlobal(QPoint(0, 0)), size()).contains(mouse->globalPosition().toPoint())) {
+                    close(); // a click anywhere else closes the card; the click still does its job
+                }
+            } else if (event->type() == QEvent::Wheel) {
+                const auto *wheel = static_cast<QWheelEvent *>(event);
+                if (!QRect(mapToGlobal(QPoint(0, 0)), size()).contains(wheel->globalPosition().toPoint())) {
+                    close(); // scrolling the list closes the card; over the card the wheel zooms the picture
+                }
+            } else if (event->type() == QEvent::KeyPress && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) {
+                close();
+                return true;
+            }
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+    void hideEvent(QHideEvent *event) override
+    {
+        m_hiddenAt.start();
+        QWidget::hideEvent(event);
+    }
+
+private:
+    void fillPreview()
+    {
+        m_stack->setCurrentWidget(m_preview);
+        m_preview->setPixmap(QPixmap());
+        m_preview->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        m_preview->setFont(font());
+        const QString path = m_item.localPath();
+
+        if (m_item.isDir() && !path.isEmpty()) {
+            const QStringList entries = QDir(path).entryList(QDir::AllEntries | QDir::NoDotAndDotDot, QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
+            QStringList lines = entries.mid(0, 9);
+            if (entries.size() > lines.size()) {
+                lines.append(QStringLiteral("… altri %1").arg(entries.size() - lines.size()));
+            }
+            m_preview->setText(lines.isEmpty() ? QStringLiteral("(cartella vuota)") : lines.join(QLatin1Char('\n')));
+            return;
+        }
+
+        const QMimeType mimeType = QMimeDatabase().mimeTypeForName(m_item.mimetype());
+        if (!path.isEmpty() && mimeType.isValid() && mimeType.inherits(QStringLiteral("text/plain"))) {
+            QFile file(path);
+            if (file.open(QIODevice::ReadOnly)) {
+                QStringList lines = QString::fromUtf8(file.read(8000)).split(QLatin1Char('\n')).mid(0, 9);
+                for (QString &line : lines) {
+                    line = line.left(140);
+                }
+                m_preview->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+                m_preview->setText(lines.join(QLatin1Char('\n')));
+                return;
+            }
+        }
+
+        // everything else: the type icon at once, then a thumbnail from KIO, then (pictures only) the picture itself,
+        // so that zooming in shows real detail
+        m_stack->setCurrentWidget(m_image);
+        m_image->setPixmap(QIcon::fromTheme(m_item.iconName()).pixmap(96, 96));
+        const QUrl url = m_item.url();
+        KIO::PreviewJob *job = KIO::filePreview(KFileItemList{m_item}, QSize(1024, 640));
+        job->setIgnoreMaximumSize(m_item.isLocalFile());
+        connect(job, &KIO::PreviewJob::gotPreview, this, [this, url](const KFileItem &, const QPixmap &pixmap) {
+            if (isVisible() && m_item.url() == url && !pixmap.isNull() && !m_fullPicture) {
+                m_image->setPixmap(pixmap);
+            }
+        });
+        m_fullPicture = false;
+        if (!path.isEmpty() && m_item.mimetype() == QLatin1String("application/pdf")) {
+            // a PDF thumbnail is too coarse to zoom into: render the first page properly with pdftoppm (poppler-utils)
+            static const QString pdftoppm = QStandardPaths::findExecutable(QStringLiteral("pdftoppm"));
+            if (!pdftoppm.isEmpty()) {
+                auto *dir = new QTemporaryDir();
+                auto *process = new QProcess(this);
+                const QString base = dir->filePath(QStringLiteral("page"));
+                connect(process, &QProcess::finished, this, [this, url, process, dir, base](int exitCode) {
+                    if (exitCode == 0 && isVisible() && m_item.url() == url) {
+                        const QPixmap page(base + QStringLiteral(".png"));
+                        if (!page.isNull()) {
+                            m_fullPicture = true;
+                            m_image->setPixmap(page, true);
+                        }
+                    }
+                    process->deleteLater();
+                    delete dir;
+                });
+                process->start(pdftoppm, {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("200"), QStringLiteral("-f"), QStringLiteral("1"), QStringLiteral("-l"), QStringLiteral("1"), QStringLiteral("-singlefile"), path, base});
+            }
+        }
+        if (!path.isEmpty() && m_item.mimetype().startsWith(QLatin1String("image/")) && m_item.size() < 80 * 1024 * 1024) {
+            QTimer::singleShot(150, this, [this, url, path] {
+                if (!isVisible() || m_item.url() != url) {
+                    return;
+                }
+                QImageReader reader(path);
+                reader.setAutoTransform(true);
+                const QSize original = reader.size();
+                if (original.isValid() && qMax(original.width(), original.height()) > 3200) {
+                    reader.setScaledSize(original.scaled(3200, 3200, Qt::KeepAspectRatio)); // enough to zoom, without eating memory
+                }
+                const QImage image = reader.read();
+                if (!image.isNull()) {
+                    m_fullPicture = true;
+                    m_image->setPixmap(QPixmap::fromImage(image), true);
+                }
+            });
+        }
+    }
+
+    DolphinView *m_view;
+    KFileItem m_item;
+    QLabel *m_preview;
+    NeoZoomImage *m_image;
+    QStackedLayout *m_stack;
+    bool m_fullPicture = false;
+    QLabel *m_title;
+    QLabel *m_meta;
+    QElapsedTimer m_hiddenAt;
+};
 
 DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
     : QWidget(parent)
@@ -177,6 +857,14 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
     connect(undoManager, &KIO::FileUndoManager::jobRecordingFinished, this, &DolphinViewContainer::delayedStatusBarUpdate);
 
     m_topLayout->addWidget(m_messageWidget, positionFor.messageWidget, 0);
+    if (neoTwoLineList()) {
+        m_topLayout->addWidget(new NeoSortBar(m_view, this), positionFor.sortBar, 0); // dolphin-neo
+        auto *previewCard = new NeoPreviewCard(m_view, this);
+        connect(m_view, &DolphinView::neoPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
+            previewCard->showFor(item, rowRect);
+        });
+        connect(m_view, &DolphinView::urlChanged, previewCard, &QWidget::hide);
+    }
     m_topLayout->addWidget(m_view, positionFor.view, 0);
     m_topLayout->addWidget(m_filterBar, positionFor.filterBar, 0);
     if (GeneralSettings::showStatusBar() == GeneralSettings::EnumShowStatusBar::FullWidth) {

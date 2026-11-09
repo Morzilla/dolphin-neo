@@ -15,6 +15,8 @@
 #include <KSharedConfig>
 
 #include <QApplication>
+#include <QSet>
+#include <QLinearGradient>
 #include <QPainter>
 #include <QPropertyAnimation>
 #include <QStyleOption>
@@ -100,11 +102,150 @@ QVariant KItemListWidget::value(const QByteArray &key) const
     return m_data.value(key);
 }
 
+namespace
+{
+NeoRowStyle neoRowStyleFromName(const QByteArray &name, NeoRowStyle fallback)
+{
+    return name == "stripe" ? NeoRowStyle::Stripe
+        : name == "line"    ? NeoRowStyle::Line
+        : name == "none"    ? NeoRowStyle::None
+        : name == "open"    ? NeoRowStyle::Open
+        : name == "card"    ? NeoRowStyle::Card
+                            : fallback;
+}
+// the current style: DOLPHIN_NEO_ROWS if set, else what was last chosen in the window, else cards
+NeoRowStyle &neoRowStyleRef()
+{
+    static NeoRowStyle style = [] {
+        const QByteArray saved = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNeo")).readEntry("RowStyle", QByteArray("card")).toLower();
+        return neoRowStyleFromName(qgetenv("DOLPHIN_NEO_ROWS").toLower(), neoRowStyleFromName(saved, NeoRowStyle::Card));
+    }();
+    return style;
+}
+}
+
+NeoRowStyle neoRowStyle()
+{
+    return neoRowStyleRef();
+}
+
+void setNeoRowStyle(NeoRowStyle style)
+{
+    neoRowStyleRef() = style;
+    static const char *const names[] = {"stripe", "card", "line", "none", "open"};
+    KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNeo"));
+    group.writeEntry("RowStyle", QByteArray(names[int(style)]));
+    group.sync();
+}
+
+bool neoTwoLineList()
+{
+    static const bool columns = qgetenv("DOLPHIN_NEO_LIST").toLower() == "columns";
+    return !columns && QGuiApplication::layoutDirection() == Qt::LeftToRight;
+}
+
+QColor neoCategoryTint(NeoKind::Category category)
+{
+    static const QColor tints[NeoKind::CategoryCount] = {QColor(201, 205, 213), QColor(195, 164, 230), QColor(143, 188, 230), QColor(127, 214, 168), QColor(230, 183, 122),
+                                                        QColor(127, 208, 193), QColor(230, 164, 200), QColor(240, 163, 154), QColor(176, 181, 191)};
+    return tints[category];
+}
+
+NeoKind neoKindFor(const QString &name, bool isDir)
+{
+    auto kind = [](const QString &sigla, NeoKind::Category category) {
+        return NeoKind{sigla, neoCategoryTint(category), category};
+    };
+    if (isDir) {
+        return kind(QStringLiteral("DIR"), NeoKind::Folder);
+    }
+    const QString lower = name.toLower();
+    static const QList<std::pair<QString, QString>> compound{{QStringLiteral(".tar.gz"), QStringLiteral("TGZ")},
+                                                             {QStringLiteral(".tar.xz"), QStringLiteral("TXZ")},
+                                                             {QStringLiteral(".tar.bz2"), QStringLiteral("TBZ")},
+                                                             {QStringLiteral(".tar.zst"), QStringLiteral("TZST")}};
+    for (const auto &entry : compound) {
+        if (lower.endsWith(entry.first)) {
+            return kind(entry.second, NeoKind::Archive);
+        }
+    }
+    const int dot = lower.lastIndexOf(QLatin1Char('.'));
+    const QString ext = (dot > 0 && dot < lower.size() - 1) ? lower.mid(dot + 1) : QString();
+    if (ext.isEmpty() || ext.size() > 5) {
+        return kind(QStringLiteral("FILE"), NeoKind::Other);
+    }
+    static const QSet<QString> images{"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tif", "tiff", "heic", "avif", "ico", "xcf", "kra"};
+    static const QSet<QString> documents{"pdf", "doc", "docx", "odt", "rtf", "txt", "md", "epub", "ppt", "pptx", "odp", "msg", "eml"};
+    static const QSet<QString> sheets{"xls", "xlsx", "ods", "csv", "tsv"};
+    static const QSet<QString> archives{"zip", "gz", "tgz", "xz", "bz2", "7z", "rar", "tar", "zst"};
+    static const QSet<QString> medias{"mp3", "flac", "ogg", "wav", "m4a", "opus", "mp4", "mkv", "webm", "avi", "mov"};
+    static const QSet<QString> datas{"json", "xml", "yaml", "yml", "toml", "ini", "conf", "html", "css", "js", "ts", "py", "rs", "c", "cpp", "h", "sh", "sql", "log"};
+    static const QSet<QString> packages{"rpm", "deb", "exe", "msi", "iso", "img", "apk", "jar"};
+    const NeoKind::Category category = images.contains(ext) ? NeoKind::Image
+        : documents.contains(ext)                           ? NeoKind::Document
+        : sheets.contains(ext)                              ? NeoKind::Sheet
+        : archives.contains(ext)                            ? NeoKind::Archive
+        : medias.contains(ext)                              ? NeoKind::Media
+        : datas.contains(ext)                               ? NeoKind::Data
+        : packages.contains(ext)                            ? NeoKind::Package
+                                                            : NeoKind::Other;
+    return kind(ext.toUpper(), category);
+}
+
+int KItemListWidget::neoActionAt(const QPointF &pos) const
+{
+    Q_UNUSED(pos)
+    return 0;
+}
+
+bool neoTiles()
+{
+    static const bool off = qgetenv("DOLPHIN_NEO_TILES").toLower() == "off";
+    return !off;
+}
+
+bool neoNoIcons()
+{
+    static const bool show = qgetenv("DOLPHIN_NEO_ICONS").toLower() == "show";
+    return !show && neoTwoLineList();
+}
+
 void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
     Q_UNUSED(option)
 
-    if (m_alternateBackground) {
+    // dolphin-neo: with any style but "stripe" the view sets m_alternateBackground on every row
+    // (see KItemListView::updateAlternateBackgroundForWidget) and the row is drawn here.
+    if (m_alternateBackground && neoRowStyle() == NeoRowStyle::Card) {
+        // a rounded card per row, darker than the view, with a hairline of light along its top edge;
+        // same footprint as the hover/selection shape of the style
+        const QRectF card = selectionRectFull().adjusted(3, 3, -3, -3);
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(0, 0, 0, 66));
+        painter->drawRoundedRect(card, 5, 5);
+        painter->setPen(QPen(QColor(255, 255, 255, 11), 1));
+        painter->drawLine(QPointF(card.left() + 5, card.top() + 0.5), QPointF(card.right() - 5, card.top() + 0.5));
+        painter->restore();
+    } else if (m_alternateBackground && neoRowStyle() == NeoRowStyle::Open) {
+        // open rows: no card, only a hairline under each row
+        QColor lineColor = m_styleOption.palette.color(QPalette::Text);
+        lineColor.setAlphaF(0.07);
+        painter->fillRect(QRectF(0, size().height() - 1, size().width(), 1), lineColor);
+    } else if (m_alternateBackground && neoRowStyle() == NeoRowStyle::Line) {
+        // a hairline under the row that fades out towards both ends
+        QColor lineColor = m_styleOption.palette.color(QPalette::Text);
+        QColor transparent = lineColor;
+        lineColor.setAlphaF(0.10);
+        transparent.setAlphaF(0.0);
+        QLinearGradient gradient(0, 0, size().width(), 0);
+        gradient.setColorAt(0.0, transparent);
+        gradient.setColorAt(0.12, lineColor);
+        gradient.setColorAt(0.88, lineColor);
+        gradient.setColorAt(1.0, transparent);
+        painter->fillRect(QRectF(0, size().height() - 1, size().width(), 1), gradient);
+    } else if (m_alternateBackground && neoRowStyle() == NeoRowStyle::Stripe) {
         QColor backgroundColor = m_styleOption.palette.color(QPalette::AlternateBase);
         if (!widget->hasFocus()) {
             QColor baseColor = m_styleOption.palette.color(QPalette::Base);

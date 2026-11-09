@@ -1,0 +1,13 @@
+#!/bin/bash
+# Launch the Dolphin installed by neo/build.sh.
+# Settings: one NAME=value per line in ~/.config/dolphin-neo.conf (see neo/dolphin-neo.conf.example);
+# values given in the environment win.
+P="${DOLPHIN_NEO_PREFIX:-$HOME/.local/dolphin-neo}"
+if [ -r "$HOME/.config/dolphin-neo.conf" ]; then
+    while IFS='=' read -r name value; do
+        case "$name" in DOLPHIN_NEO_*) [ -n "${!name+x}" ] || export "$name=$value" ;; esac
+    done < "$HOME/.config/dolphin-neo.conf"
+fi
+export XDG_DATA_DIRS="$P/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export QT_PLUGIN_PATH="$P/lib64/plugins:$P/lib64/qt6/plugins:$P/lib/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+exec "$P/bin/dolphin" "$@"

@@ -21,6 +21,7 @@
 
 #include <QAccessible>
 #include <QApplication>
+#include <QCursor>
 #include <QDrag>
 #include <QGesture>
 #include <QGraphicsScene>
@@ -1639,6 +1640,12 @@ bool KItemListController::onPress(const QPointF &pos, const Qt::KeyboardModifier
         return true;
     }
 
+    // dolphin-neo: a press on an inline row action only arms it; it fires on release
+    m_neoActionPressed = (buttons & Qt::LeftButton) ? m_view->neoActionAt(m_pressedIndex.value_or(-1), pressedMousePos) : 0;
+    if (m_neoActionPressed) {
+        return true;
+    }
+
     m_selectionTogglePressed = m_view->isAboveSelectionToggle(m_pressedIndex.value_or(-1), pressedMousePos);
     if (m_selectionTogglePressed) {
         m_selectionManager->setSelected(m_pressedIndex.value(), 1, KItemListSelectionManager::Toggle);
@@ -1805,6 +1812,36 @@ bool KItemListController::onPress(const QPointF &pos, const Qt::KeyboardModifier
 bool KItemListController::onRelease(const QPointF &pos, const Qt::KeyboardModifiers modifiers, const Qt::MouseButtons buttons, bool touch)
 {
     const QPointF pressedMousePos = pos;
+    if (m_neoActionPressed) {
+        // dolphin-neo: fire the inline row action if the button is released on the same one
+        const int action = m_neoActionPressed;
+        m_neoActionPressed = 0;
+        const int index = m_pressedIndex.value_or(-1);
+        if (index >= 0 && m_view->neoActionAt(index, m_view->transform().map(pos)) == action) {
+            if (action == 1) {
+                Q_EMIT itemActivated(index);
+            } else if (action == 3) {
+                m_selectionManager->clearSelection();
+                m_selectionManager->setSelected(index, 1);
+                m_selectionManager->setCurrentItem(index);
+                QRect rowRect;
+                if (m_view->scene() && !m_view->scene()->views().isEmpty()) {
+                    const QGraphicsView *graphicsView = m_view->scene()->views().constFirst();
+                    const QRectF rect = m_view->itemRect(index);
+                    const QPoint topLeft = graphicsView->viewport()->mapToGlobal(graphicsView->mapFromScene(m_view->mapToScene(rect.topLeft())));
+                    rowRect = QRect(topLeft, rect.size().toSize());
+                }
+                Q_EMIT neoPreviewRequested(index, rowRect);
+            } else {
+                // the context menu acts on the selection: make it this item
+                m_selectionManager->clearSelection();
+                m_selectionManager->setSelected(index, 1);
+                m_selectionManager->setCurrentItem(index);
+                Q_EMIT itemContextMenuRequested(index, QPointF(QCursor::pos()));
+            }
+        }
+        return true;
+    }
     const bool isAboveSelectionToggle = m_view->isAboveSelectionToggle(m_pressedIndex.value_or(-1), pressedMousePos);
     if (isAboveSelectionToggle) {
         m_selectionTogglePressed = false;

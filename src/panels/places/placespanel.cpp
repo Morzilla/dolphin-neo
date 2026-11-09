@@ -26,13 +26,21 @@
 #include <QIcon>
 #include <QMenu>
 #include <QMimeData>
+#include <QPainter>
 #include <QShowEvent>
+#include <QTimer>
 
 #include <Solid/StorageAccess>
 
 PlacesPanel::PlacesPanel(QWidget *parent)
     : KFilePlacesView(parent)
 {
+    setViewportMargins(10, 12, 10, 12 + 62); // dolphin-neo: keep the entries inside the glass card drawn by the dock, above its disk usage box
+    // dolphin-neo: never fill the list background, whatever the style's base colour is, so the glass card shows through
+    viewport()->setAutoFillBackground(false);
+    setAutoFillBackground(false);
+    setAttribute(Qt::WA_NoSystemBackground);
+    viewport()->setAttribute(Qt::WA_NoSystemBackground);
     setDropOnPlaceEnabled(true);
     connect(this, &PlacesPanel::urlsDropped, this, &PlacesPanel::slotUrlsDropped);
 
@@ -74,6 +82,28 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     auto *placesModel = DolphinPlacesModelSingleton::instance().placesModel();
     setModel(placesModel);
 
+    // dolphin-neo: the disk usage box at the bottom of the card replaces the "Devices" section (internal disks);
+    // removable devices keep their own section. DOLPHIN_NEO_DEVICES=show keeps the section.
+    if (qgetenv("DOLPHIN_NEO_DEVICES").toLower() != "show" && qgetenv("DOLPHIN_NEO_SIDEBAR").toLower() != "plain") {
+        // KFilePlacesView decides row visibility itself on model changes, so hide the rows again right after it
+        auto hideDevices = [this, placesModel] {
+            QTimer::singleShot(0, this, [this, placesModel] {
+                for (int row = 0; row < placesModel->rowCount(); ++row) {
+                    if (placesModel->groupType(placesModel->index(row, 0)) == KFilePlacesModel::DevicesType && !isRowHidden(row)) {
+                        setRowHidden(row, true);
+                    }
+                }
+            });
+        };
+        connect(placesModel, &QAbstractItemModel::rowsInserted, this, hideDevices);
+        connect(placesModel, &QAbstractItemModel::rowsRemoved, this, hideDevices);
+        connect(placesModel, &QAbstractItemModel::dataChanged, this, hideDevices);
+        connect(placesModel, &QAbstractItemModel::modelReset, this, hideDevices);
+        connect(placesModel, &KFilePlacesModel::groupHiddenChanged, this, hideDevices);
+        connect(placesModel, &KFilePlacesModel::reloaded, this, hideDevices);
+        hideDevices();
+    }
+
     connect(placesModel, &KFilePlacesModel::errorMessage, this, &PlacesPanel::errorMessage);
     connect(placesModel, &KFilePlacesModel::teardownDone, this, &PlacesPanel::slotTearDownDone);
 
@@ -86,6 +116,66 @@ PlacesPanel::PlacesPanel(QWidget *parent)
 }
 
 PlacesPanel::~PlacesPanel() = default;
+
+// dolphin-neo: over the glass card the section titles ("Places", "Remote"...) are too faint to read:
+// draw each one again as a small dark pill with light text, on top of the original.
+void PlacesPanel::paintEvent(QPaintEvent *event)
+{
+    KFilePlacesView::paintEvent(event);
+    static const bool plain = qgetenv("DOLPHIN_NEO_SIDEBAR").toLower() == "plain";
+    const auto *placesModel = qobject_cast<KFilePlacesModel *>(model());
+    if (plain || !placesModel) {
+        return;
+    }
+
+    // the first visible row of a group carries the title above it; a row that is not first tells the plain row height
+    struct Title {
+        QRect rect;
+        QString text;
+    };
+    QList<Title> titles;
+    int rowHeight = -1;
+    int previousGroup = -1;
+    for (int row = 0; row < placesModel->rowCount(); ++row) {
+        if (isRowHidden(row)) {
+            continue;
+        }
+        const QModelIndex index = placesModel->index(row, 0);
+        const int group = int(placesModel->groupType(index));
+        const QRect rect = visualRect(index);
+        if (group != previousGroup) {
+            titles.append({rect, index.data(KFilePlacesModel::GroupRole).toString()});
+        } else if (rowHeight < 0) {
+            rowHeight = rect.height();
+        }
+        previousGroup = group;
+    }
+    if (titles.isEmpty()) {
+        return;
+    }
+
+    QPainter painter(viewport());
+    painter.setRenderHint(QPainter::Antialiasing);
+    QFont titleFont = font();
+    titleFont.setPointSizeF(titleFont.pointSizeF() * 0.84);
+    titleFont.setWeight(QFont::DemiBold);
+    painter.setFont(titleFont);
+    const QFontMetrics metrics(titleFont);
+    for (const Title &title : std::as_const(titles)) {
+        const int headerHeight = rowHeight > 0 ? title.rect.height() - rowHeight : metrics.height() + 10;
+        if (headerHeight < metrics.height() || title.text.isEmpty()) {
+            continue;
+        }
+        const int pillHeight = qMin(headerHeight, metrics.height() + 6);
+        const QRect header(title.rect.left(), title.rect.top(), title.rect.width(), headerHeight);
+        const QRect pill(header.left() + 2, header.bottom() - pillHeight + 3, metrics.horizontalAdvance(title.text) + 22, pillHeight);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(12, 13, 15, 168));
+        painter.drawRoundedRect(pill, pillHeight / 2.0, pillHeight / 2.0);
+        painter.setPen(QColor(236, 239, 244));
+        painter.drawText(pill, Qt::AlignCenter, title.text);
+    }
+}
 
 void PlacesPanel::setUrl(const QUrl &url)
 {

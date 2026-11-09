@@ -134,6 +134,9 @@ Q_SIGNALS:
      */
     void itemContextMenuRequested(int index, const QPointF &pos);
 
+    /** dolphin-neo: the inline preview button of the item was clicked; \a rowRect is its row in global coordinates. */
+    void neoPreviewRequested(int index, const QRect &rowRect);
+
     /**
      * Emitted if a context-menu is requested for the KItemListView.
      */
@@ -343,6 +346,7 @@ private:
     bool m_singleClickActivationEnforced;
     bool m_selectionMode;
     bool m_selectionTogglePressed;
+    int m_neoActionPressed = 0; // dolphin-neo: inline row action under the last press (1 open, 2 menu)
     bool m_clearSelectionIfItemsAreNotDragged;
     bool m_isSwipeGesture;
     bool m_dragActionOrRightClick;

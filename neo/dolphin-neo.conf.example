@@ -1,0 +1,31 @@
+# Settings of dolphin-neo. Copy to ~/.config/dolphin-neo.conf and remove the leading # from the lines you want.
+# No quotes, no spaces around the = sign.
+
+# --- file list (details view) ---
+# Two-line rows without columns (default) or the stock columns
+#DOLPHIN_NEO_LIST=columns
+# Icon-less rows with the file type as a watermark (default) or keep the icons
+#DOLPHIN_NEO_ICONS=show
+# Row style: card (default), open, line, stripe (stock), none. The button in the bar switches card/open and remembers it.
+#DOLPHIN_NEO_ROWS=card
+# How the type abbreviation is drawn: fill (default), outline, label
+#DOLPHIN_NEO_SIGLA=fill
+# Extra space between auto-sized columns, in pixels (only with DOLPHIN_NEO_LIST=columns)
+#DOLPHIN_NEO_COLGAP=28
+
+# --- icons view ---
+# Dark rounded tiles and rounded previews (default) or the stock look
+#DOLPHIN_NEO_TILES=off
+
+# --- sidebar ---
+# Glass panel (default) or the stock look
+#DOLPHIN_NEO_SIDEBAR=plain
+# image (default): a static, blurred picture placed by the window position. live: the compositor's blur shows through.
+#DOLPHIN_NEO_GLASS_MODE=image
+# Picture for image mode. Without it the Plasma wallpaper of the screen is used.
+#DOLPHIN_NEO_GLASS_IMAGE=/path/to/picture.png
+# How much of the picture shows (0-100) and how blurred it is (0-100)
+#DOLPHIN_NEO_GLASS=55
+#DOLPHIN_NEO_GLASS_BLUR=45
+# Keep the "Devices" section of Places (it is hidden because the panel shows the disk usage at the bottom)
+#DOLPHIN_NEO_DEVICES=show

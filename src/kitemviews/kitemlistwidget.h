@@ -13,11 +13,47 @@
 #include "kitemviews/kitemliststyleoption.h"
 
 #include <QBitArray>
+#include <QColor>
 #include <QGraphicsWidget>
 #include <QStyle>
 #include <QTimer>
 
 class KItemListSelectionToggle;
+
+/**
+ * dolphin-neo: how the row background is drawn in views that use row
+ * backgrounds (the details view). Chosen with DOLPHIN_NEO_ROWS:
+ * card (default), line, stripe (stock Dolphin) or none.
+ */
+enum class NeoRowStyle { Stripe, Card, Line, None, Open };
+DOLPHIN_EXPORT NeoRowStyle neoRowStyle();
+/** dolphin-neo: change the row style now and remember it (dolphinrc, group DolphinNeo). */
+DOLPHIN_EXPORT void setNeoRowStyle(NeoRowStyle style);
+
+/**
+ * dolphin-neo: the details view shows each item on two lines (name; then the other columns joined,
+ * with the date at the right edge) instead of in columns. DOLPHIN_NEO_LIST=columns restores the columns.
+ */
+DOLPHIN_EXPORT bool neoTwoLineList();
+
+/**
+ * dolphin-neo: the two-line list has no icons; the file type is a large, faint abbreviation in the row
+ * (a watermark), the size has a bar and hovering a row shows its actions. DOLPHIN_NEO_ICONS=show keeps the icons.
+ */
+DOLPHIN_EXPORT bool neoNoIcons();
+
+/** dolphin-neo: in the icons view every item is a dark rounded tile and previews have rounded corners. DOLPHIN_NEO_TILES=off disables. */
+DOLPHIN_EXPORT bool neoTiles();
+
+/** dolphin-neo: what replaces the icon — a short type abbreviation, the colour and the category of the file. */
+struct NeoKind {
+    enum Category { Folder, Image, Document, Sheet, Archive, Media, Data, Package, Other, CategoryCount };
+    QString sigla;
+    QColor tint;
+    Category category;
+};
+DOLPHIN_EXPORT NeoKind neoKindFor(const QString &name, bool isDir);
+DOLPHIN_EXPORT QColor neoCategoryTint(NeoKind::Category category);
 class KItemListView;
 class QPropertyAnimation;
 
@@ -181,6 +217,12 @@ public:
      *         is available.
      */
     virtual QRectF selectionToggleRect() const;
+
+    /**
+     * dolphin-neo: which inline action of the row is at \a pos (in widget coordinates):
+     * 0 none, 1 open, 2 menu. The controller handles the click, like for the selection toggle.
+     */
+    virtual int neoActionAt(const QPointF &pos) const;
 
     /**
      * @return Rectangle for the expansion-toggle that is used to open a sub-tree of the model.

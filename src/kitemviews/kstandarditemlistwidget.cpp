@@ -8,6 +8,8 @@
 
 #include "dolphin_contentdisplaysettings.h"
 #include "kfileitemlistview.h"
+#include "kitemlistcontroller.h"
+#include "kitemlistselectionmanager.h"
 #include "private/kfileitemclipboard.h"
 #include "private/kitemlistroleeditor.h"
 #include "private/kitemviewsutils.h"
@@ -17,17 +19,153 @@
 #include <KIconLoader>
 #include <KIconUtils>
 #include <KRatingPainter>
+#include <KStandardGuiItem>
 #include <KStringHandler>
 #include <klocalizedstring.h>
 
 #include <QApplication>
+#include <QSet>
 #include <QGraphicsScene>
+#include <QGraphicsSceneMouseEvent>
+#include <QPainterPath>
+#include <QScopeGuard>
 #include <QGraphicsSceneResizeEvent>
 #include <QGraphicsView>
 #include <QPixmapCache>
 #include <QStyleOption>
 #include <QTextBoundaryFinder>
 #include <QVariantAnimation>
+
+#include <cmath>
+#include <functional>
+
+namespace
+{
+// dolphin-neo: the main colour of an icon — the average of its pixels weighted by how saturated they are,
+// lightened enough to read on a dark row. Cached per icon name. Invalid if the icon has no usable pixels.
+QColor neoIconColor(const QString &iconName, const QPixmap &pixmap)
+{
+    static QHash<QString, QColor> cache;
+    const auto cached = cache.constFind(iconName);
+    if (cached != cache.constEnd()) {
+        return *cached;
+    }
+    QColor result;
+    if (!pixmap.isNull()) {
+        const QImage image = pixmap.toImage().scaled(24, 24, Qt::IgnoreAspectRatio, Qt::SmoothTransformation).convertToFormat(QImage::Format_ARGB32);
+        double red = 0, green = 0, blue = 0, total = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            const QRgb *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+            for (int x = 0; x < image.width(); ++x) {
+                const QColor pixel = QColor::fromRgba(line[x]);
+                if (pixel.alpha() < 96) {
+                    continue;
+                }
+                const double weight = 0.04 + pixel.hsvSaturationF() * pixel.valueF(); // colourful pixels count the most
+                red += pixel.redF() * weight;
+                green += pixel.greenF() * weight;
+                blue += pixel.blueF() * weight;
+                total += weight;
+            }
+        }
+        if (total > 0) {
+            const QColor average = QColor::fromRgbF(red / total, green / total, blue / total);
+            float h, s, l;
+            average.getHslF(&h, &s, &l);
+            result = QColor::fromHslF(h < 0 ? 0 : h, s, qMax(l, 0.64f));
+        }
+    }
+    cache.insert(iconName, result);
+    return result;
+}
+
+// dolphin-neo: the two buttons shown on the hovered row, "Open" and a menu with everything else
+class NeoRowActions : public QGraphicsWidget
+{
+public:
+    NeoRowActions(QGraphicsItem *parent, std::function<void()> open, std::function<void(const QPoint &)> menu)
+        : QGraphicsWidget(parent)
+        , m_open(std::move(open))
+        , m_menu(std::move(menu))
+        , m_openText(KLocalizedString::removeAcceleratorMarker(KStandardGuiItem::open().text()))
+    {
+        while (m_openText.endsWith(QLatin1Char('.')) || m_openText.endsWith(QChar(0x2026))) {
+            m_openText.chop(1); // "Open..." is a dialog caption; here it opens the item directly
+        }
+        setAcceptedMouseButtons(Qt::NoButton); // drawn here, clicked through KItemListController
+    }
+
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override
+    {
+        Q_UNUSED(option)
+        const QPalette palette = widget ? widget->palette() : QApplication::palette();
+        const QColor text = palette.color(QPalette::WindowText);
+        QColor fill = text;
+        fill.setAlphaF(0.14);
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(fill);
+        painter->drawRoundedRect(openRect(), 8, 8);
+        painter->drawRoundedRect(previewRect(), 8, 8);
+        painter->drawRoundedRect(menuRect(), 8, 8);
+        painter->setPen(text);
+        painter->setFont(font());
+        painter->drawText(openRect(), Qt::AlignCenter, m_openText);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(text);
+        for (int i = -1; i <= 1; ++i) {
+            painter->drawEllipse(menuRect().center() + QPointF(i * 6.0, 0), 1.7, 1.7);
+        }
+        // preview: an eye
+        const QPointF c = previewRect().center();
+        painter->drawEllipse(c, 2.4, 2.4);
+        QPainterPath eye;
+        eye.moveTo(c + QPointF(-8, 0));
+        eye.quadTo(c + QPointF(0, -8), c + QPointF(8, 0));
+        eye.quadTo(c + QPointF(0, 8), c + QPointF(-8, 0));
+        painter->setBrush(Qt::NoBrush);
+        painter->setPen(QPen(text, 1.5));
+        painter->drawPath(eye);
+    }
+
+protected:
+    void mousePressEvent(QGraphicsSceneMouseEvent *event) override
+    {
+        event->accept(); // keep the click away from the row underneath
+    }
+
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override
+    {
+        event->accept();
+        if (openRect().contains(event->pos())) {
+            m_open();
+        } else if (menuRect().contains(event->pos())) {
+            m_menu(event->screenPos());
+        }
+    }
+
+private:
+    QRectF menuRect() const
+    {
+        const qreal h = size().height();
+        return QRectF(size().width() - h, 0, h, h);
+    }
+    QRectF previewRect() const
+    {
+        const qreal h = size().height();
+        return QRectF(size().width() - 2 * h - 6, 0, h, h);
+    }
+    QRectF openRect() const
+    {
+        const qreal h = size().height();
+        return QRectF(0, 0, size().width() - 2 * h - 12, h);
+    }
+
+    std::function<void()> m_open;
+    std::function<void(const QPoint &)> m_menu;
+    QString m_openText;
+};
+}
 
 // #define KSTANDARDITEMLISTWIDGET_DEBUG
 
@@ -68,6 +206,11 @@ qreal KStandardItemListWidgetInformant::preferredRoleColumnWidth(const QByteArra
 
     const QString text = roleText(role, values);
     qreal width = KStandardItemListWidget::columnPadding(option);
+    if (role != "text") {
+        // dolphin-neo: extra room between the columns of the details view (DOLPHIN_NEO_COLGAP, pixels)
+        static const int gap = qEnvironmentVariableIsSet("DOLPHIN_NEO_COLGAP") ? qEnvironmentVariableIntValue("DOLPHIN_NEO_COLGAP") : 28;
+        width += gap;
+    }
 
     const QFontMetrics &normalFontMetrics = option.fontMetrics;
     const QFontMetrics linkFontMetrics(customizedFontForLinks(option.font));
@@ -245,7 +388,10 @@ void KStandardItemListWidgetInformant::calculateDetailsLayoutItemSizeHints(QVect
                                                                            const KItemListView *view) const
 {
     const KItemListStyleOption &option = view->styleOption();
-    const qreal height = option.padding * 2 + qMax(option.iconSize, option.fontMetrics.height());
+    // dolphin-neo: two text lines per row
+    const int textHeight = neoTwoLineList() ? 2 * option.fontMetrics.height() + 4 : option.fontMetrics.height();
+    const qreal height = neoNoIcons() ? option.padding * 2 + textHeight + 24 // no icon: the row is as tall as its two lines of text
+                                      : option.padding * 2 + qMax(option.iconSize, textHeight);
     logicalHeightHints.fill(std::make_pair(height, false));
     logicalWidthHint = -1.0;
 }
@@ -339,6 +485,108 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
 
     KItemListWidget::paint(painter, option, widget);
 
+    if (m_layout == IconsLayout && neoTiles()) {
+        // dolphin-neo: a dark rounded tile with a hairline of light on top, like the cards of the list
+        const QRectF tile = rect().adjusted(3, 3, -3, -3);
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(0, 0, 0, 62));
+        painter->drawRoundedRect(tile, 12, 12);
+        painter->setPen(QPen(QColor(255, 255, 255, 11), 1));
+        painter->drawLine(QPointF(tile.left() + 12, tile.top() + 0.5), QPointF(tile.right() - 12, tile.top() + 0.5));
+        painter->restore();
+    }
+
+    const bool neoRow = m_layout == DetailsLayout && neoNoIcons();
+    if (neoRow && !m_neoSigla.isEmpty()) {
+        // the file type as a watermark: large, faint letters at the start of the row, fading out under the name
+        const bool openRows = neoRowStyle() == NeoRowStyle::Open;
+        const QRectF rowRect = openRows ? selectionRectFull() : selectionRectFull().adjusted(3, 3, -3, -3);
+        qreal x0 = rowRect.left() + (openRows ? 16 : 10);
+        QFont watermarkFont(m_customizedFont);
+        watermarkFont.setPixelSize(qMax(12, qRound(size().height() * (neoRowStyle() == NeoRowStyle::Open ? 0.58 : 0.50))));
+        watermarkFont.setWeight(QFont::Black);
+        watermarkFont.setLetterSpacing(QFont::PercentageSpacing, 94);
+        const qreal fade = QFontMetricsF(watermarkFont).horizontalAdvance(m_neoSigla) + m_customizedFontMetrics.height() * 1.5;
+        QPainterPath clip;
+        clip.addRoundedRect(rowRect, openRows ? 0 : 5, openRows ? 0 : 5);
+        painter->save();
+        painter->setClipPath(clip, Qt::IntersectClip);
+
+        // the row takes the colour of the file's category, strongest at the start and gone by the middle
+        QLinearGradient wash(rowRect.left(), 0, rowRect.left() + rowRect.width() * (openRows ? 0.40 : 0.62), 0);
+        QColor washStart = m_neoTint, washMid = m_neoTint, washEnd = m_neoTint;
+        washStart.setAlphaF(openRows ? 0.14 : 0.22);
+        washMid.setAlphaF(openRows ? 0.05 : 0.06);
+        washEnd.setAlphaF(0.0);
+        wash.setColorAt(0.0, washStart);
+        wash.setColorAt(0.55, washMid);
+        wash.setColorAt(1.0, washEnd);
+        painter->fillRect(rowRect, wash);
+
+        // the type icon, faint, then the abbreviation
+        if (!m_neoIcon.isNull() && !openRows) {
+            const qreal iconSide = m_neoIcon.width() / m_neoIcon.devicePixelRatio();
+            painter->setOpacity(0.38);
+            painter->drawPixmap(QPointF(x0, (size().height() - iconSide) / 2.0), m_neoIcon);
+            painter->setOpacity(1.0);
+            x0 += iconSide + 8;
+        }
+        // The abbreviation. DOLPHIN_NEO_SIGLA picks how it is drawn:
+        //   fill (default)     large solid letters in the row colour, faint
+        //   outline            hollow letters: a thin outline that thins out to the right, barely filled
+        //   label              small, widely spaced capitals in the full row colour
+        static const QByteArray siglaStyle = qgetenv("DOLPHIN_NEO_SIGLA").toLower();
+        const qreal rowHeight = size().height();
+        if (siglaStyle == "label") {
+            QFont labelFont(m_customizedFont);
+            labelFont.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.66)));
+            labelFont.setWeight(QFont::DemiBold);
+            labelFont.setLetterSpacing(QFont::PercentageSpacing, 118);
+            QColor ink = m_neoTint;
+            ink.setAlphaF(0.92);
+            painter->setFont(labelFont);
+            painter->setPen(ink);
+            painter->drawText(QRectF(x0, 0, fade * 2, rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
+        } else if (siglaStyle != "outline") {
+            QColor ink = m_neoTint;
+            ink.setAlphaF(0.36);
+            painter->setFont(watermarkFont);
+            painter->setPen(ink);
+            painter->drawText(QRectF(x0, -rowHeight, fade * 2, 3 * rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
+        } else {
+            const QFontMetricsF metrics(watermarkFont);
+            QPainterPath letters;
+            letters.addText(QPointF(x0, (rowHeight + metrics.capHeight()) / 2.0), watermarkFont, m_neoSigla);
+            QLinearGradient outline(x0, 0, x0 + fade, 0);
+            QColor strong = m_neoTint, weak = m_neoTint, body = m_neoTint;
+            strong.setAlphaF(0.80);
+            weak.setAlphaF(0.28);
+            body.setAlphaF(0.07);
+            outline.setColorAt(0.0, strong);
+            outline.setColorAt(1.0, weak);
+            painter->setRenderHint(QPainter::Antialiasing);
+            painter->fillPath(letters, body);
+            painter->strokePath(letters, QPen(QBrush(outline), 1.25, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        }
+        painter->restore();
+
+        if (m_neoBarFraction >= 0) {
+            QColor groove = styleOption().palette.color(QPalette::Text);
+            groove.setAlphaF(0.10);
+            painter->save();
+            painter->setRenderHint(QPainter::Antialiasing);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(groove);
+            painter->drawRoundedRect(m_neoBarRect, 2, 2);
+            painter->setBrush(m_neoTint);
+            const qreal filled = qMax(qreal(4), m_neoBarRect.width() * m_neoBarFraction);
+            painter->drawRoundedRect(QRectF(m_neoBarRect.right() - filled, m_neoBarRect.top(), filled, m_neoBarRect.height()), 2, 2);
+            painter->restore();
+        }
+    }
+
     if (!m_expansionArea.isEmpty()) {
         drawSiblingsInformation(painter);
     }
@@ -346,7 +594,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
     // Overlays are not baked into the icon pixmap: it gets rescaled to its final
     // size in drawPixmap(), which would rescale them too. They are drawn at a
     // fixed size by drawOverlays() below. See bug 498211.
-    const auto pixmap = m_pixmap;
+    const auto pixmap = neoRow ? QPixmap() : m_pixmap; // dolphin-neo: no icon in the icon-less row
 
     const KItemListStyleOption &itemListStyleOption = styleOption();
     if (isHovered() && !pixmap.isNull()) {
@@ -416,7 +664,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
     painter->drawStaticText(textInfo->pos, textInfo->staticText);
 
     bool clipAdditionalInfoBounds = false;
-    if (m_supportsItemExpanding && m_sortedVisibleRoles.count() > 1) {
+    if (m_supportsItemExpanding && m_sortedVisibleRoles.count() > 1 && !(m_layout == DetailsLayout && neoTwoLineList())) {
         // Prevent a possible overlapping of the additional-information-texts with the icon.
         // This will happen if the user has resized the width of the name-column to be very narrow while having folders expanded.
         // We only want to draw additional info text outside the area of the icon or expansion area, so we set a clip rect that does not contain the icon area.
@@ -442,7 +690,11 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
     painter->setPen(m_additionalInfoTextColor);
     painter->setFont(m_customizedFont);
 
+    const bool neoActionsShown = neoRow && m_neoActions && m_neoActions->isVisible();
     for (int i = 1; i < m_sortedVisibleRoles.count(); ++i) {
+        if (neoActionsShown && m_sortedVisibleRoles[i] == m_neoDateRole) {
+            continue; // dolphin-neo: the hover actions take the place of the date
+        }
         const TextInfo *textInfo = m_textInfo.value(m_sortedVisibleRoles[i]);
         painter->drawStaticText(textInfo->pos, textInfo->staticText);
     }
@@ -522,10 +774,32 @@ QRectF KStandardItemListWidget::textFocusRect() const
     return m_textRect;
 }
 
+int KStandardItemListWidget::neoActionAt(const QPointF &pos) const
+{
+    if (!m_neoActions || !m_neoActions->isVisible() || !m_neoActionsRect.contains(pos)) {
+        return 0;
+    }
+    // same split as NeoRowActions: "Open", then two square buttons: preview and menu
+    const qreal side = m_neoActionsRect.height();
+    const qreal menuLeft = m_neoActionsRect.right() - side;
+    const qreal previewLeft = menuLeft - 6 - side;
+    if (pos.x() >= menuLeft) {
+        return 2;
+    }
+    if (pos.x() >= previewLeft && pos.x() <= menuLeft - 6) {
+        return 3;
+    }
+    return pos.x() <= previewLeft - 6 ? 1 : 0;
+}
+
 QRectF KStandardItemListWidget::selectionRectFull() const
 {
     const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
     const int padding = styleOption().padding;
+    if (m_layout == DetailsLayout && neoTwoLineList()) {
+        // dolphin-neo: there are no columns, the whole row is the item
+        return QRectF(leftPadding(), 0, size().width() - leftPadding(), size().height());
+    }
     if (m_layout == DetailsLayout) {
         auto rect = m_iconRect | m_textRect;
         if (m_highlightEntireRow) {
@@ -813,6 +1087,41 @@ void KStandardItemListWidget::hoveredChanged(bool hovered)
         m_activateSoonAnimation->stop(); // automatically DeleteWhenStopped
     }
     m_dirtyLayout = true;
+
+    // dolphin-neo: actions of the hovered row
+    if (m_layout == DetailsLayout && neoNoIcons()) {
+        if (hovered) {
+            if (!m_neoActions) {
+                auto controllerOf = [this]() -> KItemListController * {
+                    const auto *view = dynamic_cast<KItemListView *>(parentItem());
+                    return view ? view->controller() : nullptr;
+                };
+                m_neoActions = new NeoRowActions(
+                    this,
+                    [this, controllerOf] {
+                        if (KItemListController *controller = controllerOf()) {
+                            Q_EMIT controller->itemActivated(index());
+                        }
+                    },
+                    [this, controllerOf](const QPoint &screenPos) {
+                        if (KItemListController *controller = controllerOf()) {
+                            // the context menu acts on the selection: make it this item
+                            controller->selectionManager()->clearSelection();
+                            controller->selectionManager()->setSelected(index(), 1);
+                            controller->selectionManager()->setCurrentItem(index());
+                            Q_EMIT controller->itemContextMenuRequested(index(), QPointF(screenPos));
+                        }
+                    });
+                m_neoActions->setFont(m_customizedFont);
+            }
+            triggerCacheRefreshing();
+            m_neoActions->setGeometry(m_neoActionsRect);
+            m_neoActions->setVisible(!m_neoActionsRect.isEmpty());
+        } else if (m_neoActions) {
+            m_neoActions->hide();
+        }
+        update();
+    }
 }
 
 void KStandardItemListWidget::selectedChanged(bool selected)
@@ -1510,6 +1819,138 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
     qreal x = firstColumnInc;
     const qreal standardY = qMax(qreal(option.padding), (widgetHeight - fontHeight) / 2.0);
 
+    if (neoTwoLineList()) {
+        // dolphin-neo, with icons:   +------+  Name                                            Date
+        //                            | Icon |  Size · Type · other roles
+        // dolphin-neo, icon-less:    TYPE (watermark)  Name                        Size        Date / actions on hover
+        //                                              Type · other roles          [bar]
+        static const QSet<QByteArray> dateRoles{"modificationtime", "creationtime", "accesstime", "deletiontime"};
+        const bool noIcons = neoNoIcons();
+        QByteArray dateRole;
+        for (const QByteArray &role : std::as_const(m_sortedVisibleRoles)) {
+            if (dateRoles.contains(role)) {
+                dateRole = role;
+                break;
+            }
+        }
+        m_neoDateRole = dateRole;
+        const qreal gap = columnWidthInc / 2;
+        const qreal left = noIcons ? leftPadding() + 14 + widgetHeight * 0.62 + 8 + fontHeight * 5.4 : firstColumnInc + gap;
+        const qreal right = size().width() - 18;
+        const int lineGap = 2;
+        const qreal firstY = qMax(qreal(option.padding), (widgetHeight - (2 * fontHeight + lineGap)) / 2.0);
+        const qreal secondY = firstY + fontHeight + lineGap;
+
+        // a narrow view drops the date first, then the size column
+        const bool roomForDate = !noIcons || size().width() >= fontHeight * 36;
+        const bool roomForSize = size().width() >= fontHeight * 26;
+        if (!dateRole.isEmpty() && !roomForDate) {
+            m_textInfo.value(dateRole)->staticText.setText(QString());
+        }
+
+        // right edge: the date (replaced by the actions while the row is hovered)
+        qreal dateWidth = 0;
+        if (!dateRole.isEmpty() && roomForDate) {
+            const QString text = roleText(dateRole, values);
+            dateWidth = m_customizedFontMetrics.horizontalAdvance(text);
+            TextInfo *textInfo = m_textInfo.value(dateRole);
+            textInfo->staticText.setText(text);
+            textInfo->pos = QPointF(right - dateWidth, standardY);
+        }
+        qreal blockLeft = right;
+        m_neoActionsRect = QRectF();
+        if (noIcons) {
+            const qreal dateColumn = roomForDate ? qMax(qreal(fontHeight * 9), qreal(176)) : qreal(fontHeight * 8.2); // fixed, so that the sizes line up
+            const qreal actionsWidth = qMin(dateColumn, qreal(fontHeight * 8.2));
+            const qreal actionsHeight = qMin(widgetHeight - 12, qreal(fontHeight * 1.7));
+            m_neoActionsRect = QRectF(right - actionsWidth, (widgetHeight - actionsHeight) / 2.0, actionsWidth, actionsHeight);
+            blockLeft = right - dateColumn;
+        } else if (dateWidth > 0) {
+            blockLeft = right - dateWidth - 3 * gap;
+        }
+        if (m_neoActions) {
+            m_neoActions->setGeometry(m_neoActionsRect);
+        }
+
+        // icon-less: the size sits in its own column, with a bar on a logarithmic scale (1 KiB ... 10 GiB)
+        m_neoBarFraction = -1;
+        m_neoBarRect = QRectF();
+        const bool sizeColumn = noIcons && m_sortedVisibleRoles.contains("size");
+        if (sizeColumn && !roomForSize) {
+            m_textInfo.value("size")->staticText.setText(QString());
+        }
+        if (sizeColumn && roomForSize) {
+            const qreal columnWidth = qMax(qreal(fontHeight * 6.5), qreal(130));
+            const qreal sizeRight = blockLeft - gap;
+            const QString text = roleText("size", values);
+            const qreal width = m_customizedFontMetrics.horizontalAdvance(text);
+            TextInfo *textInfo = m_textInfo.value("size");
+            textInfo->staticText.setText(text);
+            textInfo->pos = QPointF(sizeRight - width, firstY);
+            const qlonglong bytes = values.value("size").toLongLong();
+            if (!values.value("isDir").toBool() && bytes > 0) {
+                m_neoBarFraction = qBound(0.03, (std::log10(double(bytes)) - 3.0) / 7.0, 1.0);
+                const qreal barWidth = columnWidth - 10;
+                m_neoBarRect = QRectF(sizeRight - barWidth, secondY + fontHeight / 2.0 - 2, barWidth, 4);
+            }
+            blockLeft = sizeRight - columnWidth;
+        }
+        const qreal textRight = blockLeft - 2 * gap;
+
+        if (noIcons) {
+            const NeoKind kind = neoKindFor(values.value("text").toString(), values.value("isDir").toBool());
+            m_neoSigla = kind.sigla;
+            m_neoTint = kind.tint;
+            const QString iconName = values.value("iconName").toString();
+            const int iconSide = qMax(16, qRound(widgetHeight * 0.62));
+            if (iconName != m_neoIconName || m_neoIcon.isNull() || qRound(m_neoIcon.width() / m_neoIcon.devicePixelRatio()) != iconSide) {
+                m_neoIconName = iconName;
+                m_neoIcon = iconName.isEmpty() ? QPixmap() : QIcon::fromTheme(iconName).pixmap(QSize(iconSide, iconSide), KItemViewsUtils::devicePixelRatio(this));
+            }
+            // the row, the abbreviation and the size bar take the main colour of the type icon
+            const QColor iconColor = neoIconColor(iconName, m_neoIcon);
+            if (iconColor.isValid()) {
+                m_neoTint = iconColor;
+            }
+        } else {
+            m_neoSigla.clear();
+        }
+
+        qreal secondX = left;
+        for (const QByteArray &role : std::as_const(m_sortedVisibleRoles)) {
+            TextInfo *textInfo = m_textInfo.value(role);
+            if (role == "text") {
+                QString text = escapeString(roleText(role, values));
+                qreal width = m_customizedFontMetrics.horizontalAdvance(text);
+                const qreal available = qMax(qreal(0), textRight - left);
+                if (width > available) {
+                    text = elideText(text, available);
+                    width = m_customizedFontMetrics.horizontalAdvance(text);
+                }
+                textInfo->staticText.setText(text);
+                textInfo->pos = QPointF(left, firstY);
+                m_textRect = QRectF(left - option.padding, 0, width + 2 * option.padding, widgetHeight);
+            } else if (role != dateRole && !(sizeColumn && role == "size")) {
+                QString text = roleText(role, values);
+                if (!text.isEmpty() && secondX > left) {
+                    text.prepend(QStringLiteral("\u00B7  "));
+                }
+                qreal width = m_customizedFontMetrics.horizontalAdvance(text);
+                const qreal available = textRight - secondX;
+                if (width > available) {
+                    text = available > 3 * fontHeight ? m_customizedFontMetrics.elidedText(text, Qt::ElideRight, available) : QString();
+                    width = m_customizedFontMetrics.horizontalAdvance(text);
+                }
+                textInfo->staticText.setText(text);
+                textInfo->pos = QPointF(secondX, secondY);
+                if (!text.isEmpty()) {
+                    secondX += width + gap;
+                }
+            }
+        }
+        return;
+    }
+
     for (const QByteArray &role : std::as_const(m_sortedVisibleRoles)) {
         QString text = roleText(role, values);
 
@@ -1653,6 +2094,21 @@ void KStandardItemListWidget::drawOverlays(QPainter *painter) const
 
 void KStandardItemListWidget::drawPixmap(QPainter *painter, const QPixmap &pixmap)
 {
+    // dolphin-neo: in the tiles of the icons view the picture gets rounded corners
+    const bool rounded = m_layout == IconsLayout && neoTiles();
+    if (rounded) {
+        QPainterPath clip;
+        clip.addRoundedRect(QRectF(m_pixmapPos, QSizeF(m_scaledPixmapSize)), 9, 9);
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setClipPath(clip, Qt::IntersectClip);
+    }
+    auto done = qScopeGuard([painter, rounded] {
+        if (rounded) {
+            painter->restore();
+        }
+    });
+
     if (m_scaledPixmapSize != pixmap.size() / pixmap.devicePixelRatio()) {
         const qreal dpr = KItemViewsUtils::devicePixelRatio(this);
         QPixmap scaledPixmap = pixmap;
