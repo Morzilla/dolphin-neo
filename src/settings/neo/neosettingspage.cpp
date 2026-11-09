@@ -34,8 +34,14 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     heading(QStringLiteral("Barra laterale"));
     m_glassPanel = new QCheckBox(QStringLiteral("Pannello a vetro *"), this);
     form->addRow(QString(), m_glassPanel);
-    m_liveBlur = new QCheckBox(QStringLiteral("Usa il blur vero del desktop al posto dell'immagine *"), this);
-    form->addRow(QString(), m_liveBlur);
+    m_backdrop = new QComboBox(this);
+    m_backdrop->addItem(QStringLiteral("Immagine sfocata"), QString());
+    m_backdrop->addItem(QStringLiteral("Lava lamp (animazione lenta)"), QStringLiteral("lava"));
+    m_backdrop->addItem(QStringLiteral("Blur vero del desktop *"), QStringLiteral("live"));
+    form->addRow(QStringLiteral("Sfondo del pannello:"), m_backdrop);
+    m_lavaSpeed = new QSlider(Qt::Horizontal, this);
+    m_lavaSpeed->setRange(5, 100);
+    form->addRow(QStringLiteral("Velocità della lava lamp:"), m_lavaSpeed);
     m_devices = new QCheckBox(QStringLiteral("Mostra la sezione «Dispositivi» *"), this);
     form->addRow(QString(), m_devices);
 
@@ -95,7 +101,8 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     m_tiles->setEnabled(!neoSettingFromEnvironment("TILES"));
     m_twoLines->setEnabled(!neoSettingFromEnvironment("LIST"));
     m_glassPanel->setEnabled(!neoSettingFromEnvironment("SIDEBAR"));
-    m_liveBlur->setEnabled(!neoSettingFromEnvironment("GLASS_MODE"));
+    m_backdrop->setEnabled(!neoSettingFromEnvironment("GLASS_MODE"));
+    m_lavaSpeed->setEnabled(!neoSettingFromEnvironment("LAVA_SPEED"));
     m_devices->setEnabled(!neoSettingFromEnvironment("DEVICES"));
 
     connect(m_image, &KUrlRequester::textChanged, this, &NeoSettingsPage::changed);
@@ -107,7 +114,8 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     connect(m_tiles, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
     connect(m_twoLines, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
     connect(m_glassPanel, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
-    connect(m_liveBlur, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
+    connect(m_backdrop, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
+    connect(m_lavaSpeed, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
     connect(m_devices, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
 }
 
@@ -126,7 +134,8 @@ void NeoSettingsPage::loadSettings()
     }
     m_twoLines->setChecked(neoSetting("LIST").toLower() != QLatin1String("columns"));
     m_glassPanel->setChecked(neoSetting("SIDEBAR").toLower() != QLatin1String("plain"));
-    m_liveBlur->setChecked(neoSetting("GLASS_MODE").toLower() == QLatin1String("live"));
+    m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(neoSetting("GLASS_MODE").toLower())));
+    m_lavaSpeed->setValue(qBound(5, neoSettingInt("LAVA_SPEED", 30), 100));
     m_devices->setChecked(neoSetting("DEVICES").toLower() == QLatin1String("show"));
     m_sigla->setCurrentIndex(qMax(0, m_sigla->findData(neoSetting("SIGLA", QStringLiteral("fill")).toLower())));
     m_icons->setChecked(neoSetting("ICONS").toLower() == QLatin1String("show"));
@@ -143,7 +152,8 @@ void NeoSettingsPage::applySettings()
     setNeoSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
     setNeoSetting("LIST", m_twoLines->isChecked() ? QString() : QStringLiteral("columns"));
     setNeoSetting("SIDEBAR", m_glassPanel->isChecked() ? QString() : QStringLiteral("plain"));
-    setNeoSetting("GLASS_MODE", m_liveBlur->isChecked() ? QStringLiteral("live") : QString());
+    setNeoSetting("GLASS_MODE", m_backdrop->currentData().toString());
+    setNeoSetting("LAVA_SPEED", QString::number(m_lavaSpeed->value()));
     setNeoSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
     if (m_rows->isEnabled()) {
         static const NeoRowStyle order[] = {NeoRowStyle::Card, NeoRowStyle::Open, NeoRowStyle::Line, NeoRowStyle::Stripe, NeoRowStyle::None};
@@ -171,7 +181,8 @@ void NeoSettingsPage::restoreDefaults()
     m_tiles->setChecked(true);
     m_twoLines->setChecked(true);
     m_glassPanel->setChecked(true);
-    m_liveBlur->setChecked(false);
+    m_backdrop->setCurrentIndex(0);
+    m_lavaSpeed->setValue(30);
     m_devices->setChecked(false);
 }
 

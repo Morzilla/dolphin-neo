@@ -35,7 +35,8 @@ it installs into your home directory next to it.
 
 **Sidebar**
 - Places is a floating "glass" panel. By default it shows a blurred copy of the desktop wallpaper, placed by
-  the window's position on screen; optionally the compositor's real blur.
+  the window's position on screen; optionally a slow "lava lamp" animation in the wallpaper's colours, or the
+  compositor's real blur.
 - Section titles are small pills, the internal "Devices" section is replaced by a disk usage box.
 
 **Smaller things**

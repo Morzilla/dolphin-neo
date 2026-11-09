@@ -47,6 +47,7 @@ private:
     bool m_locked;
     QWidget *m_dockTitleBar;
     QTimer *m_glassTimer = nullptr;
+    QTimer *m_lavaTimer = nullptr; // dolphin-neo: drives the animated ("lava lamp") backdrop
     qreal m_glass = 75; // share (0-100) of the window tint removed under the card
 };
 

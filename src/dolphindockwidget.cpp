@@ -18,6 +18,7 @@
 
 #include <QDir>
 #include <QElapsedTimer>
+#include <QtMath>
 #include <QEvent>
 #include <QGuiApplication>
 #include <QHash>
@@ -96,6 +97,66 @@ QString neoBackdropPath(const QScreen *screen)
         }
     }
     return fallback;
+}
+
+// GLASS_MODE lava: is the card an animated "lava lamp"? Read every time, so the settings page applies at once.
+bool neoGlassLavaMode()
+{
+    return neoSetting("GLASS_MODE").toLower() == QLatin1String("lava");
+}
+
+// One frame of the lava lamp, drawn small: a few soft blobs of colour that drift and breathe very slowly.
+// It is painted scaled up, which blurs it. `seconds` is the animation time.
+QImage neoLavaFrame(const QSize &size, const QList<QColor> &colours, const QColor &base, qreal seconds)
+{
+    QImage frame(size, QImage::Format_ARGB32_Premultiplied);
+    frame.fill(base);
+    QPainter painter(&frame);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
+    const qreal w = size.width(), h = size.height();
+    for (int i = 0; i < colours.size(); ++i) {
+        // every blob has its own slow periods (about one to two and a half minutes) and phases
+        const qreal periodX = 70.0 + 23.0 * i, periodY = 95.0 + 31.0 * ((i * 3) % 5), periodR = 60.0 + 17.0 * i;
+        const QPointF centre(w * (0.5 + 0.40 * qSin(2 * M_PI * seconds / periodX + i * 1.7)), h * (0.5 + 0.44 * qCos(2 * M_PI * seconds / periodY + i * 2.3)));
+        const qreal radius = qMax(w, h * 0.45) * (0.62 + 0.14 * qSin(2 * M_PI * seconds / periodR + i));
+        QColor inner = colours.at(i), mid = colours.at(i), outer = colours.at(i);
+        inner.setAlphaF(0.90);
+        mid.setAlphaF(0.42);
+        outer.setAlphaF(0.0);
+        QRadialGradient blob(centre, radius);
+        blob.setColorAt(0.0, inner);
+        blob.setColorAt(0.55, mid);
+        blob.setColorAt(1.0, outer);
+        painter.setBrush(blob);
+        painter.drawEllipse(centre, radius, radius);
+    }
+    return frame;
+}
+
+// The colours of the lava: taken from the (blurred) backdrop picture so that they suit the desktop, or a fixed set.
+QList<QColor> neoLavaColours(const QPixmap &backdrop, QColor *base)
+{
+    QList<QColor> colours;
+    if (!backdrop.isNull()) {
+        const QImage image = backdrop.toImage();
+        static const QPointF spots[] = {{0.15, 0.2}, {0.8, 0.25}, {0.5, 0.55}, {0.2, 0.85}, {0.85, 0.8}};
+        qreal red = 0, green = 0, blue = 0;
+        for (const QPointF &spot : spots) {
+            const QColor pixel = image.pixelColor(qRound(spot.x() * (image.width() - 1)), qRound(spot.y() * (image.height() - 1)));
+            red += pixel.redF();
+            green += pixel.greenF();
+            blue += pixel.blueF();
+            float hue, saturation, value;
+            pixel.getHsvF(&hue, &saturation, &value);
+            colours.append(QColor::fromHsvF(hue < 0 ? 0 : hue, qMin(1.0f, saturation * 1.3f + 0.08f), qBound(0.45f, value * 1.1f, 0.92f)));
+        }
+        *base = QColor::fromRgbF(red / 5 * 0.45, green / 5 * 0.45, blue / 5 * 0.45);
+    } else {
+        colours = {QColor(123, 94, 167), QColor(176, 86, 122), QColor(201, 138, 90), QColor(74, 111, 165), QColor(63, 143, 138)};
+        *base = QColor(28, 30, 38);
+    }
+    return colours;
 }
 
 // A blurred copy of the backdrop for `screen`, at a quarter of the screen resolution (it is drawn scaled up).
@@ -332,7 +393,45 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
     painter.setPen(Qt::NoPen);
     const QScreen *currentScreen = screen();
     const QPixmap backdrop = (neoGlassImageMode() && currentScreen) ? neoBackdrop(currentScreen) : QPixmap();
-    if (!backdrop.isNull()) {
+    const bool lava = neoGlassImageMode() && neoGlassLavaMode();
+    if (lava) {
+        // animated backdrop: about twelve small frames a second, only while this window is the active one
+        if (!m_lavaTimer) {
+            m_lavaTimer = new QTimer(this);
+            m_lavaTimer->setInterval(80);
+            connect(m_lavaTimer, &QTimer::timeout, this, [this] {
+                if (isVisible() && window()->isActiveWindow()) {
+                    update();
+                }
+            });
+        }
+        if (!m_lavaTimer->isActive()) {
+            m_lavaTimer->start();
+        }
+        static QElapsedTimer clock;
+        if (!clock.isValid()) {
+            clock.start();
+        }
+        const qreal speed = qBound(0, neoSettingInt("LAVA_SPEED", 30), 100) / 30.0;
+        QColor base;
+        const QList<QColor> colours = neoLavaColours(backdrop, &base);
+        const QImage frame = neoLavaFrame((card.size() / 8).toSize().expandedTo(QSize(8, 8)), colours, base, clock.elapsed() / 1000.0 * speed);
+        QPainterPath clip;
+        clip.addRoundedRect(card, radius, radius);
+        painter.save();
+        painter.setClipPath(clip);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.drawImage(card, frame);
+        QColor tint = palette().color(QPalette::Window);
+        tint.setAlphaF(1.0 - qBound(0, neoSettingInt("GLASS", 55), 100) / 100.0);
+        painter.fillRect(card, tint);
+        painter.restore();
+    } else if (m_lavaTimer && m_lavaTimer->isActive()) {
+        m_lavaTimer->stop();
+    }
+    if (lava) {
+        // drawn above
+    } else if (!backdrop.isNull()) {
         // static image: the part of the blurred wallpaper that lies behind the card on screen, under a window-coloured tint
         QPainterPath clip;
         clip.addRoundedRect(card, radius, radius);

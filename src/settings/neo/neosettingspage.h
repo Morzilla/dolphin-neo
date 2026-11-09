@@ -39,7 +39,8 @@ private:
     QCheckBox *m_tiles;
     QCheckBox *m_twoLines;
     QCheckBox *m_glassPanel;
-    QCheckBox *m_liveBlur;
+    QComboBox *m_backdrop;
+    QSlider *m_lavaSpeed;
     QCheckBox *m_devices;
 };
 
