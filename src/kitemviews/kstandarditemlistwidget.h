@@ -287,6 +287,7 @@ private:
 
     // dolphin-neo: icon-less row (see neoNoIcons())
     QString m_neoSigla; // file type abbreviation drawn as a watermark
+    int m_neoCategory = 0; // NeoKind::Category of the file, for the line glyph of the type mark
     QString m_neoIconName; // type icon drawn, faint, before the abbreviation
     QPixmap m_neoIcon;
     bool m_neoIconFaded = false;

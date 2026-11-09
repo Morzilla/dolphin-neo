@@ -8,7 +8,10 @@
 #DOLPHIN_NEO_ICONS=show
 # Row style: card (default), open, line, stripe (stock), none. The button in the bar switches card/open and remembers it.
 #DOLPHIN_NEO_ROWS=card
-# How the type abbreviation is drawn: fill (default), outline, label
+# How the file type is marked at the start of a row: watermark (default: faint icon and large abbreviation),
+# or a line glyph with the abbreviation as tile, pill, signs or header
+#DOLPHIN_NEO_MARK=watermark
+# How the abbreviation of the watermark is drawn: fill (default), outline, label
 #DOLPHIN_NEO_SIGLA=fill
 # Extra space between auto-sized columns, in pixels (only with DOLPHIN_NEO_LIST=columns)
 #DOLPHIN_NEO_COLGAP=28

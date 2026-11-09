@@ -454,11 +454,16 @@ bool DolphinDockWidget::isLocked() const
 void DolphinDockWidget::paintEvent(QPaintEvent *event)
 {
     QDockWidget::paintEvent(event);
-    if (neoGlassPlain() || isFloating()) {
-        return;
-    }
-
     QPainter painter(this);
+    paintNeoGlass(painter);
+}
+
+bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
+{
+    if (neoGlassPlain() || isFloating()) {
+        return false;
+    }
+    bool opaque = true;
     painter.setRenderHint(QPainter::Antialiasing);
     const QRectF card = QRectF(rect()).adjusted(6, 6, -6, -6);
     const qreal radius = 12;
@@ -500,7 +505,7 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
         QPainterPath clip;
         clip.addRoundedRect(card, radius, radius);
         painter.save();
-        painter.setClipPath(clip);
+        painter.setClipPath(clip, Qt::IntersectClip); // keep a clip set by the caller (the Places titles)
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
         painter.drawImage(card, frame);
         QColor tint = palette().color(QPalette::Window);
@@ -517,7 +522,7 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
         QPainterPath clip;
         clip.addRoundedRect(card, radius, radius);
         painter.save();
-        painter.setClipPath(clip);
+        painter.setClipPath(clip, Qt::IntersectClip); // keep a clip set by the caller (the Places titles)
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
         const QPointF onScreen = QPointF(mapToGlobal(card.topLeft().toPoint()) - currentScreen->geometry().topLeft());
         const qreal factor = qreal(backdrop.width()) / currentScreen->geometry().width();
@@ -528,6 +533,7 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
         painter.restore();
     } else {
         // live blur: thin out the window tint under the card, so the compositor's blur shows through
+        opaque = false;
         painter.setCompositionMode(QPainter::CompositionMode_DestinationOut);
         painter.setBrush(QColor(0, 0, 0, qRound(m_glass * 255 / 100)));
         painter.drawRoundedRect(card, radius, radius);
@@ -589,6 +595,7 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
             painter.drawRoundedRect(QRectF(groove.topLeft(), QSizeF(qMax(6.0, groove.width() * used), groove.height())), 3, 3);
         }
     }
+    return opaque;
 }
 
 void DolphinDockWidget::timerEvent(QTimerEvent *event)

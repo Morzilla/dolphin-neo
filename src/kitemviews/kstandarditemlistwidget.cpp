@@ -41,6 +41,90 @@
 
 namespace
 {
+// dolphin-neo: how the file type is marked at the start of a row (setting MARK, read at start-up).
+// Watermark is the faint icon and large abbreviation; the others pair a small line glyph with the abbreviation.
+enum class NeoMark { Watermark, Tile, Pill, Signs, Header };
+NeoMark neoMark()
+{
+    static const NeoMark mark = [] {
+        const QString name = neoSetting("MARK").toLower();
+        return name == QLatin1String("tile") ? NeoMark::Tile
+            : name == QLatin1String("pill")  ? NeoMark::Pill
+            : name == QLatin1String("signs") ? NeoMark::Signs
+            : name == QLatin1String("header") ? NeoMark::Header
+                                              : NeoMark::Watermark;
+    }();
+    return mark;
+}
+
+// A line drawing for each kind of file, in a 24 x 24 box, to be stroked.
+QPainterPath neoGlyph(int category)
+{
+    QPainterPath p;
+    auto lines = [&p](std::initializer_list<QPointF> points, bool close = false) {
+        bool first = true;
+        for (const QPointF &point : points) {
+            if (first) {
+                p.moveTo(point);
+                first = false;
+            } else {
+                p.lineTo(point);
+            }
+        }
+        if (close) {
+            p.closeSubpath();
+        }
+    };
+    switch (category) {
+    case NeoKind::Folder:
+        lines({{3, 6}, {9, 6}, {11, 8.5}, {21, 8.5}, {21, 19}, {3, 19}}, true);
+        break;
+    case NeoKind::Image:
+        p.addRoundedRect(QRectF(4, 5, 16, 14), 1.5, 1.5);
+        lines({{4.5, 16.5}, {8.5, 12.5}, {12, 16}, {15, 13}, {19.5, 17.5}});
+        p.addEllipse(QPointF(15.5, 9.5), 1.3, 1.3);
+        break;
+    case NeoKind::Sheet:
+        p.addRoundedRect(QRectF(5, 4, 14, 16), 1.5, 1.5);
+        lines({{5, 9.5}, {19, 9.5}});
+        lines({{5, 14.5}, {19, 14.5}});
+        lines({{11, 4}, {11, 20}});
+        break;
+    case NeoKind::Archive:
+        p.addRoundedRect(QRectF(5, 4, 14, 16), 1.5, 1.5);
+        lines({{12, 4}, {12, 6}});
+        lines({{12, 8}, {12, 10}});
+        lines({{12, 12}, {12, 14}});
+        p.addRect(QRectF(10.5, 15, 3, 2.5));
+        break;
+    case NeoKind::Media:
+        p.addEllipse(QPointF(12, 12), 8, 8);
+        lines({{10, 8.5}, {16, 12}, {10, 15.5}}, true);
+        break;
+    case NeoKind::Data:
+        lines({{8.5, 7.5}, {4, 12}, {8.5, 16.5}});
+        lines({{15.5, 7.5}, {20, 12}, {15.5, 16.5}});
+        lines({{13.2, 6}, {10.8, 18}});
+        break;
+    case NeoKind::Package:
+        lines({{4, 8}, {12, 4}, {20, 8}, {20, 16}, {12, 20}, {4, 16}}, true);
+        lines({{4, 8}, {12, 12}, {20, 8}});
+        lines({{12, 12}, {12, 20}});
+        break;
+    case NeoKind::Document:
+        lines({{7, 3}, {14, 3}, {19, 8}, {19, 21}, {7, 21}}, true);
+        lines({{14, 3}, {14, 8}, {19, 8}});
+        lines({{10, 13}, {16, 13}});
+        lines({{10, 17}, {16, 17}});
+        break;
+    default:
+        lines({{7, 3}, {14, 3}, {19, 8}, {19, 21}, {7, 21}}, true);
+        lines({{14, 3}, {14, 8}, {19, 8}});
+        break;
+    }
+    return p;
+}
+
 // dolphin-neo: the main colour of an icon — the average of its pixels weighted by how saturated they are,
 // lightened enough to read on a dark row. Cached per icon name. Invalid if the icon has no usable pixels.
 QColor neoIconColor(const QString &iconName, const QPixmap &pixmap)
@@ -526,50 +610,109 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         wash.setColorAt(1.0, washEnd);
         painter->fillRect(rowRect, wash);
 
-        // the type icon, faint, then the abbreviation
-        if (!m_neoIcon.isNull()) {
-            const qreal iconSide = m_neoIcon.width() / m_neoIcon.devicePixelRatio();
-            painter->setOpacity(0.55); // the pixmap itself already fades from left to right
-            painter->drawPixmap(QPointF(x0, (size().height() - iconSide) / 2.0), m_neoIcon);
-            painter->setOpacity(1.0);
-            x0 += iconSide + 8;
-        }
-        // The abbreviation. DOLPHIN_NEO_SIGLA picks how it is drawn:
-        //   fill (default)     large solid letters in the row colour, faint
-        //   outline            hollow letters: a thin outline that thins out to the right, barely filled
-        //   label              small, widely spaced capitals in the full row colour
-        static const QByteArray siglaStyle = neoSetting("SIGLA").toLower().toLatin1();
-        const qreal rowHeight = size().height();
-        if (siglaStyle == "label") {
-            QFont labelFont(m_customizedFont);
-            labelFont.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.66)));
-            labelFont.setWeight(QFont::DemiBold);
-            labelFont.setLetterSpacing(QFont::PercentageSpacing, 118);
-            QColor ink = m_neoTint;
-            ink.setAlphaF(0.92);
-            painter->setFont(labelFont);
-            painter->setPen(ink);
-            painter->drawText(QRectF(x0, 0, fade * 2, rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
-        } else if (siglaStyle != "outline") {
-            QColor ink = m_neoTint;
-            ink.setAlphaF(neoIsDark(styleOption().palette) ? 0.36 : 0.30);
-            painter->setFont(watermarkFont);
-            painter->setPen(ink);
-            painter->drawText(QRectF(x0, -rowHeight, fade * 2, 3 * rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
-        } else {
-            const QFontMetricsF metrics(watermarkFont);
-            QPainterPath letters;
-            letters.addText(QPointF(x0, (rowHeight + metrics.capHeight()) / 2.0), watermarkFont, m_neoSigla);
-            QLinearGradient outline(x0, 0, x0 + fade, 0);
-            QColor strong = m_neoTint, weak = m_neoTint, body = m_neoTint;
-            strong.setAlphaF(0.80);
-            weak.setAlphaF(0.28);
-            body.setAlphaF(0.07);
-            outline.setColorAt(0.0, strong);
-            outline.setColorAt(1.0, weak);
+        const NeoMark mark = neoMark();
+        if (mark != NeoMark::Watermark) {
+            // Glyph and abbreviation as one mark, in the colour of the file's kind.
+            const qreal h = size().height();
+            const qreal fontPx = m_customizedFontMetrics.height();
+            QColor soft = m_neoTint, edge = m_neoTint, block = m_neoTint;
+            soft.setAlphaF(0.16);
+            edge.setAlphaF(0.36);
+            block.setAlphaF(0.20);
             painter->setRenderHint(QPainter::Antialiasing);
-            painter->fillPath(letters, body);
-            painter->strokePath(letters, QPen(QBrush(outline), 1.25, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            auto glyph = [this, painter](const QRectF &box) {
+                painter->save();
+                painter->translate(box.topLeft());
+                painter->scale(box.width() / 24.0, box.height() / 24.0);
+                painter->setPen(QPen(m_neoTint, 1.7 * 24.0 / box.width(), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                painter->setBrush(Qt::NoBrush);
+                painter->drawPath(neoGlyph(m_neoCategory));
+                painter->restore();
+            };
+            auto sigla = [this, painter](const QRectF &box, qreal pixelSize, int flags) {
+                QFont font(m_customizedFont);
+                font.setPixelSize(qMax(7, qRound(pixelSize)));
+                font.setWeight(QFont::Bold);
+                font.setLetterSpacing(QFont::PercentageSpacing, 106);
+                painter->setFont(font);
+                painter->setPen(m_neoTint);
+                painter->drawText(box, flags, m_neoSigla);
+            };
+            if (mark == NeoMark::Tile) {
+                const qreal side = h - 18;
+                const QRectF tile(x0 + 3, (h - side) / 2.0, side, side);
+                painter->setPen(QPen(edge, 1));
+                painter->setBrush(soft);
+                painter->drawRoundedRect(tile.adjusted(0.5, 0.5, -0.5, -0.5), side / 3.8, side / 3.8);
+                const qreal g = side * 0.40;
+                glyph(QRectF(tile.center().x() - g / 2, tile.top() + side * 0.15, g, g));
+                sigla(QRectF(tile.left(), tile.top() + side * 0.60, side, side * 0.30), fontPx * 0.46, Qt::AlignCenter);
+            } else if (mark == NeoMark::Pill) {
+                const qreal pillHeight = qMin(h - 20, fontPx * 1.5), pillWidth = fontPx * 4.8;
+                const QRectF pill(x0 + 3, (h - pillHeight) / 2.0, pillWidth, pillHeight);
+                painter->setPen(QPen(edge, 1));
+                painter->setBrush(soft);
+                painter->drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), pillHeight / 2.0, pillHeight / 2.0);
+                const qreal g = pillHeight * 0.56;
+                glyph(QRectF(pill.left() + pillHeight * 0.36, pill.center().y() - g / 2, g, g));
+                sigla(QRectF(pill.left() + pillHeight * 0.36 + g + 6, pill.top(), pillWidth, pillHeight), fontPx * 0.56, Qt::AlignLeft | Qt::AlignVCenter);
+            } else if (mark == NeoMark::Signs) {
+                const qreal g = 22;
+                glyph(QRectF(x0 + 7, (h - g) / 2.0, g, g));
+                sigla(QRectF(x0 + 7 + g + 9, 0, fontPx * 4, h), fontPx * 0.66, Qt::AlignLeft | Qt::AlignVCenter);
+            } else { // Header: the start of the card takes the colour and carries the mark
+                const QRectF head(rowRect.left(), rowRect.top(), 62, rowRect.height());
+                painter->fillRect(head, block);
+                const qreal g = 20;
+                glyph(QRectF(head.center().x() - g / 2, head.top() + head.height() * 0.17, g, g));
+                sigla(QRectF(head.left(), head.top() + head.height() * 0.60, head.width(), head.height() * 0.28), fontPx * 0.46, Qt::AlignCenter);
+            }
+        } else {
+            // the type icon, faint, then the abbreviation
+            if (!m_neoIcon.isNull()) {
+                const qreal iconSide = m_neoIcon.width() / m_neoIcon.devicePixelRatio();
+                painter->setOpacity(0.55); // the pixmap itself already fades from left to right
+                painter->drawPixmap(QPointF(x0, (size().height() - iconSide) / 2.0), m_neoIcon);
+                painter->setOpacity(1.0);
+                x0 += iconSide + 8;
+            }
+            // The abbreviation. DOLPHIN_NEO_SIGLA picks how it is drawn:
+            //   fill (default)     large solid letters in the row colour, faint
+            //   outline            hollow letters: a thin outline that thins out to the right, barely filled
+            //   label              small, widely spaced capitals in the full row colour
+            static const QByteArray siglaStyle = neoSetting("SIGLA").toLower().toLatin1();
+            const qreal rowHeight = size().height();
+            if (siglaStyle == "label") {
+                QFont labelFont(m_customizedFont);
+                labelFont.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.66)));
+                labelFont.setWeight(QFont::DemiBold);
+                labelFont.setLetterSpacing(QFont::PercentageSpacing, 118);
+                QColor ink = m_neoTint;
+                ink.setAlphaF(0.92);
+                painter->setFont(labelFont);
+                painter->setPen(ink);
+                painter->drawText(QRectF(x0, 0, fade * 2, rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
+            } else if (siglaStyle != "outline") {
+                QColor ink = m_neoTint;
+                ink.setAlphaF(neoIsDark(styleOption().palette) ? 0.36 : 0.30);
+                painter->setFont(watermarkFont);
+                painter->setPen(ink);
+                painter->drawText(QRectF(x0, -rowHeight, fade * 2, 3 * rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
+            } else {
+                const QFontMetricsF metrics(watermarkFont);
+                QPainterPath letters;
+                letters.addText(QPointF(x0, (rowHeight + metrics.capHeight()) / 2.0), watermarkFont, m_neoSigla);
+                QLinearGradient outline(x0, 0, x0 + fade, 0);
+                QColor strong = m_neoTint, weak = m_neoTint, body = m_neoTint;
+                strong.setAlphaF(0.80);
+                weak.setAlphaF(0.28);
+                body.setAlphaF(0.07);
+                outline.setColorAt(0.0, strong);
+                outline.setColorAt(1.0, weak);
+                painter->setRenderHint(QPainter::Antialiasing);
+                painter->fillPath(letters, body);
+                painter->strokePath(letters, QPen(QBrush(outline), 1.25, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            }
         }
         painter->restore();
 
@@ -1836,7 +1979,26 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
         }
         m_neoDateRole = dateRole;
         const qreal gap = columnWidthInc / 2;
-        const qreal left = noIcons ? leftPadding() + 14 + widgetHeight * 0.62 + 8 + fontHeight * 5.4 : firstColumnInc + gap;
+        qreal left = firstColumnInc + gap;
+        if (noIcons) {
+            switch (neoMark()) {
+            case NeoMark::Tile:
+                left = leftPadding() + 13 + (widgetHeight - 18) + 16;
+                break;
+            case NeoMark::Pill:
+                left = leftPadding() + 13 + fontHeight * 4.8 + 16;
+                break;
+            case NeoMark::Signs:
+                left = leftPadding() + 17 + 22 + 9 + fontHeight * 2.7 + 14;
+                break;
+            case NeoMark::Header:
+                left = leftPadding() + 3 + 62 + 16;
+                break;
+            default:
+                left = leftPadding() + 14 + widgetHeight * 0.62 + 8 + fontHeight * 5.4;
+                break;
+            }
+        }
         const qreal right = size().width() - 18;
         const int lineGap = 2;
         const qreal firstY = qMax(qreal(option.padding), (widgetHeight - (2 * fontHeight + lineGap)) / 2.0);
@@ -1902,6 +2064,7 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             const NeoKind kind = neoKindFor(values.value("text").toString(), values.value("isDir").toBool());
             m_neoSigla = kind.sigla;
             m_neoTint = kind.tint;
+            m_neoCategory = int(kind.category);
             const QString iconName = values.value("iconName").toString();
             const int iconSide = qMax(16, qRound(widgetHeight * 0.62));
             if (iconName != m_neoIconName || m_neoIcon.isNull() || qRound(m_neoIcon.width() / m_neoIcon.devicePixelRatio()) != iconSide) {

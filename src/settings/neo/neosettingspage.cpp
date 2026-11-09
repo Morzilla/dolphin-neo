@@ -98,11 +98,19 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     m_rows->addItem(QStringLiteral("Nessuno sfondo"), QStringLiteral("none"));
     form->addRow(QStringLiteral("Righe dell'elenco:"), m_rows);
 
+    m_mark = new QComboBox(this);
+    m_mark->addItem(QStringLiteral("Filigrana: icona tenue e sigla grande"), QString());
+    m_mark->addItem(QStringLiteral("Tessera: disegno e sigla in un quadrato"), QStringLiteral("tile"));
+    m_mark->addItem(QStringLiteral("Pillola: disegno e sigla in un'etichetta"), QStringLiteral("pill"));
+    m_mark->addItem(QStringLiteral("Solo segni: disegno e sigla senza contenitore"), QStringLiteral("signs"));
+    m_mark->addItem(QStringLiteral("Testata: disegno e sigla nel bordo colorato"), QStringLiteral("header"));
+    form->addRow(QStringLiteral("Segno del tipo di file *:"), m_mark);
+
     m_sigla = new QComboBox(this);
     m_sigla->addItem(QStringLiteral("Piena e tenue"), QStringLiteral("fill"));
     m_sigla->addItem(QStringLiteral("Solo contorno"), QStringLiteral("outline"));
     m_sigla->addItem(QStringLiteral("Etichetta piccola"), QStringLiteral("label"));
-    form->addRow(QStringLiteral("Sigla del tipo di file *:"), m_sigla);
+    form->addRow(QStringLiteral("Sigla della filigrana *:"), m_sigla);
 
     m_icons = new QCheckBox(QStringLiteral("Mostra le icone nell'elenco al posto della sigla *"), this);
     form->addRow(QString(), m_icons);
@@ -124,6 +132,7 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     m_blur->setEnabled(!neoSettingFromEnvironment("GLASS_BLUR"));
     m_rows->setEnabled(!neoSettingFromEnvironment("ROWS"));
     m_sigla->setEnabled(!neoSettingFromEnvironment("SIGLA"));
+    m_mark->setEnabled(!neoSettingFromEnvironment("MARK"));
     m_icons->setEnabled(!neoSettingFromEnvironment("ICONS"));
     m_tiles->setEnabled(!neoSettingFromEnvironment("TILES"));
     m_twoLines->setEnabled(!neoSettingFromEnvironment("LIST"));
@@ -137,6 +146,7 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     connect(m_blur, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
     connect(m_rows, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
     connect(m_sigla, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
+    connect(m_mark, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
     connect(m_icons, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
     connect(m_tiles, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
     connect(m_twoLines, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
@@ -180,6 +190,7 @@ void NeoSettingsPage::loadSettings()
     m_lavaColours->setCurrentIndex(spec.isEmpty() ? 0 : spec == QLatin1String("wallpaper") ? 1 : 2);
     m_devices->setChecked(neoSetting("DEVICES").toLower() == QLatin1String("show"));
     m_sigla->setCurrentIndex(qMax(0, m_sigla->findData(neoSetting("SIGLA", QStringLiteral("fill")).toLower())));
+    m_mark->setCurrentIndex(qMax(0, m_mark->findData(neoSetting("MARK").toLower())));
     m_icons->setChecked(neoSetting("ICONS").toLower() == QLatin1String("show"));
     m_tiles->setChecked(neoSetting("TILES").toLower() != QLatin1String("off"));
 }
@@ -190,6 +201,7 @@ void NeoSettingsPage::applySettings()
     setNeoSetting("GLASS", QString::number(m_glass->value()));
     setNeoSetting("GLASS_BLUR", QString::number(m_blur->value()));
     setNeoSetting("SIGLA", m_sigla->currentData().toString());
+    setNeoSetting("MARK", m_mark->currentData().toString());
     setNeoSetting("ICONS", m_icons->isChecked() ? QStringLiteral("show") : QString());
     setNeoSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
     setNeoSetting("LIST", m_twoLines->isChecked() ? QString() : QStringLiteral("columns"));
@@ -226,6 +238,7 @@ void NeoSettingsPage::restoreDefaults()
     m_blur->setValue(45);
     m_rows->setCurrentIndex(0);
     m_sigla->setCurrentIndex(0);
+    m_mark->setCurrentIndex(0);
     m_icons->setChecked(false);
     m_tiles->setChecked(true);
     m_twoLines->setChecked(true);

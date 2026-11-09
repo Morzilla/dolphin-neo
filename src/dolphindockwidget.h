@@ -29,6 +29,13 @@ public:
     void setLocked(bool lock);
     bool isLocked() const;
 
+    /**
+     * dolphin-neo: paint the glass card of this panel with \a painter, in this widget's coordinates.
+     * Returns false if nothing opaque was painted (stock look, or the "live blur" hole), in which
+     * case it cannot be used to wipe something drawn on top of the card.
+     */
+    bool paintNeoGlass(QPainter &painter);
+
 protected:
     /**
      * Make sure we do not emit QDockWidget::visibilityChanged() signals whenever Dolphin's window is minimized or restored.

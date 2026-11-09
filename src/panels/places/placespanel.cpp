@@ -11,6 +11,8 @@
 
 #include "placespanel.h"
 
+#include "dolphindockwidget.h"
+
 #include "kitemviews/kitemlistwidget.h"
 
 #include "dolphin_generalsettings.h"
@@ -156,30 +158,56 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
         return;
     }
 
-    QPainter painter(viewport());
-    painter.setRenderHint(QPainter::Antialiasing);
     QFont titleFont = font();
     titleFont.setPointSizeF(titleFont.pointSizeF() * 0.84);
     titleFont.setWeight(QFont::DemiBold);
-    painter.setFont(titleFont);
     const QFontMetrics metrics(titleFont);
+
+    // where the titles are, and the pills that replace them
+    struct Pill {
+        QRect header;
+        QRect rect;
+        QString text;
+    };
+    QList<Pill> pills;
+    QRegion headers;
     for (const Title &title : std::as_const(titles)) {
         const int headerHeight = rowHeight > 0 ? title.rect.height() - rowHeight : metrics.height() + 10;
         if (headerHeight < metrics.height() || title.text.isEmpty()) {
             continue;
         }
-        // The pill must hide the original title completely: it is as tall as the title area, opaque, and at least
-        // as wide as the original text (which uses the normal font).
-        const int pillHeight = qMax(metrics.height() + 6, headerHeight - 3);
         const QRect header(title.rect.left(), title.rect.top(), title.rect.width(), headerHeight);
-        const int pillWidth = qMax(metrics.horizontalAdvance(title.text) + 22, fontMetrics().horizontalAdvance(title.text) + 20);
-        const QRect pill(header.left() + 1, header.bottom() - pillHeight + 1, qMin(pillWidth, header.width() - 2), pillHeight);
-        painter.setPen(Qt::NoPen);
-        const bool dark = neoIsDark(palette());
-        painter.setBrush(dark ? QColor(22, 23, 26, 242) : QColor(255, 255, 255, 244));
-        painter.drawRoundedRect(pill, pillHeight / 2.0, pillHeight / 2.0);
-        painter.setPen(dark ? QColor(236, 239, 244) : QColor(35, 38, 41));
-        painter.drawText(pill, Qt::AlignCenter, title.text);
+        const int pillHeight = qMin(headerHeight - 2, metrics.height() + 8);
+        pills.append({header, QRect(header.left() + 2, header.bottom() - pillHeight, metrics.horizontalAdvance(title.text) + 22, pillHeight), title.text});
+        headers += header;
+    }
+    if (pills.isEmpty()) {
+        return;
+    }
+
+    QPainter painter(viewport());
+    // Wipe the original titles: paint the panel's own backdrop (the dock widget draws it) again over the title
+    // areas. The list has no background of its own, so this restores exactly what was behind the text.
+    if (auto *dock = qobject_cast<DolphinDockWidget *>(parentWidget())) {
+        const QPoint offset = viewport()->mapTo(dock, QPoint(0, 0));
+        painter.save();
+        painter.setClipRegion(headers);
+        painter.translate(-offset);
+        dock->paintNeoGlass(painter);
+        painter.restore();
+    }
+
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setFont(titleFont);
+    const bool dark = neoIsDark(palette());
+    for (const Pill &pill : std::as_const(pills)) {
+        // a light glass pill: a faint veil with a hairline edge, and the title in the normal text colour
+        const QRectF rect = QRectF(pill.rect).adjusted(0.5, 0.5, -0.5, -0.5);
+        painter.setPen(QPen(dark ? QColor(255, 255, 255, 46) : QColor(0, 0, 0, 30), 1));
+        painter.setBrush(dark ? QColor(255, 255, 255, 30) : QColor(255, 255, 255, 150));
+        painter.drawRoundedRect(rect, rect.height() / 2.0, rect.height() / 2.0);
+        painter.setPen(palette().color(QPalette::WindowText));
+        painter.drawText(pill.rect, Qt::AlignCenter, pill.text);
     }
 }
 

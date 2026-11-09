@@ -36,6 +36,7 @@ private:
     QSlider *m_blur;
     QComboBox *m_rows;
     QComboBox *m_sigla;
+    QComboBox *m_mark;
     QCheckBox *m_icons;
     QCheckBox *m_tiles;
     QCheckBox *m_twoLines;
