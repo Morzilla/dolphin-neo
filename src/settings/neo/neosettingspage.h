@@ -44,6 +44,7 @@ private:
     QSlider *m_lavaSpeed;
     QSlider *m_lavaSize;
     QComboBox *m_lavaColours;
+    QComboBox *m_lavaStyle;
     KColorButton *m_lavaColour[3];
     QCheckBox *m_devices;
 };

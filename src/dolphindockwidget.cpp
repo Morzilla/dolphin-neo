@@ -123,24 +123,65 @@ QImage neoLavaFrame(const QSize &size, const QList<QColor> &colours, const QColo
     // map screen coordinates to the frame
     painter.scale(size.width() / region.width(), size.height() / region.height());
     painter.translate(-region.topLeft());
-    const int blobs = qMax(9, int(colours.size()) * 4); // enough of them that every part of the screen has some
-    for (int i = 0; i < blobs; ++i) {
-        // every blob has its own home on the screen, slow periods (about one to three minutes) and phases
-        const qreal homeX = (i * 0.618034) - qFloor(i * 0.618034), homeY = (i * 0.381966 + 0.2) - qFloor(i * 0.381966 + 0.2);
-        const qreal periodX = 70.0 + 23.0 * (i % 5), periodY = 95.0 + 31.0 * ((i * 3) % 5), periodR = 60.0 + 17.0 * (i % 4);
-        const QPointF centre(screen.width() * (homeX + 0.16 * qSin(2 * M_PI * seconds / periodX + i * 1.7)),
-                             screen.height() * (homeY + 0.20 * qCos(2 * M_PI * seconds / periodY + i * 2.3)));
-        const qreal radius = screen.height() * 0.42 * (sizeFactor + 0.14 * qSin(2 * M_PI * seconds / periodR + i));
-        QColor inner = colours.at(i % colours.size()), mid = inner, outer = inner;
-        inner.setAlphaF(0.90);
-        mid.setAlphaF(0.42);
-        outer.setAlphaF(0.0);
-        QRadialGradient blob(centre, radius);
-        blob.setColorAt(0.0, inner);
-        blob.setColorAt(0.55, mid);
-        blob.setColorAt(1.0, outer);
-        painter.setBrush(blob);
-        painter.drawEllipse(centre, radius, radius);
+    // The blobs sit on a grid that covers the whole screen (and a margin around it), each one drifting around its
+    // own grid point. The cells are small compared with the panel, so wherever the window is there are always
+    // several blobs behind it and never an empty patch. Only the blobs that reach the region are drawn.
+    const qreal cell = screen.height() * 0.24;
+    const qreal radiusBase = cell * 1.25 * (sizeFactor / 0.63);
+    const int firstColumn = qFloor((region.left() - radiusBase * 1.3) / cell), lastColumn = qCeil((region.right() + radiusBase * 1.3) / cell);
+    const int firstRow = qFloor((region.top() - radiusBase * 1.3) / cell), lastRow = qCeil((region.bottom() + radiusBase * 1.3) / cell);
+    for (int row = firstRow; row <= lastRow; ++row) {
+        for (int column = firstColumn; column <= lastColumn; ++column) {
+            const int i = row * 7 + column * 13; // a different phase, period and colour for every grid point
+            const int k = ((i % 1000) + 1000) % 1000;
+            const qreal periodX = 70.0 + 23.0 * (k % 5), periodY = 95.0 + 31.0 * ((k * 3) % 5), periodR = 60.0 + 17.0 * (k % 4);
+            const QPointF centre(cell * (column + 0.5 + 0.42 * qSin(2 * M_PI * seconds / periodX + k * 1.7)),
+                                 cell * (row + 0.5 + 0.42 * qCos(2 * M_PI * seconds / periodY + k * 2.3)));
+            const qreal radius = radiusBase * (1.0 + 0.18 * qSin(2 * M_PI * seconds / periodR + k));
+            QColor inner = colours.at(((row * 2 + column) % colours.size() + colours.size()) % colours.size()), mid = inner, outer = inner;
+            inner.setAlphaF(0.88);
+            mid.setAlphaF(0.40);
+            outer.setAlphaF(0.0);
+            QRadialGradient blob(centre, radius);
+            blob.setColorAt(0.0, inner);
+            blob.setColorAt(0.55, mid);
+            blob.setColorAt(1.0, outer);
+            painter.setBrush(blob);
+            painter.drawEllipse(centre, radius, radius);
+        }
+    }
+    return frame;
+}
+
+// The other animated backdrop (LAVA_STYLE=flow, the default): a gradient that flows. Every point takes a colour
+// between the palette colours from a few very slow waves crossing the screen, so the panel is always completely
+// filled, wherever the window is. Like the blobs it lives in screen coordinates and is drawn small.
+QImage neoFlowFrame(const QSize &size, const QList<QColor> &colours, qreal seconds, const QRectF &region, const QSizeF &screen)
+{
+    QImage frame(size, QImage::Format_RGB32);
+    if (colours.isEmpty() || region.isEmpty() || screen.isEmpty()) {
+        frame.fill(Qt::black);
+        return frame;
+    }
+    // LAVA_SIZE 10-100: how broad the colour fields are (default 55)
+    const qreal scale = 0.63 / (0.30 + qBound(10, neoSettingInt("LAVA_SIZE", 55), 100) / 100.0 * 0.60);
+    const qreal unit = screen.height();
+    const int last = colours.size() - 1;
+    for (int y = 0; y < size.height(); ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(frame.scanLine(y));
+        const qreal v = (region.top() + (y + 0.5) / size.height() * region.height()) / unit * scale;
+        for (int x = 0; x < size.width(); ++x) {
+            const qreal u = (region.left() + (x + 0.5) / size.width() * region.width()) / unit * scale;
+            // four waves with different directions and periods of one and a half to three minutes
+            const qreal wave = 0.30 * qSin(2 * M_PI * (u * 0.9 + seconds / 97.0)) + 0.28 * qSin(2 * M_PI * (v * 0.7 - seconds / 131.0) + 1.3)
+                + 0.24 * qSin(2 * M_PI * ((u + v) * 0.6 + seconds / 173.0)) + 0.18 * qSin(2 * M_PI * ((u - v) * 1.1 - seconds / 113.0) + 0.7);
+            const qreal position = qBound(0.0, 0.5 + 0.5 * wave / 0.72, 1.0) * last;
+            const int index = qMin(int(position), qMax(0, last - 1));
+            const qreal t = last > 0 ? position - index : 0.0;
+            const QColor &from = colours.at(index), &to = colours.at(qMin(index + 1, last));
+            line[x] = qRgb(qRound(from.red() + (to.red() - from.red()) * t), qRound(from.green() + (to.green() - from.green()) * t),
+                           qRound(from.blue() + (to.blue() - from.blue()) * t));
+        }
     }
     return frame;
 }
@@ -180,6 +221,14 @@ QList<QColor> neoLavaColours(const QPixmap &backdrop, QColor *base)
     if (colours.isEmpty()) {
         colours = {QColor(0x2f, 0x6f, 0x8f), QColor(0x8a, 0x5a, 0x2c), QColor(0x3c, 0x4a, 0x78)};
     }
+    // the ground under the blobs: a dark blend of their colours, so that no gap ever shows a flat grey
+    qreal red = 0, green = 0, blue = 0;
+    for (const QColor &colour : std::as_const(colours)) {
+        red += colour.redF();
+        green += colour.greenF();
+        blue += colour.blueF();
+    }
+    *base = QColor::fromRgbF(red / colours.size() * 0.55, green / colours.size() * 0.55, blue / colours.size() * 0.55);
     return colours;
 }
 
@@ -444,7 +493,10 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
         }
         const QRectF onScreen = currentScreen ? QRectF(QPointF(mapToGlobal(card.topLeft().toPoint()) - currentScreen->geometry().topLeft()), card.size()) : card;
         const QSizeF screenSize = currentScreen ? QSizeF(currentScreen->geometry().size()) : card.size();
-        const QImage frame = neoLavaFrame((card.size() / 8).toSize().expandedTo(QSize(8, 8)), colours, base, clock.elapsed() / 1000.0 * speed, onScreen, screenSize);
+        const QSize frameSize = (card.size() / 8).toSize().expandedTo(QSize(8, 8));
+        const qreal seconds = clock.elapsed() / 1000.0 * speed;
+        const QImage frame = neoSetting("LAVA_STYLE").toLower() == QLatin1String("blobs") ? neoLavaFrame(frameSize, colours, base, seconds, onScreen, screenSize)
+                                                                                         : neoFlowFrame(frameSize, colours, seconds, onScreen, screenSize);
         QPainterPath clip;
         clip.addRoundedRect(card, radius, radius);
         painter.save();

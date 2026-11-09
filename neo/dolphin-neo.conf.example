@@ -24,6 +24,8 @@
 # picture's colours (LAVA_SPEED 5-100, default 30). live: the compositor's blur shows through.
 #DOLPHIN_NEO_GLASS_MODE=image
 #DOLPHIN_NEO_LAVA_SPEED=30
+# Kind of animation in lava mode: flow (default, a gradient that flows and always fills the panel) or blobs
+#DOLPHIN_NEO_LAVA_STYLE=flow
 # Lava blob size (10-100, default 55) and colours: empty = teal, amber and indigo; wallpaper = taken from the
 # backdrop picture; or a comma-separated list
 #DOLPHIN_NEO_LAVA_SIZE=55

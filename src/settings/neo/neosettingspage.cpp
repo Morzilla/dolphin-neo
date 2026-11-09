@@ -38,20 +38,24 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     form->addRow(QString(), m_glassPanel);
     m_backdrop = new QComboBox(this);
     m_backdrop->addItem(QStringLiteral("Immagine sfocata"), QString());
-    m_backdrop->addItem(QStringLiteral("Lava lamp (animazione lenta)"), QStringLiteral("lava"));
+    m_backdrop->addItem(QStringLiteral("Gradiente animato (molto lento)"), QStringLiteral("lava"));
     m_backdrop->addItem(QStringLiteral("Blur vero del desktop *"), QStringLiteral("live"));
     form->addRow(QStringLiteral("Sfondo del pannello:"), m_backdrop);
+    m_lavaStyle = new QComboBox(this);
+    m_lavaStyle->addItem(QStringLiteral("Gradiente che scorre"), QString());
+    m_lavaStyle->addItem(QStringLiteral("Macchie (lava lamp)"), QStringLiteral("blobs"));
+    form->addRow(QStringLiteral("Tipo di animazione:"), m_lavaStyle);
     m_lavaSpeed = new QSlider(Qt::Horizontal, this);
     m_lavaSpeed->setRange(5, 100);
-    form->addRow(QStringLiteral("Velocità della lava lamp:"), m_lavaSpeed);
+    form->addRow(QStringLiteral("Velocità dell'animazione:"), m_lavaSpeed);
     m_lavaSize = new QSlider(Qt::Horizontal, this);
     m_lavaSize->setRange(10, 100);
-    form->addRow(QStringLiteral("Grandezza delle macchie:"), m_lavaSize);
+    form->addRow(QStringLiteral("Ampiezza delle zone di colore:"), m_lavaSize);
     m_lavaColours = new QComboBox(this);
     m_lavaColours->addItem(QStringLiteral("Petrolio, ambra e indaco (come nel mockup)"), QString());
     m_lavaColours->addItem(QStringLiteral("Dallo sfondo del desktop"), QStringLiteral("wallpaper"));
     m_lavaColours->addItem(QStringLiteral("Personalizzati"), QStringLiteral("custom"));
-    form->addRow(QStringLiteral("Colori della lava lamp:"), m_lavaColours);
+    form->addRow(QStringLiteral("Colori dell'animazione:"), m_lavaColours);
     auto *colourRow = new QHBoxLayout();
     for (KColorButton *&button : m_lavaColour) {
         button = new KColorButton(this);
@@ -140,6 +144,7 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     connect(m_backdrop, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
     connect(m_lavaSpeed, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
     connect(m_lavaSize, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
+    connect(m_lavaStyle, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
     connect(m_lavaColours, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
     connect(m_devices, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
 }
@@ -162,6 +167,7 @@ void NeoSettingsPage::loadSettings()
     m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(neoSetting("GLASS_MODE").toLower())));
     m_lavaSpeed->setValue(qBound(5, neoSettingInt("LAVA_SPEED", 30), 100));
     m_lavaSize->setValue(qBound(10, neoSettingInt("LAVA_SIZE", 55), 100));
+    m_lavaStyle->setCurrentIndex(neoSetting("LAVA_STYLE").toLower() == QLatin1String("blobs") ? 1 : 0);
     static const char *const defaults[3] = {"#2f6f8f", "#8a5a2c", "#3c4a78"};
     const QString spec = neoSetting("LAVA_COLORS").trimmed().toLower();
     const QStringList custom = spec.split(QLatin1Char(','), Qt::SkipEmptyParts);
@@ -191,6 +197,7 @@ void NeoSettingsPage::applySettings()
     setNeoSetting("GLASS_MODE", m_backdrop->currentData().toString());
     setNeoSetting("LAVA_SPEED", QString::number(m_lavaSpeed->value()));
     setNeoSetting("LAVA_SIZE", QString::number(m_lavaSize->value()));
+    setNeoSetting("LAVA_STYLE", m_lavaStyle->currentData().toString());
     const int colours = m_lavaColours->currentIndex();
     setNeoSetting("LAVA_COLORS",
                   colours == 0   ? QString()
@@ -226,6 +233,7 @@ void NeoSettingsPage::restoreDefaults()
     m_backdrop->setCurrentIndex(0);
     m_lavaSpeed->setValue(30);
     m_lavaSize->setValue(55);
+    m_lavaStyle->setCurrentIndex(0);
     m_lavaColours->setCurrentIndex(0);
     m_devices->setChecked(false);
 }
