@@ -44,19 +44,31 @@ it installs into your home directory next to it.
 - A "Root" toolbar action.
 - The location bar leaves edit mode when the focus moves to another part of the window.
 
-## Build and run
+## Install
+
+One script downloads the source, installs the build dependencies, builds, and installs into your home
+directory (`~/.local/dolphin-neo`), next to your distribution's Dolphin:
 
 ```sh
-sudo dnf builddep dolphin        # Fedora; use your distribution's equivalent
-neo/build.sh                     # installs into ~/.local/dolphin-neo
-neo/dolphin-neo --new-window
+curl -fsSL https://raw.githubusercontent.com/Morzilla/dolphin-neo/neo/neo/install.sh | bash
 ```
+
+or, from a clone, `neo/install.sh`. It adds a "Dolphin Neo" entry to the application menu and a `dolphin-neo`
+command, and installs the files of the optional [Motto-Neo theme](neo/theme/README.md) without activating it
+(`--apply-theme` does that). `--no-deps`, `--no-theme`, `--prefix DIR` and `--uninstall` are the other options.
+
+The script knows dnf (Fedora), apt (Debian, Ubuntu), pacman (Arch) and zypper (openSUSE). Only the Fedora path
+has been run, and only without its dependency step; reports and fixes for the others are welcome. The fork is
+based on Dolphin 26.08.1, which needs KDE Frameworks 6.23 and Qt 6.4 or newer, so distributions that ship older
+ones cannot build it.
+
+To build by hand: install Dolphin's build dependencies, then `neo/build.sh` and `neo/dolphin-neo --new-window`.
 
 Settings are in Dolphin's own settings dialog, on a page called **Neo** (stored in `dolphinrc`, group
 `DolphinNeo`). Every setting can also be forced with a `DOLPHIN_NEO_*` environment variable, documented in
 [`neo/dolphin-neo.conf.example`](neo/dolphin-neo.conf.example); the launcher reads those from
-`~/.config/dolphin-neo.conf`, and a variable that is set wins over the dialog. `neo/dolphinui.rc.example` is a toolbar layout with
-the New Folder, Up and Root buttons (copy it to `~/.local/share/kxmlgui5/dolphin/dolphinui.rc`).
+`~/.config/dolphin-neo.conf`, and a variable that is set wins over the dialog. `neo/dolphinui.rc.example` is a
+toolbar layout with the New Folder, Up and Root buttons; the install script puts it in place if you have none.
 
 ## State of things
 
@@ -77,4 +89,5 @@ counts) from KFileMetaData.
 
 ## Licence
 
-Like Dolphin: GPL-2.0-or-later. See `LICENSES/`.
+Like Dolphin: GPL-2.0-or-later. See `LICENSES/`. The theme in `neo/theme/` derives from L4ki's Motto themes and is
+GPL-3.0; see its README.
