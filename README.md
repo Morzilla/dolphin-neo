@@ -1,3 +1,5 @@
+> **This is dolphin-neo**, an experimental fork of Dolphin with a different file list. What changes, how to build it and what is unfinished: [NEO.md](NEO.md). The rest of this file is Dolphin's own README.
+
 # Dolphin
 
 Dolphin is KDE's file manager that lets you navigate and browse the contents of your hard drives, USB sticks, SD cards, and more. Creating, moving, or deleting files and folders is simple and fast. See more information [on Dolphin's homepage](https://apps.kde.org/dolphin/).
