@@ -60,6 +60,29 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     auto *layout = new QVBoxLayout(content);
     layout->setContentsMargins(0, 0, 8, 0);
 
+    // ---- Preset: a whole look in one choice, for those who would rather not go through every option --------
+    {
+        QFormLayout *presetForm = nullptr;
+        group(QStringLiteral("Aspetto"), layout, &presetForm);
+        m_preset = new QComboBox(this);
+        m_preset->addItem(QStringLiteral("Scegli un preset…"), QString());
+        m_preset->addItem(QStringLiteral("Classico – come Dolphin: pannello normale, colonne, icone"), QStringLiteral("classic"));
+        m_preset->addItem(QStringLiteral("Soft – lista e card NG, pannello senza vetro"), QStringLiteral("soft"));
+        m_preset->addItem(QStringLiteral("Glass – tutto: pannello a vetro, lista e card NG"), QStringLiteral("glass"));
+        presetForm->addRow(QStringLiteral("Preset:"), m_preset);
+        auto *presetNote = new QLabel(QStringLiteral("Un preset compila le opzioni qui sotto; puoi ritoccarle prima di applicare."), this);
+        presetNote->setWordWrap(true);
+        presetNote->setEnabled(false);
+        presetForm->addRow(QString(), presetNote);
+        connect(m_preset, &QComboBox::activated, this, [this](int index) {
+            const QString name = m_preset->itemData(index).toString();
+            if (!name.isEmpty()) {
+                applyPreset(name);
+                Q_EMIT changed();
+            }
+        });
+    }
+
     // ---- Barra laterale ---------------------------------------------------------------------------------
     group(QStringLiteral("Barra laterale"), layout, &m_sidebarForm);
     QFormLayout *form = m_sidebarForm;
@@ -404,6 +427,33 @@ void NgSettingsPage::restoreDefaults()
     m_float->setChecked(false);
     m_folderSizes->setChecked(false);
     m_tiles->setChecked(true);
+    m_sidebarFilters->setChecked(true);
+    m_cards->setCurrentIndex(0);
+    m_cardsFit->setCurrentIndex(0);
+    m_cardsInfo->setCurrentIndex(0);
+    m_cardsMark->setCurrentIndex(0);
+}
+
+void NgSettingsPage::applyPreset(const QString &name)
+{
+    restoreDefaults(); // Glass is the look the fork was designed around: the defaults
+    if (name == QLatin1String("classic")) {
+        // as close to stock Dolphin as the fork gets
+        m_glassPanel->setChecked(false);
+        m_devices->setChecked(true);
+        m_sidebarFilters->setChecked(false);
+        m_twoLines->setChecked(false);
+        m_rows->setCurrentIndex(3); // alternating stripes
+        m_icons->setChecked(true);
+        m_tiles->setChecked(false);
+    } else if (name == QLatin1String("soft")) {
+        m_glassPanel->setChecked(false);
+        m_devices->setChecked(true);
+    } else {
+        m_rim->setCurrentIndex(qMax(0, m_rim->findData(QStringLiteral("diagonal"))));
+        m_cardsMark->setCurrentIndex(1); // the type as the background of the cards
+    }
+    updateDependencies();
 }
 
 #include "moc_ngsettingspage.cpp"

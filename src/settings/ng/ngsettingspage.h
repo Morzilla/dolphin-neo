@@ -34,6 +34,8 @@ public:
 
 private:
     void loadSettings();
+    void applyPreset(const QString &name); // classic | soft | glass: fills the page, applied with the dialog
+    QComboBox *m_preset;
     void updateDependencies(); // show only the rows the chosen backdrop uses
 
     // sidebar
