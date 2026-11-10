@@ -227,6 +227,17 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_cardsMark->addItem(QStringLiteral("L'icona del tipo"), QString());
     m_cardsMark->addItem(QStringLiteral("Il tipo come sfondo: colore e sigla in filigrana (le immagini tengono l'anteprima)"), QStringLiteral("type"));
     cardsForm->addRow(QStringLiteral("Segno del tipo:"), m_cardsMark);
+    m_quickView = new QCheckBox(QStringLiteral("Anteprima al volo passando sull'immagine della card (immagini, GIF, video, PDF)"), this);
+    cardsForm->addRow(QString(), m_quickView);
+    m_quickDelay = new QSpinBox(this);
+    m_quickDelay->setRange(0, 3000);
+    m_quickDelay->setSingleStep(50);
+    m_quickDelay->setSuffix(QStringLiteral(" ms"));
+    m_quickDelay->setSpecialValueText(QStringLiteral("Subito"));
+    cardsForm->addRow(QStringLiteral("Dopo:"), m_quickDelay);
+    connect(m_quickView, &QCheckBox::toggled, this, &NgSettingsPage::changed);
+    connect(m_quickView, &QCheckBox::toggled, m_quickDelay, &QWidget::setEnabled);
+    connect(m_quickDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
     auto *cardsNote = new QLabel(QStringLiteral("La vista si attiva dal menu Visualizza (Card, Ctrl+4) o dal pulsante «Card» nella barra dei filtri; lo zoom cambia la misura delle card."), this);
     cardsNote->setWordWrap(true);
     cardsNote->setEnabled(false);
@@ -353,6 +364,10 @@ void NgSettingsPage::loadSettings()
     m_cardsFit->setCurrentIndex(ngCardsStretch() ? 1 : 0);
     m_cardsInfo->setCurrentIndex(ngSetting("CARDS_INFO").toLower() == QLatin1String("full") ? 1 : 0);
     m_cardsMark->setCurrentIndex(ngSetting("CARDS_MARK").toLower() == QLatin1String("type") ? 1 : 0);
+    const QString quick = ngSetting("CARDS_QUICKVIEW").toLower();
+    m_quickView->setChecked(quick != QLatin1String("off"));
+    m_quickDelay->setValue(qBound(0, quick.toInt(), 3000));
+    m_quickDelay->setEnabled(m_quickView->isChecked());
 }
 
 void NgSettingsPage::applySettings()
@@ -397,6 +412,7 @@ void NgSettingsPage::applySettings()
     setNgSetting("CARDS_FIT", m_cardsFit->currentData().toString());
     setNgSetting("CARDS_INFO", m_cardsInfo->currentData().toString());
     setNgSetting("CARDS_MARK", m_cardsMark->currentData().toString());
+    setNgSetting("CARDS_QUICKVIEW", !m_quickView->isChecked() ? QStringLiteral("off") : m_quickDelay->value() > 0 ? QString::number(m_quickDelay->value()) : QString());
 
     ngSettingsInvalidate(); // everything that depends on these re-reads them now
 }
@@ -432,6 +448,8 @@ void NgSettingsPage::restoreDefaults()
     m_cardsFit->setCurrentIndex(0);
     m_cardsInfo->setCurrentIndex(0);
     m_cardsMark->setCurrentIndex(0);
+    m_quickView->setChecked(true);
+    m_quickDelay->setValue(0);
 }
 
 void NgSettingsPage::applyPreset(const QString &name)

@@ -1040,7 +1040,8 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
         // 4: the pointer rests on the picture of an image or a PDF (quick view; hover only, never a click)
         if (m_ngCardThumb.contains(pos)) {
             const QString name = data().value("text").toString();
-            if (m_ngCategory == int(NgKind::Image) || name.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive)) {
+            static const QStringList moving{QStringLiteral("pdf"), QStringLiteral("mp4"), QStringLiteral("mkv"), QStringLiteral("webm"), QStringLiteral("mov"), QStringLiteral("avi"), QStringLiteral("m4v")};
+            if (m_ngCategory == int(NgKind::Image) || moving.contains(name.section(QLatin1Char('.'), -1).toLower())) {
                 return 4;
             }
         }

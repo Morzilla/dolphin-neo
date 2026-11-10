@@ -243,7 +243,7 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
             m_ngQuickIndex = index;
             bool ok = false;
             const int delay = quick.toInt(&ok);
-            m_ngQuickTimer->start(ok && delay > 0 ? delay : 350);
+            m_ngQuickTimer->start(ok && delay > 0 ? delay : 0); // at once, unless a delay is set
         } else if (m_ngQuickTimer) {
             m_ngQuickTimer->stop();
             Q_EMIT ngQuickViewEnded();

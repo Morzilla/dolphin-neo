@@ -623,7 +623,8 @@ void KItemListWidget::setHovered(bool hovered)
     if (hovered) {
         setHoverOpacity(1.0);
 
-        if (m_enabledSelectionToggle && !(QApplication::mouseButtons() & Qt::LeftButton)) {
+        // dolphin-ng: a widget without a place for the toggle (the cards) gets none
+        if (m_enabledSelectionToggle && !(QApplication::mouseButtons() & Qt::LeftButton) && !selectionToggleRect().isEmpty()) {
             initializeSelectionToggle();
         }
 

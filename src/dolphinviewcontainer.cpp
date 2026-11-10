@@ -242,7 +242,37 @@ public:
         m_anchor = QRect(m_host->mapFromGlobal(itemRectGlobal.topLeft()), itemRectGlobal.size());
         const QSize limit(qMin(560, m_host->width() - 40), qMin(480, m_host->height() - 40));
         const qreal dpr = devicePixelRatioF();
-        if (item.mimetype().startsWith(QLatin1String("image/"))) {
+        stopMotion();
+        const QString mime = item.mimetype();
+        if (mime == QLatin1String("image/gif") || mime == QLatin1String("image/apng") || mime == QLatin1String("image/webp")) {
+            // animated pictures play
+            m_movie = new QMovie(item.localPath(), QByteArray(), this);
+            if (m_movie->isValid()) {
+                connect(m_movie, &QMovie::frameChanged, this, [this, limit] {
+                    frame(m_movie->currentPixmap(), limit);
+                });
+                m_movie->start();
+                return;
+            }
+            stopMotion();
+        }
+        if (mime.startsWith(QLatin1String("video/"))) {
+            // videos play, muted, in a loop
+            m_player = new QMediaPlayer(this);
+            m_sink = new QVideoSink(this);
+            m_player->setVideoSink(m_sink);
+            m_player->setLoops(QMediaPlayer::Infinite);
+            connect(m_sink, &QVideoSink::videoFrameChanged, this, [this, limit](const QVideoFrame &videoFrame) {
+                const QImage image = videoFrame.toImage();
+                if (!image.isNull()) {
+                    frame(QPixmap::fromImage(image), limit);
+                }
+            });
+            m_player->setSource(item.url());
+            m_player->play();
+            return;
+        }
+        if (mime.startsWith(QLatin1String("image/"))) {
             QImageReader reader(item.localPath());
             reader.setAutoTransform(true);
             QSize size = reader.size();
@@ -267,10 +297,47 @@ public:
     void end()
     {
         m_url.clear();
+        stopMotion();
         hide();
     }
 
 protected:
+    void stopMotion()
+    {
+        if (m_movie) {
+            m_movie->stop();
+            m_movie->deleteLater();
+            m_movie = nullptr;
+        }
+        if (m_player) {
+            m_player->stop();
+            m_player->deleteLater();
+            m_player = nullptr;
+        }
+        if (m_sink) {
+            m_sink->deleteLater();
+            m_sink = nullptr;
+        }
+        m_playing = false;
+    }
+
+    // a frame of a movie or a video: the first one places the view, the others only replace the picture
+    void frame(const QPixmap &pixmap, const QSize &limit)
+    {
+        if (pixmap.isNull() || m_url.isEmpty()) {
+            return;
+        }
+        if (!m_playing) {
+            m_playing = true;
+            QPixmap first = pixmap;
+            first.setDevicePixelRatio(1.0);
+            setPicture(first, limit);
+        } else {
+            m_pixmap = pixmap;
+            update();
+        }
+    }
+
     void setPicture(QPixmap pixmap, const QSize &limit)
     {
         if (pixmap.isNull() || m_url.isEmpty()) {
@@ -331,6 +398,10 @@ private:
     QUrl m_url;
     QRect m_anchor;
     QPixmap m_pixmap;
+    QMovie *m_movie = nullptr;
+    QMediaPlayer *m_player = nullptr;
+    QVideoSink *m_sink = nullptr;
+    bool m_playing = false;
 };
 
 static void ngOpenLightbox(DolphinView *view, const KFileItem &item); // see NgLightbox

@@ -78,6 +78,8 @@ private:
     QComboBox *m_cardsFit;
     QComboBox *m_cardsInfo;
     QComboBox *m_cardsMark;
+    QCheckBox *m_quickView;
+    QSpinBox *m_quickDelay;
 };
 
 #endif
