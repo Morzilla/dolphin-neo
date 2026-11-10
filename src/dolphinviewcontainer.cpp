@@ -892,6 +892,7 @@ public:
         updateChip();
         m_audio->setMuted(false);
         place();
+        placeOverlays(); // the stacked layout raised its current widget over the chip and the zoom buttons
         show();
         raise();
     }
