@@ -54,7 +54,7 @@ Q_SIGNALS:
     void openInSplitViewRequested(const QUrl &url);
 
 protected:
-    void paintEvent(QPaintEvent *event) override; // dolphin-neo: section titles as pills
+    void paintEvent(QPaintEvent *event) override; // dolphin-ng: section titles as pills
     void dragMoveEvent(QDragMoveEvent *event) override;
 
 private Q_SLOTS:

@@ -387,7 +387,7 @@ void KItemListView::setGeometry(const QRectF &rect)
         if (m_headerWidget->automaticColumnResizing()) {
             applyAutomaticColumnWidths();
         } else {
-            const qreal requiredWidth = neoTwoLineList() ? 0 : (m_headerWidget->leftPadding() + columnWidthsSum() + m_headerWidget->rightPadding()); // dolphin-neo: no columns
+            const qreal requiredWidth = ngTwoLineList() ? 0 : (m_headerWidget->leftPadding() + columnWidthsSum() + m_headerWidget->rightPadding()); // dolphin-ng: no columns
             const QSizeF dynamicItemSize(qMax(newSize.width(), requiredWidth), m_itemSize.height());
             m_layouter->setItemSize(dynamicItemSize);
         }
@@ -441,10 +441,10 @@ std::optional<int> KItemListView::itemAt(const QPointF &pos) const
     return std::nullopt;
 }
 
-int KItemListView::neoActionAt(int index, const QPointF &pos) const
+int KItemListView::ngActionAt(int index, const QPointF &pos) const
 {
     const KItemListWidget *widget = m_visibleItems.value(index);
-    return widget ? widget->neoActionAt(widget->mapFromItem(this, pos)) : 0;
+    return widget ? widget->ngActionAt(widget->mapFromItem(this, pos)) : 0;
 }
 
 bool KItemListView::isAboveSelectionToggle(int index, const QPointF &pos) const
@@ -2367,9 +2367,9 @@ void KItemListView::updateAlternateBackgrounds()
 void KItemListView::updateAlternateBackgroundForWidget(KItemListWidget *widget)
 {
     bool enabled = useAlternateBackgrounds();
-    if (enabled && neoRowStyle() != NeoRowStyle::Stripe) {
-        // dolphin-neo: every row draws its own background (card or line), none are skipped
-        widget->setAlternateBackground(neoRowStyle() != NeoRowStyle::None);
+    if (enabled && ngRowStyle() != NgRowStyle::Stripe) {
+        // dolphin-ng: every row draws its own background (card or line), none are skipped
+        widget->setAlternateBackground(ngRowStyle() != NgRowStyle::None);
         return;
     }
     if (enabled) {
@@ -2448,7 +2448,7 @@ QHash<QByteArray, qreal> KItemListView::preferredColumnWidths(const KItemRangeLi
 void KItemListView::applyColumnWidthsFromHeader()
 {
     // Apply the new size to the layouter
-    const qreal requiredWidth = neoTwoLineList() ? 0 : (m_headerWidget->leftPadding() + columnWidthsSum() + m_headerWidget->rightPadding()); // dolphin-neo: no columns
+    const qreal requiredWidth = ngTwoLineList() ? 0 : (m_headerWidget->leftPadding() + columnWidthsSum() + m_headerWidget->rightPadding()); // dolphin-ng: no columns
     const QSizeF dynamicItemSize(qMax(size().width(), requiredWidth), m_itemSize.height());
     m_layouter->setItemSize(dynamicItemSize);
 
@@ -2568,7 +2568,7 @@ void KItemListView::applyAutomaticColumnWidths()
         requiredWidth -= firstColumnWidth - shrinkedFirstColumnWidth;
     }
 
-    dynamicItemSize.rwidth() = neoTwoLineList() ? availableWidth : qMax(requiredWidth, availableWidth); // dolphin-neo: rows never exceed the view
+    dynamicItemSize.rwidth() = ngTwoLineList() ? availableWidth : qMax(requiredWidth, availableWidth); // dolphin-ng: rows never exceed the view
 
     m_layouter->setItemSize(dynamicItemSize);
 

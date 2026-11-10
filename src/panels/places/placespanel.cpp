@@ -39,8 +39,8 @@
 PlacesPanel::PlacesPanel(QWidget *parent)
     : KFilePlacesView(parent)
 {
-    setViewportMargins(10, 12, 10, 12 + 62); // dolphin-neo: keep the entries inside the glass card drawn by the dock, above its disk usage box
-    // dolphin-neo: never fill the list background, whatever the style's base colour is, so the glass card shows through
+    setViewportMargins(10, 12, 10, 12 + 62); // dolphin-ng: keep the entries inside the glass card drawn by the dock, above its disk usage box
+    // dolphin-ng: never fill the list background, whatever the style's base colour is, so the glass card shows through
     viewport()->setAutoFillBackground(false);
     setAutoFillBackground(false);
     setAttribute(Qt::WA_NoSystemBackground);
@@ -86,9 +86,9 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     auto *placesModel = DolphinPlacesModelSingleton::instance().placesModel();
     setModel(placesModel);
 
-    // dolphin-neo: the disk usage box at the bottom of the card replaces the "Devices" section (internal disks);
-    // removable devices keep their own section. DOLPHIN_NEO_DEVICES=show keeps the section.
-    if (neoSetting("DEVICES").toLower() != QLatin1String("show") && neoSetting("SIDEBAR").toLower() != QLatin1String("plain")) {
+    // dolphin-ng: the disk usage box at the bottom of the card replaces the "Devices" section (internal disks);
+    // removable devices keep their own section. DOLPHIN_NG_DEVICES=show keeps the section.
+    if (ngSetting("DEVICES").toLower() != QLatin1String("show") && ngSetting("SIDEBAR").toLower() != QLatin1String("plain")) {
         // KFilePlacesView decides row visibility itself on model changes, so hide the rows again right after it
         auto hideDevices = [this, placesModel] {
             QTimer::singleShot(0, this, [this, placesModel] {
@@ -121,12 +121,12 @@ PlacesPanel::PlacesPanel(QWidget *parent)
 
 PlacesPanel::~PlacesPanel() = default;
 
-// dolphin-neo: over the glass card the section titles ("Places", "Remote"...) are too faint to read:
+// dolphin-ng: over the glass card the section titles ("Places", "Remote"...) are too faint to read:
 // draw each one again as a small dark pill with light text, on top of the original.
 void PlacesPanel::paintEvent(QPaintEvent *event)
 {
     KFilePlacesView::paintEvent(event);
-    static const bool plain = neoSetting("SIDEBAR").toLower() == QLatin1String("plain");
+    static const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
     const auto *placesModel = qobject_cast<KFilePlacesModel *>(model());
     if (plain || !placesModel) {
         return;
@@ -199,7 +199,7 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
 
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setFont(titleFont);
-    const bool dark = neoIsDark(palette());
+    const bool dark = ngIsDark(palette());
     for (const Pill &pill : std::as_const(pills)) {
         // a light glass pill: a faint veil with a hairline edge, and the title in the normal text colour
         const QRectF rect = QRectF(pill.rect).adjusted(0.5, 0.5, -0.5, -0.5);

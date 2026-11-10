@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#include "neosettingspage.h"
+#include "ngsettingspage.h"
 
 #include "kitemviews/kitemlistwidget.h"
 
@@ -18,9 +18,9 @@
 #include <QLabel>
 #include <QSlider>
 
-// The labels are in Italian for now, like the other dolphin-neo strings; they should go through i18n.
+// The labels are in Italian for now, like the other dolphin-ng strings; they should go through i18n.
 
-NeoSettingsPage::NeoSettingsPage(QWidget *parent)
+NgSettingsPage::NgSettingsPage(QWidget *parent)
     : SettingsPageBase(parent)
 {
     auto *form = new QFormLayout(this);
@@ -60,7 +60,7 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     for (KColorButton *&button : m_lavaColour) {
         button = new KColorButton(this);
         colourRow->addWidget(button);
-        connect(button, &KColorButton::changed, this, &NeoSettingsPage::changed);
+        connect(button, &KColorButton::changed, this, &NgSettingsPage::changed);
     }
     colourRow->addStretch();
     form->addRow(QString(), colourRow);
@@ -119,7 +119,7 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     m_tiles = new QCheckBox(QStringLiteral("Tessere scure con anteprime arrotondate *"), this);
     form->addRow(QString(), m_tiles);
 
-    auto *note = new QLabel(QStringLiteral("* Vale dal prossimo avvio di Dolphin. Una variabile DOLPHIN_NEO_… impostata all'avvio ha la precedenza: la voce corrispondente qui è disattivata."), this);
+    auto *note = new QLabel(QStringLiteral("* Vale dal prossimo avvio di Dolphin. Una variabile DOLPHIN_NG_… impostata all'avvio ha la precedenza: la voce corrispondente qui è disattivata."), this);
     note->setWordWrap(true);
     note->setEnabled(false);
     form->addRow(note);
@@ -127,59 +127,59 @@ NeoSettingsPage::NeoSettingsPage(QWidget *parent)
     loadSettings();
 
     // what the environment decides cannot be changed here
-    m_image->setEnabled(!neoSettingFromEnvironment("GLASS_IMAGE"));
-    m_glass->setEnabled(!neoSettingFromEnvironment("GLASS"));
-    m_blur->setEnabled(!neoSettingFromEnvironment("GLASS_BLUR"));
-    m_rows->setEnabled(!neoSettingFromEnvironment("ROWS"));
-    m_sigla->setEnabled(!neoSettingFromEnvironment("SIGLA"));
-    m_mark->setEnabled(!neoSettingFromEnvironment("MARK"));
-    m_icons->setEnabled(!neoSettingFromEnvironment("ICONS"));
-    m_tiles->setEnabled(!neoSettingFromEnvironment("TILES"));
-    m_twoLines->setEnabled(!neoSettingFromEnvironment("LIST"));
-    m_glassPanel->setEnabled(!neoSettingFromEnvironment("SIDEBAR"));
-    m_backdrop->setEnabled(!neoSettingFromEnvironment("GLASS_MODE"));
-    m_lavaSpeed->setEnabled(!neoSettingFromEnvironment("LAVA_SPEED"));
-    m_devices->setEnabled(!neoSettingFromEnvironment("DEVICES"));
+    m_image->setEnabled(!ngSettingFromEnvironment("GLASS_IMAGE"));
+    m_glass->setEnabled(!ngSettingFromEnvironment("GLASS"));
+    m_blur->setEnabled(!ngSettingFromEnvironment("GLASS_BLUR"));
+    m_rows->setEnabled(!ngSettingFromEnvironment("ROWS"));
+    m_sigla->setEnabled(!ngSettingFromEnvironment("SIGLA"));
+    m_mark->setEnabled(!ngSettingFromEnvironment("MARK"));
+    m_icons->setEnabled(!ngSettingFromEnvironment("ICONS"));
+    m_tiles->setEnabled(!ngSettingFromEnvironment("TILES"));
+    m_twoLines->setEnabled(!ngSettingFromEnvironment("LIST"));
+    m_glassPanel->setEnabled(!ngSettingFromEnvironment("SIDEBAR"));
+    m_backdrop->setEnabled(!ngSettingFromEnvironment("GLASS_MODE"));
+    m_lavaSpeed->setEnabled(!ngSettingFromEnvironment("LAVA_SPEED"));
+    m_devices->setEnabled(!ngSettingFromEnvironment("DEVICES"));
 
-    connect(m_image, &KUrlRequester::textChanged, this, &NeoSettingsPage::changed);
-    connect(m_glass, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
-    connect(m_blur, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
-    connect(m_rows, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
-    connect(m_sigla, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
-    connect(m_mark, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
-    connect(m_icons, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
-    connect(m_tiles, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
-    connect(m_twoLines, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
-    connect(m_glassPanel, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
-    connect(m_backdrop, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
-    connect(m_lavaSpeed, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
-    connect(m_lavaSize, &QSlider::valueChanged, this, &NeoSettingsPage::changed);
-    connect(m_lavaStyle, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
-    connect(m_lavaColours, &QComboBox::currentIndexChanged, this, &NeoSettingsPage::changed);
-    connect(m_devices, &QCheckBox::toggled, this, &NeoSettingsPage::changed);
+    connect(m_image, &KUrlRequester::textChanged, this, &NgSettingsPage::changed);
+    connect(m_glass, &QSlider::valueChanged, this, &NgSettingsPage::changed);
+    connect(m_blur, &QSlider::valueChanged, this, &NgSettingsPage::changed);
+    connect(m_rows, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
+    connect(m_sigla, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
+    connect(m_mark, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
+    connect(m_icons, &QCheckBox::toggled, this, &NgSettingsPage::changed);
+    connect(m_tiles, &QCheckBox::toggled, this, &NgSettingsPage::changed);
+    connect(m_twoLines, &QCheckBox::toggled, this, &NgSettingsPage::changed);
+    connect(m_glassPanel, &QCheckBox::toggled, this, &NgSettingsPage::changed);
+    connect(m_backdrop, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
+    connect(m_lavaSpeed, &QSlider::valueChanged, this, &NgSettingsPage::changed);
+    connect(m_lavaSize, &QSlider::valueChanged, this, &NgSettingsPage::changed);
+    connect(m_lavaStyle, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
+    connect(m_lavaColours, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
+    connect(m_devices, &QCheckBox::toggled, this, &NgSettingsPage::changed);
 }
 
-NeoSettingsPage::~NeoSettingsPage() = default;
+NgSettingsPage::~NgSettingsPage() = default;
 
-void NeoSettingsPage::loadSettings()
+void NgSettingsPage::loadSettings()
 {
-    m_image->setText(neoSetting("GLASS_IMAGE"));
-    m_glass->setValue(qBound(0, neoSettingInt("GLASS", 55), 100));
-    m_blur->setValue(qBound(0, neoSettingInt("GLASS_BLUR", 45), 100));
-    static const NeoRowStyle order[] = {NeoRowStyle::Card, NeoRowStyle::Open, NeoRowStyle::Line, NeoRowStyle::Stripe, NeoRowStyle::None};
+    m_image->setText(ngSetting("GLASS_IMAGE"));
+    m_glass->setValue(qBound(0, ngSettingInt("GLASS", 55), 100));
+    m_blur->setValue(qBound(0, ngSettingInt("GLASS_BLUR", 45), 100));
+    static const NgRowStyle order[] = {NgRowStyle::Card, NgRowStyle::Open, NgRowStyle::Line, NgRowStyle::Stripe, NgRowStyle::None};
     for (int i = 0; i < 5; ++i) {
-        if (order[i] == neoRowStyle()) {
+        if (order[i] == ngRowStyle()) {
             m_rows->setCurrentIndex(i);
         }
     }
-    m_twoLines->setChecked(neoSetting("LIST").toLower() != QLatin1String("columns"));
-    m_glassPanel->setChecked(neoSetting("SIDEBAR").toLower() != QLatin1String("plain"));
-    m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(neoSetting("GLASS_MODE").toLower())));
-    m_lavaSpeed->setValue(qBound(5, neoSettingInt("LAVA_SPEED", 30), 100));
-    m_lavaSize->setValue(qBound(10, neoSettingInt("LAVA_SIZE", 55), 100));
-    m_lavaStyle->setCurrentIndex(neoSetting("LAVA_STYLE").toLower() == QLatin1String("blobs") ? 1 : 0);
+    m_twoLines->setChecked(ngSetting("LIST").toLower() != QLatin1String("columns"));
+    m_glassPanel->setChecked(ngSetting("SIDEBAR").toLower() != QLatin1String("plain"));
+    m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(ngSetting("GLASS_MODE").toLower())));
+    m_lavaSpeed->setValue(qBound(5, ngSettingInt("LAVA_SPEED", 30), 100));
+    m_lavaSize->setValue(qBound(10, ngSettingInt("LAVA_SIZE", 55), 100));
+    m_lavaStyle->setCurrentIndex(ngSetting("LAVA_STYLE").toLower() == QLatin1String("blobs") ? 1 : 0);
     static const char *const defaults[3] = {"#2f6f8f", "#8a5a2c", "#3c4a78"};
-    const QString spec = neoSetting("LAVA_COLORS").trimmed().toLower();
+    const QString spec = ngSetting("LAVA_COLORS").trimmed().toLower();
     const QStringList custom = spec.split(QLatin1Char(','), Qt::SkipEmptyParts);
     const bool isCustom = !spec.isEmpty() && spec != QLatin1String("wallpaper");
     for (int i = 0; i < 3; ++i) {
@@ -188,14 +188,14 @@ void NeoSettingsPage::loadSettings()
         m_lavaColour[i]->setEnabled(isCustom);
     }
     m_lavaColours->setCurrentIndex(spec.isEmpty() ? 0 : spec == QLatin1String("wallpaper") ? 1 : 2);
-    m_devices->setChecked(neoSetting("DEVICES").toLower() == QLatin1String("show"));
-    m_sigla->setCurrentIndex(qMax(0, m_sigla->findData(neoSetting("SIGLA", QStringLiteral("fill")).toLower())));
-    m_mark->setCurrentIndex(qMax(0, m_mark->findData(neoSetting("MARK").toLower())));
-    m_icons->setChecked(neoSetting("ICONS").toLower() == QLatin1String("show"));
-    m_tiles->setChecked(neoSetting("TILES").toLower() != QLatin1String("off"));
+    m_devices->setChecked(ngSetting("DEVICES").toLower() == QLatin1String("show"));
+    m_sigla->setCurrentIndex(qMax(0, m_sigla->findData(ngSetting("SIGLA", QStringLiteral("fill")).toLower())));
+    m_mark->setCurrentIndex(qMax(0, m_mark->findData(ngSetting("MARK").toLower())));
+    m_icons->setChecked(ngSetting("ICONS").toLower() == QLatin1String("show"));
+    m_tiles->setChecked(ngSetting("TILES").toLower() != QLatin1String("off"));
 }
 
-void NeoSettingsPage::applySettings()
+void NgSettingsPage::applySettings()
 {
     setNeoSetting("GLASS_IMAGE", m_image->text().trimmed());
     setNeoSetting("GLASS", QString::number(m_glass->value()));
@@ -217,7 +217,7 @@ void NeoSettingsPage::applySettings()
                                  : QStringLiteral("%1,%2,%3").arg(m_lavaColour[0]->color().name(), m_lavaColour[1]->color().name(), m_lavaColour[2]->color().name()));
     setNeoSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
     if (m_rows->isEnabled()) {
-        static const NeoRowStyle order[] = {NeoRowStyle::Card, NeoRowStyle::Open, NeoRowStyle::Line, NeoRowStyle::Stripe, NeoRowStyle::None};
+        static const NgRowStyle order[] = {NgRowStyle::Card, NgRowStyle::Open, NgRowStyle::Line, NgRowStyle::Stripe, NgRowStyle::None};
         setNeoRowStyle(order[qBound(0, m_rows->currentIndex(), 4)]);
     }
 
@@ -231,7 +231,7 @@ void NeoSettingsPage::applySettings()
     }
 }
 
-void NeoSettingsPage::restoreDefaults()
+void NgSettingsPage::restoreDefaults()
 {
     m_image->clear();
     m_glass->setValue(55);
@@ -251,4 +251,4 @@ void NeoSettingsPage::restoreDefaults()
     m_devices->setChecked(false);
 }
 
-#include "moc_neosettingspage.cpp"
+#include "moc_ngsettingspage.cpp"

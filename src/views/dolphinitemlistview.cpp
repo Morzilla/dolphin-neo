@@ -146,7 +146,7 @@ bool DolphinItemListView::itemLayoutSupportsItemExpanding(ItemLayout layout) con
 
 void DolphinItemListView::onItemLayoutChanged(ItemLayout current, ItemLayout previous)
 {
-    setHeaderVisible(current == DetailsLayout && !neoTwoLineList()); // dolphin-neo: the two-line list has no columns
+    setHeaderVisible(current == DetailsLayout && !ngTwoLineList()); // dolphin-ng: the two-line list has no columns
 
     updateFont();
     updateGridSize();
@@ -246,8 +246,8 @@ void DolphinItemListView::updateGridSize()
     case KFileItemListView::DetailsLayout: {
         itemWidth = -1;
         itemHeight = padding * 2 + qMax(iconSize, option.fontMetrics.lineSpacing());
-        if (neoNoIcons()) {
-            // dolphin-neo: the icon-less row is two lines of text plus its own padding, whatever the icon size
+        if (ngNoIcons()) {
+            // dolphin-ng: the icon-less row is two lines of text plus its own padding, whatever the icon size
             itemHeight = padding * 2 + 2 * option.fontMetrics.height() + 4 + 24;
         }
         break;

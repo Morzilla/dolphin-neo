@@ -1640,9 +1640,9 @@ bool KItemListController::onPress(const QPointF &pos, const Qt::KeyboardModifier
         return true;
     }
 
-    // dolphin-neo: a press on an inline row action only arms it; it fires on release
-    m_neoActionPressed = (buttons & Qt::LeftButton) ? m_view->neoActionAt(m_pressedIndex.value_or(-1), pressedMousePos) : 0;
-    if (m_neoActionPressed) {
+    // dolphin-ng: a press on an inline row action only arms it; it fires on release
+    m_ngActionPressed = (buttons & Qt::LeftButton) ? m_view->ngActionAt(m_pressedIndex.value_or(-1), pressedMousePos) : 0;
+    if (m_ngActionPressed) {
         return true;
     }
 
@@ -1812,12 +1812,12 @@ bool KItemListController::onPress(const QPointF &pos, const Qt::KeyboardModifier
 bool KItemListController::onRelease(const QPointF &pos, const Qt::KeyboardModifiers modifiers, const Qt::MouseButtons buttons, bool touch)
 {
     const QPointF pressedMousePos = pos;
-    if (m_neoActionPressed) {
-        // dolphin-neo: fire the inline row action if the button is released on the same one
-        const int action = m_neoActionPressed;
-        m_neoActionPressed = 0;
+    if (m_ngActionPressed) {
+        // dolphin-ng: fire the inline row action if the button is released on the same one
+        const int action = m_ngActionPressed;
+        m_ngActionPressed = 0;
         const int index = m_pressedIndex.value_or(-1);
-        if (index >= 0 && m_view->neoActionAt(index, m_view->transform().map(pos)) == action) {
+        if (index >= 0 && m_view->ngActionAt(index, m_view->transform().map(pos)) == action) {
             if (action == 1) {
                 Q_EMIT itemActivated(index);
             } else if (action == 3) {
@@ -1831,7 +1831,7 @@ bool KItemListController::onRelease(const QPointF &pos, const Qt::KeyboardModifi
                     const QPoint topLeft = graphicsView->viewport()->mapToGlobal(graphicsView->mapFromScene(m_view->mapToScene(rect.topLeft())));
                     rowRect = QRect(topLeft, rect.size().toSize());
                 }
-                Q_EMIT neoPreviewRequested(index, rowRect);
+                Q_EMIT ngPreviewRequested(index, rowRect);
             } else {
                 // the context menu acts on the selection: make it this item
                 m_selectionManager->clearSelection();

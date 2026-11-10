@@ -22,55 +22,55 @@
 class KItemListSelectionToggle;
 
 /**
- * dolphin-neo settings. A value comes from the environment variable DOLPHIN_NEO_<NAME> if it is set,
- * else from dolphinrc, group DolphinNeo, key <NAME> (written by the settings page), else it is the fallback.
+ * dolphin-ng settings. A value comes from the environment variable DOLPHIN_NG_<NAME> if it is set,
+ * else from dolphinrc, group DolphinNG, key <NAME> (written by the settings page), else it is the fallback.
  */
-DOLPHIN_EXPORT QString neoSetting(const char *name, const QString &fallback = QString());
-DOLPHIN_EXPORT int neoSettingInt(const char *name, int fallback);
+DOLPHIN_EXPORT QString ngSetting(const char *name, const QString &fallback = QString());
+DOLPHIN_EXPORT int ngSettingInt(const char *name, int fallback);
 /** Store a value in dolphinrc; an empty value removes it. */
 DOLPHIN_EXPORT void setNeoSetting(const char *name, const QString &value);
 /** True if the environment decides this setting, so the stored value is ignored. */
-DOLPHIN_EXPORT bool neoSettingFromEnvironment(const char *name);
+DOLPHIN_EXPORT bool ngSettingFromEnvironment(const char *name);
 
 /**
- * dolphin-neo: how the row background is drawn in views that use row
- * backgrounds (the details view). Chosen with DOLPHIN_NEO_ROWS:
+ * dolphin-ng: how the row background is drawn in views that use row
+ * backgrounds (the details view). Chosen with DOLPHIN_NG_ROWS:
  * card (default), line, stripe (stock Dolphin) or none.
  */
-enum class NeoRowStyle { Stripe, Card, Line, None, Open };
-DOLPHIN_EXPORT NeoRowStyle neoRowStyle();
-/** dolphin-neo: change the row style now and remember it (dolphinrc, group DolphinNeo). */
-DOLPHIN_EXPORT void setNeoRowStyle(NeoRowStyle style);
+enum class NgRowStyle { Stripe, Card, Line, None, Open };
+DOLPHIN_EXPORT NgRowStyle ngRowStyle();
+/** dolphin-ng: change the row style now and remember it (dolphinrc, group DolphinNG). */
+DOLPHIN_EXPORT void setNeoRowStyle(NgRowStyle style);
 
 /**
- * dolphin-neo: the details view shows each item on two lines (name; then the other columns joined,
- * with the date at the right edge) instead of in columns. DOLPHIN_NEO_LIST=columns restores the columns.
+ * dolphin-ng: the details view shows each item on two lines (name; then the other columns joined,
+ * with the date at the right edge) instead of in columns. DOLPHIN_NG_LIST=columns restores the columns.
  */
-DOLPHIN_EXPORT bool neoTwoLineList();
+DOLPHIN_EXPORT bool ngTwoLineList();
 
 /**
- * dolphin-neo: the two-line list has no icons; the file type is a large, faint abbreviation in the row
- * (a watermark), the size has a bar and hovering a row shows its actions. DOLPHIN_NEO_ICONS=show keeps the icons.
+ * dolphin-ng: the two-line list has no icons; the file type is a large, faint abbreviation in the row
+ * (a watermark), the size has a bar and hovering a row shows its actions. DOLPHIN_NG_ICONS=show keeps the icons.
  */
-DOLPHIN_EXPORT bool neoNoIcons();
+DOLPHIN_EXPORT bool ngNoIcons();
 
-/** dolphin-neo: is this a dark colour scheme? The fork's own painting picks its shades from the answer. */
-DOLPHIN_EXPORT bool neoIsDark(const QPalette &palette);
-/** dolphin-neo: \a colour made readable as an accent on the scheme: lightened on dark, darkened on light. */
-DOLPHIN_EXPORT QColor neoAccent(const QColor &colour, bool dark);
+/** dolphin-ng: is this a dark colour scheme? The fork's own painting picks its shades from the answer. */
+DOLPHIN_EXPORT bool ngIsDark(const QPalette &palette);
+/** dolphin-ng: \a colour made readable as an accent on the scheme: lightened on dark, darkened on light. */
+DOLPHIN_EXPORT QColor ngAccent(const QColor &colour, bool dark);
 
-/** dolphin-neo: in the icons view every item is a dark rounded tile and previews have rounded corners. DOLPHIN_NEO_TILES=off disables. */
-DOLPHIN_EXPORT bool neoTiles();
+/** dolphin-ng: in the icons view every item is a dark rounded tile and previews have rounded corners. DOLPHIN_NG_TILES=off disables. */
+DOLPHIN_EXPORT bool ngTiles();
 
-/** dolphin-neo: what replaces the icon — a short type abbreviation, the colour and the category of the file. */
-struct NeoKind {
+/** dolphin-ng: what replaces the icon — a short type abbreviation, the colour and the category of the file. */
+struct NgKind {
     enum Category { Folder, Image, Document, Sheet, Archive, Media, Data, Package, Other, CategoryCount };
     QString sigla;
     QColor tint;
     Category category;
 };
-DOLPHIN_EXPORT NeoKind neoKindFor(const QString &name, bool isDir);
-DOLPHIN_EXPORT QColor neoCategoryTint(NeoKind::Category category);
+DOLPHIN_EXPORT NgKind ngKindFor(const QString &name, bool isDir);
+DOLPHIN_EXPORT QColor ngCategoryTint(NgKind::Category category);
 class KItemListView;
 class QPropertyAnimation;
 
@@ -236,10 +236,10 @@ public:
     virtual QRectF selectionToggleRect() const;
 
     /**
-     * dolphin-neo: which inline action of the row is at \a pos (in widget coordinates):
+     * dolphin-ng: which inline action of the row is at \a pos (in widget coordinates):
      * 0 none, 1 open, 2 menu. The controller handles the click, like for the selection toggle.
      */
-    virtual int neoActionAt(const QPointF &pos) const;
+    virtual int ngActionAt(const QPointF &pos) const;
 
     /**
      * @return Rectangle for the expansion-toggle that is used to open a sub-tree of the model.

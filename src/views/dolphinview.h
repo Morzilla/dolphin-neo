@@ -530,8 +530,8 @@ Q_SIGNALS:
      */
     void itemActivated(const KFileItem &item);
 
-    /** dolphin-neo: show a preview of \a item next to its row (\a rowRect, global coordinates). */
-    void neoPreviewRequested(const KFileItem &item, const QRect &rowRect);
+    /** dolphin-ng: show a preview of \a item next to its row (\a rowRect, global coordinates). */
+    void ngPreviewRequested(const KFileItem &item, const QRect &rowRect);
 
     /**
      * request the property dialog

@@ -14,16 +14,16 @@ class QComboBox;
 class QSlider;
 
 /**
- * dolphin-neo: settings of the fork (sidebar picture, list look). They are stored in dolphinrc,
- * group DolphinNeo; a DOLPHIN_NEO_* environment variable overrides the matching entry.
+ * dolphin-ng: settings of the fork (sidebar picture, list look). They are stored in dolphinrc,
+ * group DolphinNG; a DOLPHIN_NG_* environment variable overrides the matching entry.
  */
-class NeoSettingsPage : public SettingsPageBase
+class NgSettingsPage : public SettingsPageBase
 {
     Q_OBJECT
 
 public:
-    explicit NeoSettingsPage(QWidget *parent);
-    ~NeoSettingsPage() override;
+    explicit NgSettingsPage(QWidget *parent);
+    ~NgSettingsPage() override;
 
     void applySettings() override;
     void restoreDefaults() override;

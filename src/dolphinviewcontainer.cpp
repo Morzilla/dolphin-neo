@@ -88,7 +88,7 @@ struct LayoutStructure {
     int adminBar = 1;
     int messageWidget = 2;
     int selectionModeTopBar = 3;
-    int sortBar = 4; // dolphin-neo
+    int sortBar = 4; // dolphin-ng
     int view = 5;
     int selectionModeBottomBar = 6;
     int filterBar = 7;
@@ -96,17 +96,17 @@ struct LayoutStructure {
 };
 constexpr LayoutStructure positionFor;
 
-// dolphin-neo: a layout that puts its items one after the other and wraps to a new line when the width runs out
-class NeoFlowLayout : public QLayout
+// dolphin-ng: a layout that puts its items one after the other and wraps to a new line when the width runs out
+class NgFlowLayout : public QLayout
 {
 public:
-    NeoFlowLayout(QWidget *parent, int hSpacing, int vSpacing)
+    NgFlowLayout(QWidget *parent, int hSpacing, int vSpacing)
         : QLayout(parent)
         , m_hSpacing(hSpacing)
         , m_vSpacing(vSpacing)
     {
     }
-    ~NeoFlowLayout() override
+    ~NgFlowLayout() override
     {
         while (QLayoutItem *item = takeAt(0)) {
             delete item;
@@ -199,17 +199,17 @@ private:
     int m_vSpacing;
 };
 
-// dolphin-neo: the bar above the two-line list, which has no column header. On one line (wrapping when narrow):
+// dolphin-ng: the bar above the two-line list, which has no column header. On one line (wrapping when narrow):
 // "Sort by" — one button per visible role, clicking the active one reverses the order;
 // "Filtri" — a button with a menu of filters: all, files only, and one per kind of file, each with its count.
-class NeoSortBar : public QWidget
+class NgSortBar : public QWidget
 {
 public:
-    NeoSortBar(DolphinView *view, QWidget *parent)
+    NgSortBar(DolphinView *view, QWidget *parent)
         : QWidget(parent)
         , m_view(view)
     {
-        m_flow = new NeoFlowLayout(this, 4, 4);
+        m_flow = new NgFlowLayout(this, 4, 4);
         m_flow->setContentsMargins(14, 4, 14, 6);
 
         connect(view, &DolphinView::sortRoleChanged, this, [this] {
@@ -241,8 +241,8 @@ public:
     }
 
 private:
-    // what the filter shows: everything, files only (no folders), or one NeoKind::Category
-    enum { All = -1, FilesOnly = NeoKind::CategoryCount };
+    // what the filter shows: everything, files only (no folders), or one NgKind::Category
+    enum { All = -1, FilesOnly = NgKind::CategoryCount };
 
     QToolButton *chip(const QString &text, bool checked)
     {
@@ -315,7 +315,7 @@ private:
         m_flow->addWidget(gap);
 
         // one button that opens a menu with the filters; its label says which one is active
-        static const char *const labels[NeoKind::CategoryCount] = {"Cartelle", "Immagini", "Documenti", "Fogli", "Archivi", "Audio e video", "Codice e dati", "Pacchetti", "Altro"};
+        static const char *const labels[NgKind::CategoryCount] = {"Cartelle", "Immagini", "Documenti", "Fogli", "Archivi", "Audio e video", "Codice e dati", "Pacchetti", "Altro"};
         auto *button = new QToolButton(this);
         button->setAutoRaise(true);
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -339,12 +339,12 @@ private:
             });
         };
         entry(QStringLiteral("Tutti"), m_total, All);
-        const int folders = m_counts[NeoKind::Folder];
+        const int folders = m_counts[NgKind::Folder];
         if (folders > 0 && folders < m_total) {
             entry(QStringLiteral("File"), m_total - folders, FilesOnly);
         }
         menu->addSeparator();
-        for (int i = 0; i < NeoKind::CategoryCount; ++i) {
+        for (int i = 0; i < NgKind::CategoryCount; ++i) {
             if (m_counts[i] > 0) {
                 entry(QString::fromUtf8(labels[i]), m_counts[i], i);
             }
@@ -358,14 +358,14 @@ private:
             return;
         }
         // row style: cards or open rows; the choice is remembered
-        const bool open = neoRowStyle() == NeoRowStyle::Open;
+        const bool open = ngRowStyle() == NgRowStyle::Open;
         auto *rows = new QToolButton(this);
         rows->setAutoRaise(true);
         rows->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         rows->setIcon(QIcon::fromTheme(open ? QStringLiteral("view-list-text") : QStringLiteral("view-list-details")));
         rows->setText(open ? QStringLiteral("Righe: aperte") : QStringLiteral("Righe: schede"));
         connect(rows, &QToolButton::clicked, this, [this, open] {
-            setNeoRowStyle(open ? NeoRowStyle::Card : NeoRowStyle::Open);
+            setNeoRowStyle(open ? NgRowStyle::Card : NgRowStyle::Open);
             const QList<QGraphicsView *> graphicsViews = m_view->findChildren<QGraphicsView *>();
             for (QGraphicsView *graphicsView : graphicsViews) {
                 graphicsView->viewport()->update();
@@ -383,14 +383,14 @@ private:
             return;
         }
         const KFileItemList items = m_view->items();
-        for (int i = 0; i < NeoKind::CategoryCount; ++i) {
+        for (int i = 0; i < NgKind::CategoryCount; ++i) {
             m_counts[i] = 0;
             m_mimeTypes[i].clear();
         }
         m_total = items.count();
         if (m_total <= 4000) { // asking thousands of files for their type would stall the window
             for (const KFileItem &item : items) {
-                const NeoKind::Category category = neoKindFor(item.text(), item.isDir()).category;
+                const NgKind::Category category = ngKindFor(item.text(), item.isDir()).category;
                 ++m_counts[category];
                 const QString mimeType = item.mimetype();
                 if (!m_mimeTypes[category].contains(mimeType)) {
@@ -406,8 +406,8 @@ private:
         m_active = what;
         QStringList mimeTypes;
         if (what == FilesOnly) {
-            for (int i = 0; i < NeoKind::CategoryCount; ++i) {
-                if (i != NeoKind::Folder) {
+            for (int i = 0; i < NgKind::CategoryCount; ++i) {
+                if (i != NgKind::Folder) {
                     mimeTypes += m_mimeTypes[i];
                 }
             }
@@ -420,18 +420,18 @@ private:
     }
 
     DolphinView *m_view;
-    NeoFlowLayout *m_flow;
+    NgFlowLayout *m_flow;
     int m_active = All;
     int m_total = 0;
-    int m_counts[NeoKind::CategoryCount] = {};
-    QStringList m_mimeTypes[NeoKind::CategoryCount];
+    int m_counts[NgKind::CategoryCount] = {};
+    QStringList m_mimeTypes[NgKind::CategoryCount];
 };
 
-// dolphin-neo: a picture that fits its area, zooms with the mouse wheel around the pointer and pans by dragging
-class NeoZoomImage : public QWidget
+// dolphin-ng: a picture that fits its area, zooms with the mouse wheel around the pointer and pans by dragging
+class NgZoomImage : public QWidget
 {
 public:
-    explicit NeoZoomImage(QWidget *parent)
+    explicit NgZoomImage(QWidget *parent)
         : QWidget(parent)
     {
         setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
@@ -515,12 +515,12 @@ private:
     QPointF m_dragFrom;
 };
 
-// dolphin-neo: a card with a preview of one item and its main actions, shown over the list right under the item's row.
+// dolphin-ng: a card with a preview of one item and its main actions, shown over the list right under the item's row.
 // Text files show their first lines, folders their first entries, everything else the thumbnail KIO can make.
-class NeoPreviewCard : public QWidget
+class NgPreviewCard : public QWidget
 {
 public:
-    NeoPreviewCard(DolphinView *view, QWidget *parent)
+    NgPreviewCard(DolphinView *view, QWidget *parent)
         : QWidget(parent)
         , m_view(view)
     {
@@ -532,7 +532,7 @@ public:
         m_preview->setTextFormat(Qt::PlainText);
         m_preview->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
         m_preview->setMinimumSize(200, 120);
-        m_image = new NeoZoomImage(this);
+        m_image = new NgZoomImage(this);
         m_stack = new QStackedLayout();
         m_stack->addWidget(m_preview);
         m_stack->addWidget(m_image);
@@ -615,7 +615,7 @@ protected:
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
         const QColor window = palette().color(QPalette::Window);
-        QColor fill = neoIsDark(palette()) ? window.lighter(118) : window.darker(104);
+        QColor fill = ngIsDark(palette()) ? window.lighter(118) : window.darker(104);
         QColor border = palette().color(QPalette::WindowText);
         border.setAlphaF(0.16);
         painter.setPen(QPen(border, 1));
@@ -740,7 +740,7 @@ private:
     DolphinView *m_view;
     KFileItem m_item;
     QLabel *m_preview;
-    NeoZoomImage *m_image;
+    NgZoomImage *m_image;
     QStackedLayout *m_stack;
     bool m_fullPicture = false;
     QLabel *m_title;
@@ -858,10 +858,10 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
     connect(undoManager, &KIO::FileUndoManager::jobRecordingFinished, this, &DolphinViewContainer::delayedStatusBarUpdate);
 
     m_topLayout->addWidget(m_messageWidget, positionFor.messageWidget, 0);
-    if (neoTwoLineList()) {
-        m_topLayout->addWidget(new NeoSortBar(m_view, this), positionFor.sortBar, 0); // dolphin-neo
-        auto *previewCard = new NeoPreviewCard(m_view, this);
-        connect(m_view, &DolphinView::neoPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
+    if (ngTwoLineList()) {
+        m_topLayout->addWidget(new NgSortBar(m_view, this), positionFor.sortBar, 0); // dolphin-ng
+        auto *previewCard = new NgPreviewCard(m_view, this);
+        connect(m_view, &DolphinView::ngPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
             previewCard->showFor(item, rowRect);
         });
         connect(m_view, &DolphinView::urlChanged, previewCard, &QWidget::hide);

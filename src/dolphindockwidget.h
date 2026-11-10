@@ -30,7 +30,7 @@ public:
     bool isLocked() const;
 
     /**
-     * dolphin-neo: paint the glass card of this panel with \a painter, in this widget's coordinates.
+     * dolphin-ng: paint the glass card of this panel with \a painter, in this widget's coordinates.
      * Returns false if nothing opaque was painted (stock look, or the "live blur" hole), in which
      * case it cannot be used to wipe something drawn on top of the card.
      */
@@ -41,20 +41,20 @@ protected:
      * Make sure we do not emit QDockWidget::visibilityChanged() signals whenever Dolphin's window is minimized or restored.
      */
     bool event(QEvent *event) override;
-    void paintEvent(QPaintEvent *event) override; // dolphin-neo: glass panel
-    bool eventFilter(QObject *watched, QEvent *event) override; // dolphin-neo: repaint when the window moves
-    void timerEvent(QTimerEvent *event) override; // dolphin-neo: refresh the disk usage box
+    void paintEvent(QPaintEvent *event) override; // dolphin-ng: glass panel
+    bool eventFilter(QObject *watched, QEvent *event) override; // dolphin-ng: repaint when the window moves
+    void timerEvent(QTimerEvent *event) override; // dolphin-ng: refresh the disk usage box
 
 private:
-    /** dolphin-neo: average luminance (0-1) of what lies behind the glass card, or -1 if unknown. */
+    /** dolphin-ng: average luminance (0-1) of what lies behind the glass card, or -1 if unknown. */
     qreal backdropLuminance() const;
-    /** dolphin-neo: adapt the glass transparency to the backdrop. */
+    /** dolphin-ng: adapt the glass transparency to the backdrop. */
     void updateGlass();
 
     bool m_locked;
     QWidget *m_dockTitleBar;
     QTimer *m_glassTimer = nullptr;
-    QTimer *m_lavaTimer = nullptr; // dolphin-neo: drives the animated ("lava lamp") backdrop
+    QTimer *m_lavaTimer = nullptr; // dolphin-ng: drives the animated ("lava lamp") backdrop
     qreal m_glass = 75; // share (0-100) of the window tint removed under the card
 };
 

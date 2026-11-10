@@ -32,31 +32,31 @@
 
 namespace
 {
-// dolphin-neo glass settings. DOLPHIN_NEO_GLASS=<0-100> fixes the transparency; without it the
-// transparency follows the backdrop: DOLPHIN_NEO_GLASS_DARK (default 90) over black,
-// DOLPHIN_NEO_GLASS_LIGHT (default 10) over white, linear in between.
-int neoEnvInt(const char *name, int fallback)
+// dolphin-ng glass settings. DOLPHIN_NG_GLASS=<0-100> fixes the transparency; without it the
+// transparency follows the backdrop: DOLPHIN_NG_GLASS_DARK (default 90) over black,
+// DOLPHIN_NG_GLASS_LIGHT (default 10) over white, linear in between.
+int ngEnvInt(const char *name, int fallback)
 {
     return qEnvironmentVariableIsSet(name) ? qBound(0, qEnvironmentVariableIntValue(name), 100) : fallback;
 }
-bool neoGlassPlain()
+bool ngGlassPlain()
 {
-    static const bool plain = neoSetting("SIDEBAR").toLower() == QLatin1String("plain");
+    static const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
     return plain;
 }
 
-// DOLPHIN_NEO_GLASS_MODE=image (default): the card shows a static, blurred copy of the wallpaper, placed by the
-// window position on screen. DOLPHIN_NEO_GLASS_MODE=live: the card is a hole showing the compositor's real blur.
-bool neoGlassImageMode()
+// DOLPHIN_NG_GLASS_MODE=image (default): the card shows a static, blurred copy of the wallpaper, placed by the
+// window position on screen. DOLPHIN_NG_GLASS_MODE=live: the card is a hole showing the compositor's real blur.
+bool ngGlassImageMode()
 {
-    static const bool live = neoSetting("GLASS_MODE").toLower() == QLatin1String("live");
+    static const bool live = ngSetting("GLASS_MODE").toLower() == QLatin1String("live");
     return !live;
 }
 
-// The image behind the glass: DOLPHIN_NEO_GLASS_IMAGE, else the Plasma wallpaper of that screen.
-QString neoBackdropPath(const QScreen *screen)
+// The image behind the glass: DOLPHIN_NG_GLASS_IMAGE, else the Plasma wallpaper of that screen.
+QString ngBackdropPath(const QScreen *screen)
 {
-    const QString custom = neoSetting("GLASS_IMAGE");
+    const QString custom = ngSetting("GLASS_IMAGE");
     if (!custom.isEmpty()) {
         return custom;
     }
@@ -100,18 +100,18 @@ QString neoBackdropPath(const QScreen *screen)
 }
 
 // GLASS_MODE lava: is the card an animated "lava lamp"? Read every time, so the settings page applies at once.
-bool neoGlassLavaMode()
+bool ngGlassLavaMode()
 {
-    return neoSetting("GLASS_MODE").toLower() == QLatin1String("lava");
+    return ngSetting("GLASS_MODE").toLower() == QLatin1String("lava");
 }
 
 // One frame of the lava lamp, drawn small and painted scaled up, which blurs it. The blobs live in screen
 // coordinates, as if a slowly moving picture lay behind the whole desktop: `region` is the part of the screen
 // behind the card, so moving the window slides the blobs under it. `seconds` is the animation time.
-QImage neoLavaFrame(const QSize &size, const QList<QColor> &colours, const QColor &base, qreal seconds, const QRectF &region, const QSizeF &screen)
+QImage ngLavaFrame(const QSize &size, const QList<QColor> &colours, const QColor &base, qreal seconds, const QRectF &region, const QSizeF &screen)
 {
     // LAVA_SIZE 10-100: how large the blobs are (default 55)
-    const qreal sizeFactor = 0.30 + qBound(10, neoSettingInt("LAVA_SIZE", 55), 100) / 100.0 * 0.60;
+    const qreal sizeFactor = 0.30 + qBound(10, ngSettingInt("LAVA_SIZE", 55), 100) / 100.0 * 0.60;
     QImage frame(size, QImage::Format_ARGB32_Premultiplied);
     frame.fill(base);
     if (colours.isEmpty() || region.isEmpty() || screen.isEmpty()) {
@@ -156,7 +156,7 @@ QImage neoLavaFrame(const QSize &size, const QList<QColor> &colours, const QColo
 // The other animated backdrop (LAVA_STYLE=flow, the default): a gradient that flows. Every point takes a colour
 // between the palette colours from a few very slow waves crossing the screen, so the panel is always completely
 // filled, wherever the window is. Like the blobs it lives in screen coordinates and is drawn small.
-QImage neoFlowFrame(const QSize &size, const QList<QColor> &colours, qreal seconds, const QRectF &region, const QSizeF &screen)
+QImage ngFlowFrame(const QSize &size, const QList<QColor> &colours, qreal seconds, const QRectF &region, const QSizeF &screen)
 {
     QImage frame(size, QImage::Format_RGB32);
     if (colours.isEmpty() || region.isEmpty() || screen.isEmpty()) {
@@ -164,7 +164,7 @@ QImage neoFlowFrame(const QSize &size, const QList<QColor> &colours, qreal secon
         return frame;
     }
     // LAVA_SIZE 10-100: how broad the colour fields are (default 55)
-    const qreal scale = 0.63 / (0.30 + qBound(10, neoSettingInt("LAVA_SIZE", 55), 100) / 100.0 * 0.60);
+    const qreal scale = 0.63 / (0.30 + qBound(10, ngSettingInt("LAVA_SIZE", 55), 100) / 100.0 * 0.60);
     const qreal unit = screen.height();
     const int last = colours.size() - 1;
     for (int y = 0; y < size.height(); ++y) {
@@ -189,10 +189,10 @@ QImage neoFlowFrame(const QSize &size, const QList<QColor> &colours, qreal secon
 // The colours of the lava. LAVA_COLORS is empty for the default set (the teal, amber and indigo glows of the
 // design mockup), "wallpaper" to take them from the blurred backdrop picture, or a comma-separated list of
 // colours such as "#2f6f8f,#8a5a2c,#3c4a78".
-QList<QColor> neoLavaColours(const QPixmap &backdrop, QColor *base)
+QList<QColor> ngLavaColours(const QPixmap &backdrop, QColor *base)
 {
     *base = QColor(16, 18, 22);
-    const QString spec = neoSetting("LAVA_COLORS").trimmed().toLower();
+    const QString spec = ngSetting("LAVA_COLORS").trimmed().toLower();
     if (spec == QLatin1String("wallpaper") && !backdrop.isNull()) {
         QList<QColor> colours;
         const QImage image = backdrop.toImage();
@@ -234,12 +234,12 @@ QList<QColor> neoLavaColours(const QPixmap &backdrop, QColor *base)
 
 // A blurred copy of the backdrop for `screen`, at a quarter of the screen resolution (it is drawn scaled up).
 // Null if there is no usable image.
-QPixmap neoBackdrop(const QScreen *screen)
+QPixmap ngBackdrop(const QScreen *screen)
 {
     static QHash<QString, QPixmap> cache;
     const QSize screenSize = screen->geometry().size();
-    const int blur = qBound(0, neoSettingInt("GLASS_BLUR", 45), 100); // how soft the backdrop is
-    const QString path = neoBackdropPath(screen);
+    const int blur = qBound(0, ngSettingInt("GLASS_BLUR", 45), 100); // how soft the backdrop is
+    const QString path = ngBackdropPath(screen);
     const QString key = screen->name() + QLatin1Char(':') + QString::number(screenSize.width()) + QLatin1Char('x') + QString::number(screenSize.height())
         + QLatin1Char(':') + QString::number(blur) + QLatin1Char(':') + path;
     const auto cached = cache.constFind(key);
@@ -312,18 +312,18 @@ DolphinDockWidget::DolphinDockWidget(const QString &title, QWidget *parent, Qt::
 {
     setFeatures(DefaultDockWidgetFeatures);
 
-    // dolphin-neo: follow the backdrop unless a fixed transparency was requested
-    if (!neoGlassPlain()) {
+    // dolphin-ng: follow the backdrop unless a fixed transparency was requested
+    if (!ngGlassPlain()) {
         startTimer(30000); // disk usage box
     }
-    if (neoGlassImageMode()) {
-        m_glass = neoEnvInt("DOLPHIN_NEO_GLASS", 55); // how much of the image shows through the window tint
-    } else if (qEnvironmentVariableIsSet("DOLPHIN_NEO_GLASS")) {
-        m_glass = neoEnvInt("DOLPHIN_NEO_GLASS", 75);
-    } else if (!neoGlassPlain() && KWindowSystem::isPlatformX11()) {
+    if (ngGlassImageMode()) {
+        m_glass = ngEnvInt("DOLPHIN_NG_GLASS", 55); // how much of the image shows through the window tint
+    } else if (qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS")) {
+        m_glass = ngEnvInt("DOLPHIN_NG_GLASS", 75);
+    } else if (!ngGlassPlain() && KWindowSystem::isPlatformX11()) {
         m_glassTimer = new QTimer(this);
-        // DOLPHIN_NEO_GLASS_MS: polling interval of the backdrop, milliseconds (default 150)
-        m_glassTimer->setInterval(qEnvironmentVariableIsSet("DOLPHIN_NEO_GLASS_MS") ? qMax(50, qEnvironmentVariableIntValue("DOLPHIN_NEO_GLASS_MS")) : 150);
+        // DOLPHIN_NG_GLASS_MS: polling interval of the backdrop, milliseconds (default 150)
+        m_glassTimer->setInterval(qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS_MS") ? qMax(50, qEnvironmentVariableIntValue("DOLPHIN_NG_GLASS_MS")) : 150);
         connect(m_glassTimer, &QTimer::timeout, this, &DolphinDockWidget::updateGlass);
         m_glassTimer->start();
     }
@@ -410,13 +410,13 @@ void DolphinDockWidget::updateGlass()
     if (luminance < 0) {
         return;
     }
-    static const int dark = neoEnvInt("DOLPHIN_NEO_GLASS_DARK", 90);
-    static const int light = neoEnvInt("DOLPHIN_NEO_GLASS_LIGHT", 10);
+    static const int dark = ngEnvInt("DOLPHIN_NG_GLASS_DARK", 90);
+    static const int light = ngEnvInt("DOLPHIN_NG_GLASS_LIGHT", 10);
     const qreal target = dark + (light - dark) * luminance;
     const qreal next = qAbs(target - m_glass) < 1.5 ? target : m_glass + (target - m_glass) * 0.45; // ease towards the target
-    static const bool debug = qEnvironmentVariableIsSet("DOLPHIN_NEO_GLASS_DEBUG");
+    static const bool debug = qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS_DEBUG");
     if (debug) {
-        qWarning("dolphin-neo glass [%s]: backdrop luminance %.2f -> target %.0f%%, now %.0f%%", qPrintable(windowTitle()), luminance, target, next);
+        qWarning("dolphin-ng glass [%s]: backdrop luminance %.2f -> target %.0f%%, now %.0f%%", qPrintable(windowTitle()), luminance, target, next);
     }
     if (!qFuzzyCompare(next, m_glass)) {
         m_glass = next;
@@ -449,8 +449,8 @@ bool DolphinDockWidget::isLocked() const
     return m_locked;
 }
 
-// dolphin-neo: draw the docked panel as a floating "glass" card.
-// DOLPHIN_NEO_SIDEBAR=plain restores the stock look.
+// dolphin-ng: draw the docked panel as a floating "glass" card.
+// DOLPHIN_NG_SIDEBAR=plain restores the stock look.
 void DolphinDockWidget::paintEvent(QPaintEvent *event)
 {
     QDockWidget::paintEvent(event);
@@ -460,7 +460,7 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
 
 bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
 {
-    if (neoGlassPlain() || isFloating()) {
+    if (ngGlassPlain() || isFloating()) {
         return false;
     }
     bool opaque = true;
@@ -470,8 +470,8 @@ bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
 
     painter.setPen(Qt::NoPen);
     const QScreen *currentScreen = screen();
-    const QPixmap backdrop = (neoGlassImageMode() && currentScreen) ? neoBackdrop(currentScreen) : QPixmap();
-    const bool lava = neoGlassImageMode() && neoGlassLavaMode();
+    const QPixmap backdrop = (ngGlassImageMode() && currentScreen) ? ngBackdrop(currentScreen) : QPixmap();
+    const bool lava = ngGlassImageMode() && ngGlassLavaMode();
     if (lava) {
         // animated backdrop: about twelve small frames a second, only while this window is the active one
         if (!m_lavaTimer) {
@@ -490,18 +490,18 @@ bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
         if (!clock.isValid()) {
             clock.start();
         }
-        const qreal speed = qBound(0, neoSettingInt("LAVA_SPEED", 30), 100) / 30.0;
+        const qreal speed = qBound(0, ngSettingInt("LAVA_SPEED", 30), 100) / 30.0;
         QColor base;
-        const QList<QColor> colours = neoLavaColours(backdrop, &base);
-        if (!neoIsDark(palette())) {
+        const QList<QColor> colours = ngLavaColours(backdrop, &base);
+        if (!ngIsDark(palette())) {
             base = base.lighter(520); // a pale ground under the blobs on a light scheme
         }
         const QRectF onScreen = currentScreen ? QRectF(QPointF(mapToGlobal(card.topLeft().toPoint()) - currentScreen->geometry().topLeft()), card.size()) : card;
         const QSizeF screenSize = currentScreen ? QSizeF(currentScreen->geometry().size()) : card.size();
         const QSize frameSize = (card.size() / 8).toSize().expandedTo(QSize(8, 8));
         const qreal seconds = clock.elapsed() / 1000.0 * speed;
-        const QImage frame = neoSetting("LAVA_STYLE").toLower() == QLatin1String("blobs") ? neoLavaFrame(frameSize, colours, base, seconds, onScreen, screenSize)
-                                                                                         : neoFlowFrame(frameSize, colours, seconds, onScreen, screenSize);
+        const QImage frame = ngSetting("LAVA_STYLE").toLower() == QLatin1String("blobs") ? ngLavaFrame(frameSize, colours, base, seconds, onScreen, screenSize)
+                                                                                         : ngFlowFrame(frameSize, colours, seconds, onScreen, screenSize);
         QPainterPath clip;
         clip.addRoundedRect(card, radius, radius);
         painter.save();
@@ -509,7 +509,7 @@ bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
         painter.drawImage(card, frame);
         QColor tint = palette().color(QPalette::Window);
-        tint.setAlphaF(1.0 - qBound(0, neoSettingInt("GLASS", 55), 100) / 100.0);
+        tint.setAlphaF(1.0 - qBound(0, ngSettingInt("GLASS", 55), 100) / 100.0);
         painter.fillRect(card, tint);
         painter.restore();
     } else if (m_lavaTimer && m_lavaTimer->isActive()) {
@@ -528,7 +528,7 @@ bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
         const qreal factor = qreal(backdrop.width()) / currentScreen->geometry().width();
         painter.drawPixmap(card, backdrop, QRectF(onScreen * factor, card.size() * factor));
         QColor tint = palette().color(QPalette::Window);
-        tint.setAlphaF(1.0 - qBound(0, neoSettingInt("GLASS", 55), 100) / 100.0); // how much of the picture shows
+        tint.setAlphaF(1.0 - qBound(0, ngSettingInt("GLASS", 55), 100) / 100.0); // how much of the picture shows
         painter.fillRect(card, tint);
         painter.restore();
     } else {
@@ -550,7 +550,7 @@ bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
 
     // rim: bright towards the top-left, fading along the diagonal, a faint return at the bottom-right
     QLinearGradient rim(card.topLeft(), card.bottomRight());
-    if (neoIsDark(palette())) {
+    if (ngIsDark(palette())) {
         rim.setColorAt(0.0, QColor(255, 255, 255, 105));
         rim.setColorAt(0.45, QColor(255, 255, 255, 22));
         rim.setColorAt(1.0, QColor(255, 255, 255, 55));
@@ -575,7 +575,7 @@ bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
         if (storage.isValid() && storage.bytesTotal() > 0 && card.height() > 200) {
             const QRectF box(card.left() + 8, card.bottom() - 8 - 54, card.width() - 16, 54);
             painter.setPen(Qt::NoPen);
-            painter.setBrush(neoIsDark(palette()) ? QColor(0, 0, 0, 62) : QColor(255, 255, 255, 130));
+            painter.setBrush(ngIsDark(palette()) ? QColor(0, 0, 0, 62) : QColor(255, 255, 255, 130));
             painter.drawRoundedRect(box, 10, 10);
 
             const qreal used = 1.0 - qreal(storage.bytesAvailable()) / qreal(storage.bytesTotal());
@@ -589,7 +589,7 @@ bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
 
             const QRectF groove(box.left() + 10, box.bottom() - 16, box.width() - 20, 6);
             painter.setPen(Qt::NoPen);
-            painter.setBrush(neoIsDark(palette()) ? QColor(255, 255, 255, 44) : QColor(0, 0, 0, 36));
+            painter.setBrush(ngIsDark(palette()) ? QColor(255, 255, 255, 44) : QColor(0, 0, 0, 36));
             painter.drawRoundedRect(groove, 3, 3);
             painter.setBrush(used > 0.9 ? QColor(224, 145, 79) : palette().color(QPalette::Highlight));
             painter.drawRoundedRect(QRectF(groove.topLeft(), QSizeF(qMax(6.0, groove.width() * used), groove.height())), 3, 3);
@@ -608,7 +608,7 @@ void DolphinDockWidget::timerEvent(QTimerEvent *event)
 
 bool DolphinDockWidget::eventFilter(QObject *watched, QEvent *event)
 {
-    // dolphin-neo: the static backdrop depends on where the window is on screen
+    // dolphin-ng: the static backdrop depends on where the window is on screen
     if (watched == window() && (event->type() == QEvent::Move || event->type() == QEvent::Resize)) {
         update();
     }
@@ -617,7 +617,7 @@ bool DolphinDockWidget::eventFilter(QObject *watched, QEvent *event)
 
 bool DolphinDockWidget::event(QEvent *event)
 {
-    if ((event->type() == QEvent::Show || event->type() == QEvent::ParentChange) && !neoGlassPlain() && window() != this) {
+    if ((event->type() == QEvent::Show || event->type() == QEvent::ParentChange) && !ngGlassPlain() && window() != this) {
         window()->removeEventFilter(this);
         window()->installEventFilter(this);
     }

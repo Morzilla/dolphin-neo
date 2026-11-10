@@ -1,4 +1,4 @@
-# dolphin-neo
+# dolphin-ng
 
 An experimental fork of [Dolphin](https://apps.kde.org/dolphin/), KDE's file manager, that tries a more
 modern file list. It is based on Dolphin 26.08.1 and changes only how things are shown and clicked; file
@@ -9,11 +9,11 @@ it installs into your home directory next to it.
 
 | List, cards | List, open rows |
 |---|---|
-| ![list with cards](neo/screenshots/list-cards.png) | ![list with open rows](neo/screenshots/list-open.png) |
+| ![list with cards](ng/screenshots/list-cards.png) | ![list with open rows](ng/screenshots/list-open.png) |
 
 | Preview card | Icons view |
 |---|---|
-| ![preview card](neo/screenshots/preview-card.png) | ![icons view](neo/screenshots/icons-tiles.png) |
+| ![preview card](ng/screenshots/preview-card.png) | ![icons view](ng/screenshots/icons-tiles.png) |
 
 ## What is different
 
@@ -47,14 +47,14 @@ it installs into your home directory next to it.
 ## Install
 
 One script downloads the source, installs the build dependencies, builds, and installs into your home
-directory (`~/.local/dolphin-neo`), next to your distribution's Dolphin:
+directory (`~/.local/dolphin-ng`), next to your distribution's Dolphin:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Morzilla/dolphin-neo/neo/neo/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Morzilla/dolphin-ng/ng/ng/install.sh | bash
 ```
 
-or, from a clone, `neo/install.sh`. It adds a "Dolphin Neo" entry to the application menu and a `dolphin-neo`
-command, and installs the files of the optional [Motto-Neo theme](neo/theme/README.md) without activating it
+or, from a clone, `ng/install.sh`. It adds a "Dolphin NG" entry to the application menu and a `dolphin-ng`
+command, and installs the files of the optional [Motto-Neo theme](ng/theme/README.md) without activating it
 (`--apply-theme` does that). `--no-deps`, `--no-theme`, `--prefix DIR` and `--uninstall` are the other options.
 
 The script knows dnf (Fedora), apt (Debian, Ubuntu), pacman (Arch) and zypper (openSUSE). Only the Fedora path
@@ -62,12 +62,12 @@ has been run, and only without its dependency step; reports and fixes for the ot
 based on Dolphin 26.08.1, which needs KDE Frameworks 6.23 and Qt 6.4 or newer, so distributions that ship older
 ones cannot build it.
 
-To build by hand: install Dolphin's build dependencies, then `neo/build.sh` and `neo/dolphin-neo --new-window`.
+To build by hand: install Dolphin's build dependencies, then `ng/build.sh` and `ng/dolphin-ng --new-window`.
 
-Settings are in Dolphin's own settings dialog, on a page called **Neo** (stored in `dolphinrc`, group
-`DolphinNeo`). Every setting can also be forced with a `DOLPHIN_NEO_*` environment variable, documented in
-[`neo/dolphin-neo.conf.example`](neo/dolphin-neo.conf.example); the launcher reads those from
-`~/.config/dolphin-neo.conf`, and a variable that is set wins over the dialog. `neo/dolphinui.rc.example` is a
+Settings are in Dolphin's own settings dialog, on a page called **NG** (stored in `dolphinrc`, group
+`DolphinNG`). Every setting can also be forced with a `DOLPHIN_NG_*` environment variable, documented in
+[`ng/dolphin-ng.conf.example`](ng/dolphin-ng.conf.example); the launcher reads those from
+`~/.config/dolphin-ng.conf`, and a variable that is set wins over the dialog. `ng/dolphinui.rc.example` is a
 toolbar layout with the New Folder, Up and Root buttons; the install script puts it in place if you have none.
 
 ## State of things
@@ -78,8 +78,8 @@ toolbar layout with the New Folder, Up and Root buttons; the install script puts
   they should go through i18n.
 - File kinds and their abbreviations come from the file extension, not from the MIME type.
 - The filter menu is skipped in folders with more than 4000 items.
-- Most settings on the Neo page are read at start-up; only the sidebar picture and the row style apply at once.
-- All changes are marked with `dolphin-neo` comments in the source.
+- Most settings on the NG page are read at start-up; only the sidebar picture and the row style apply at once.
+- All changes are marked with `dolphin-ng` comments in the source.
 
 ## Contributing
 
@@ -89,5 +89,5 @@ counts) from KFileMetaData.
 
 ## Licence
 
-Like Dolphin: GPL-2.0-or-later. See `LICENSES/`. The theme in `neo/theme/` derives from L4ki's Motto themes and is
+Like Dolphin: GPL-2.0-or-later. See `LICENSES/`. The theme in `ng/theme/` derives from L4ki's Motto themes and is
 GPL-3.0; see its README.

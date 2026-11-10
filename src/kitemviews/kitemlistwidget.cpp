@@ -102,25 +102,25 @@ QVariant KItemListWidget::value(const QByteArray &key) const
     return m_data.value(key);
 }
 
-QString neoSetting(const char *name, const QString &fallback)
+QString ngSetting(const char *name, const QString &fallback)
 {
-    const QByteArray variable = QByteArray("DOLPHIN_NEO_") + name;
+    const QByteArray variable = QByteArray("DOLPHIN_NG_") + name;
     if (qEnvironmentVariableIsSet(variable.constData())) {
         return qEnvironmentVariable(variable.constData());
     }
-    return KSharedConfig::openConfig()->group(QStringLiteral("DolphinNeo")).readEntry(name, fallback);
+    return KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG")).readEntry(name, fallback);
 }
 
-int neoSettingInt(const char *name, int fallback)
+int ngSettingInt(const char *name, int fallback)
 {
     bool ok = false;
-    const int value = neoSetting(name).toInt(&ok);
+    const int value = ngSetting(name).toInt(&ok);
     return ok ? value : fallback;
 }
 
 void setNeoSetting(const char *name, const QString &value)
 {
-    KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNeo"));
+    KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG"));
     if (value.isEmpty()) {
         group.deleteEntry(name);
     } else {
@@ -129,68 +129,68 @@ void setNeoSetting(const char *name, const QString &value)
     group.sync();
 }
 
-bool neoSettingFromEnvironment(const char *name)
+bool ngSettingFromEnvironment(const char *name)
 {
-    const QByteArray variable = QByteArray("DOLPHIN_NEO_") + name;
+    const QByteArray variable = QByteArray("DOLPHIN_NG_") + name;
     return qEnvironmentVariableIsSet(variable.constData());
 }
 
 namespace
 {
-NeoRowStyle neoRowStyleFromName(const QByteArray &name, NeoRowStyle fallback)
+NgRowStyle ngRowStyleFromName(const QByteArray &name, NgRowStyle fallback)
 {
-    return name == "stripe" ? NeoRowStyle::Stripe
-        : name == "line"    ? NeoRowStyle::Line
-        : name == "none"    ? NeoRowStyle::None
-        : name == "open"    ? NeoRowStyle::Open
-        : name == "card"    ? NeoRowStyle::Card
+    return name == "stripe" ? NgRowStyle::Stripe
+        : name == "line"    ? NgRowStyle::Line
+        : name == "none"    ? NgRowStyle::None
+        : name == "open"    ? NgRowStyle::Open
+        : name == "card"    ? NgRowStyle::Card
                             : fallback;
 }
-// the current style: DOLPHIN_NEO_ROWS if set, else what was last chosen in the window, else cards
-NeoRowStyle &neoRowStyleRef()
+// the current style: DOLPHIN_NG_ROWS if set, else what was last chosen in the window, else cards
+NgRowStyle &ngRowStyleRef()
 {
-    static NeoRowStyle style = [] {
-        const QByteArray saved = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNeo")).readEntry("RowStyle", QByteArray("card")).toLower();
-        return neoRowStyleFromName(qgetenv("DOLPHIN_NEO_ROWS").toLower(), neoRowStyleFromName(saved, NeoRowStyle::Card));
+    static NgRowStyle style = [] {
+        const QByteArray saved = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG")).readEntry("RowStyle", QByteArray("card")).toLower();
+        return ngRowStyleFromName(qgetenv("DOLPHIN_NG_ROWS").toLower(), ngRowStyleFromName(saved, NgRowStyle::Card));
     }();
     return style;
 }
 }
 
-NeoRowStyle neoRowStyle()
+NgRowStyle ngRowStyle()
 {
-    return neoRowStyleRef();
+    return ngRowStyleRef();
 }
 
-void setNeoRowStyle(NeoRowStyle style)
+void setNeoRowStyle(NgRowStyle style)
 {
-    neoRowStyleRef() = style;
+    ngRowStyleRef() = style;
     static const char *const names[] = {"stripe", "card", "line", "none", "open"};
-    KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNeo"));
+    KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG"));
     group.writeEntry("RowStyle", QByteArray(names[int(style)]));
     group.sync();
 }
 
-bool neoTwoLineList()
+bool ngTwoLineList()
 {
-    static const bool columns = neoSetting("LIST").toLower() == QLatin1String("columns");
+    static const bool columns = ngSetting("LIST").toLower() == QLatin1String("columns");
     return !columns && QGuiApplication::layoutDirection() == Qt::LeftToRight;
 }
 
-QColor neoCategoryTint(NeoKind::Category category)
+QColor ngCategoryTint(NgKind::Category category)
 {
-    static const QColor tints[NeoKind::CategoryCount] = {QColor(201, 205, 213), QColor(195, 164, 230), QColor(143, 188, 230), QColor(127, 214, 168), QColor(230, 183, 122),
+    static const QColor tints[NgKind::CategoryCount] = {QColor(201, 205, 213), QColor(195, 164, 230), QColor(143, 188, 230), QColor(127, 214, 168), QColor(230, 183, 122),
                                                         QColor(127, 208, 193), QColor(230, 164, 200), QColor(240, 163, 154), QColor(176, 181, 191)};
     return tints[category];
 }
 
-NeoKind neoKindFor(const QString &name, bool isDir)
+NgKind ngKindFor(const QString &name, bool isDir)
 {
-    auto kind = [](const QString &sigla, NeoKind::Category category) {
-        return NeoKind{sigla, neoCategoryTint(category), category};
+    auto kind = [](const QString &sigla, NgKind::Category category) {
+        return NgKind{sigla, ngCategoryTint(category), category};
     };
     if (isDir) {
-        return kind(QStringLiteral("DIR"), NeoKind::Folder);
+        return kind(QStringLiteral("DIR"), NgKind::Folder);
     }
     const QString lower = name.toLower();
     static const QList<std::pair<QString, QString>> compound{{QStringLiteral(".tar.gz"), QStringLiteral("TGZ")},
@@ -199,13 +199,13 @@ NeoKind neoKindFor(const QString &name, bool isDir)
                                                              {QStringLiteral(".tar.zst"), QStringLiteral("TZST")}};
     for (const auto &entry : compound) {
         if (lower.endsWith(entry.first)) {
-            return kind(entry.second, NeoKind::Archive);
+            return kind(entry.second, NgKind::Archive);
         }
     }
     const int dot = lower.lastIndexOf(QLatin1Char('.'));
     const QString ext = (dot > 0 && dot < lower.size() - 1) ? lower.mid(dot + 1) : QString();
     if (ext.isEmpty() || ext.size() > 5) {
-        return kind(QStringLiteral("FILE"), NeoKind::Other);
+        return kind(QStringLiteral("FILE"), NgKind::Other);
     }
     static const QSet<QString> images{"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tif", "tiff", "heic", "avif", "ico", "xcf", "kra"};
     static const QSet<QString> documents{"pdf", "doc", "docx", "odt", "rtf", "txt", "md", "epub", "ppt", "pptx", "odp", "msg", "eml"};
@@ -214,72 +214,72 @@ NeoKind neoKindFor(const QString &name, bool isDir)
     static const QSet<QString> medias{"mp3", "flac", "ogg", "wav", "m4a", "opus", "mp4", "mkv", "webm", "avi", "mov"};
     static const QSet<QString> datas{"json", "xml", "yaml", "yml", "toml", "ini", "conf", "html", "css", "js", "ts", "py", "rs", "c", "cpp", "h", "sh", "sql", "log"};
     static const QSet<QString> packages{"rpm", "deb", "exe", "msi", "iso", "img", "apk", "jar"};
-    const NeoKind::Category category = images.contains(ext) ? NeoKind::Image
-        : documents.contains(ext)                           ? NeoKind::Document
-        : sheets.contains(ext)                              ? NeoKind::Sheet
-        : archives.contains(ext)                            ? NeoKind::Archive
-        : medias.contains(ext)                              ? NeoKind::Media
-        : datas.contains(ext)                               ? NeoKind::Data
-        : packages.contains(ext)                            ? NeoKind::Package
-                                                            : NeoKind::Other;
+    const NgKind::Category category = images.contains(ext) ? NgKind::Image
+        : documents.contains(ext)                           ? NgKind::Document
+        : sheets.contains(ext)                              ? NgKind::Sheet
+        : archives.contains(ext)                            ? NgKind::Archive
+        : medias.contains(ext)                              ? NgKind::Media
+        : datas.contains(ext)                               ? NgKind::Data
+        : packages.contains(ext)                            ? NgKind::Package
+                                                            : NgKind::Other;
     return kind(ext.toUpper(), category);
 }
 
-int KItemListWidget::neoActionAt(const QPointF &pos) const
+int KItemListWidget::ngActionAt(const QPointF &pos) const
 {
     Q_UNUSED(pos)
     return 0;
 }
 
-bool neoTiles()
+bool ngTiles()
 {
-    static const bool off = neoSetting("TILES").toLower() == QLatin1String("off");
+    static const bool off = ngSetting("TILES").toLower() == QLatin1String("off");
     return !off;
 }
 
-bool neoIsDark(const QPalette &palette)
+bool ngIsDark(const QPalette &palette)
 {
     return palette.color(QPalette::Window).lightnessF() < 0.5;
 }
 
-QColor neoAccent(const QColor &colour, bool dark)
+QColor ngAccent(const QColor &colour, bool dark)
 {
     float h, s, l;
     colour.getHslF(&h, &s, &l);
     return QColor::fromHslF(h < 0 ? 0 : h, dark ? s : qMin(1.0f, s * 1.15f + 0.05f), dark ? qMax(l, 0.64f) : qMin(l, 0.40f));
 }
 
-bool neoNoIcons()
+bool ngNoIcons()
 {
-    static const bool show = neoSetting("ICONS").toLower() == QLatin1String("show");
-    return !show && neoTwoLineList();
+    static const bool show = ngSetting("ICONS").toLower() == QLatin1String("show");
+    return !show && ngTwoLineList();
 }
 
 void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
     Q_UNUSED(option)
 
-    // dolphin-neo: with any style but "stripe" the view sets m_alternateBackground on every row
+    // dolphin-ng: with any style but "stripe" the view sets m_alternateBackground on every row
     // (see KItemListView::updateAlternateBackgroundForWidget) and the row is drawn here.
-    if (m_alternateBackground && neoRowStyle() == NeoRowStyle::Card) {
+    if (m_alternateBackground && ngRowStyle() == NgRowStyle::Card) {
         // a rounded card per row, darker than the view, with a hairline of light along its top edge;
         // same footprint as the hover/selection shape of the style
         const QRectF card = selectionRectFull().adjusted(3, 3, -3, -3);
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
         painter->setPen(Qt::NoPen);
-        const bool dark = neoIsDark(m_styleOption.palette);
+        const bool dark = ngIsDark(m_styleOption.palette);
         painter->setBrush(dark ? QColor(0, 0, 0, 66) : QColor(0, 0, 0, 14)); // darker than the view on either scheme
         painter->drawRoundedRect(card, 5, 5);
         painter->setPen(QPen(dark ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
         painter->drawLine(QPointF(card.left() + 5, card.top() + 0.5), QPointF(card.right() - 5, card.top() + 0.5));
         painter->restore();
-    } else if (m_alternateBackground && neoRowStyle() == NeoRowStyle::Open) {
+    } else if (m_alternateBackground && ngRowStyle() == NgRowStyle::Open) {
         // open rows: no card, only a hairline under each row
         QColor lineColor = m_styleOption.palette.color(QPalette::Text);
         lineColor.setAlphaF(0.07);
         painter->fillRect(QRectF(0, size().height() - 1, size().width(), 1), lineColor);
-    } else if (m_alternateBackground && neoRowStyle() == NeoRowStyle::Line) {
+    } else if (m_alternateBackground && ngRowStyle() == NgRowStyle::Line) {
         // a hairline under the row that fades out towards both ends
         QColor lineColor = m_styleOption.palette.color(QPalette::Text);
         QColor transparent = lineColor;
@@ -291,7 +291,7 @@ void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
         gradient.setColorAt(0.88, lineColor);
         gradient.setColorAt(1.0, transparent);
         painter->fillRect(QRectF(0, size().height() - 1, size().width(), 1), gradient);
-    } else if (m_alternateBackground && neoRowStyle() == NeoRowStyle::Stripe) {
+    } else if (m_alternateBackground && ngRowStyle() == NgRowStyle::Stripe) {
         QColor backgroundColor = m_styleOption.palette.color(QPalette::AlternateBase);
         if (!widget->hasFocus()) {
             QColor baseColor = m_styleOption.palette.color(QPalette::Base);
@@ -862,8 +862,8 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
     } else {
         style()->drawPrimitive(QStyle::PE_PanelItemViewItem, &viewItemOption, painter, widget);
 
-        // Focus decoration (dolphin-neo: not in the two-line list, where it shows as a light line under the row)
-        if (current && !(m_alternateBackground && neoTwoLineList())) {
+        // Focus decoration (dolphin-ng: not in the two-line list, where it shows as a light line under the row)
+        if (current && !(m_alternateBackground && ngTwoLineList())) {
             QStyleOptionFocusRect focusRectOption;
             initStyleOption(&focusRectOption);
             focusRectOption.state = QStyle::State_HasFocus;

@@ -34,7 +34,7 @@ DolphinUrlNavigator::DolphinUrlNavigator(const QUrl &url, QWidget *parent)
     setUrlEditable(settings->editableUrl());
     setShowFullPath(settings->showFullPath());
 
-    // dolphin-neo: when the keyboard focus leaves the edit field for another widget of the same window
+    // dolphin-ng: when the keyboard focus leaves the edit field for another widget of the same window
     // (a click on the file view, for example), go back to the breadcrumb. Not when the location bar is
     // configured to be always editable, and not for popups such as the completion list.
     connect(qApp, &QApplication::focusChanged, this, [this](QWidget *old, QWidget *now) {

@@ -336,7 +336,7 @@ target_sources(dolphinstatic PRIVATE
     settings/dolphinsettingsdialog.cpp
     settings/contextmenu/contextmenusettingspage.cpp
     settings/settingspagebase.cpp
-    settings/neo/neosettingspage.cpp
+    settings/ng/ngsettingspage.cpp
     settings/servicemodel.cpp
     settings/trash/trashsettingspage.cpp
     settings/viewmodes/dolphinfontrequester.cpp

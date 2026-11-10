@@ -41,24 +41,24 @@
 
 namespace
 {
-// dolphin-neo: how the file type is marked at the start of a row (setting MARK, read at start-up).
+// dolphin-ng: how the file type is marked at the start of a row (setting MARK, read at start-up).
 // Watermark is the faint icon and large abbreviation; the others pair a small line glyph with the abbreviation.
-enum class NeoMark { Watermark, Tile, Pill, Signs, Header };
-NeoMark neoMark()
+enum class NgMark { Watermark, Tile, Pill, Signs, Header };
+NgMark ngMark()
 {
-    static const NeoMark mark = [] {
-        const QString name = neoSetting("MARK").toLower();
-        return name == QLatin1String("tile") ? NeoMark::Tile
-            : name == QLatin1String("pill")  ? NeoMark::Pill
-            : name == QLatin1String("signs") ? NeoMark::Signs
-            : name == QLatin1String("header") ? NeoMark::Header
-                                              : NeoMark::Watermark;
+    static const NgMark mark = [] {
+        const QString name = ngSetting("MARK").toLower();
+        return name == QLatin1String("tile") ? NgMark::Tile
+            : name == QLatin1String("pill")  ? NgMark::Pill
+            : name == QLatin1String("signs") ? NgMark::Signs
+            : name == QLatin1String("header") ? NgMark::Header
+                                              : NgMark::Watermark;
     }();
     return mark;
 }
 
 // A line drawing for each kind of file, in a 24 x 24 box, to be stroked.
-QPainterPath neoGlyph(int category)
+QPainterPath ngGlyph(int category)
 {
     QPainterPath p;
     auto lines = [&p](std::initializer_list<QPointF> points, bool close = false) {
@@ -76,42 +76,42 @@ QPainterPath neoGlyph(int category)
         }
     };
     switch (category) {
-    case NeoKind::Folder:
+    case NgKind::Folder:
         lines({{3, 6}, {9, 6}, {11, 8.5}, {21, 8.5}, {21, 19}, {3, 19}}, true);
         break;
-    case NeoKind::Image:
+    case NgKind::Image:
         p.addRoundedRect(QRectF(4, 5, 16, 14), 1.5, 1.5);
         lines({{4.5, 16.5}, {8.5, 12.5}, {12, 16}, {15, 13}, {19.5, 17.5}});
         p.addEllipse(QPointF(15.5, 9.5), 1.3, 1.3);
         break;
-    case NeoKind::Sheet:
+    case NgKind::Sheet:
         p.addRoundedRect(QRectF(5, 4, 14, 16), 1.5, 1.5);
         lines({{5, 9.5}, {19, 9.5}});
         lines({{5, 14.5}, {19, 14.5}});
         lines({{11, 4}, {11, 20}});
         break;
-    case NeoKind::Archive:
+    case NgKind::Archive:
         p.addRoundedRect(QRectF(5, 4, 14, 16), 1.5, 1.5);
         lines({{12, 4}, {12, 6}});
         lines({{12, 8}, {12, 10}});
         lines({{12, 12}, {12, 14}});
         p.addRect(QRectF(10.5, 15, 3, 2.5));
         break;
-    case NeoKind::Media:
+    case NgKind::Media:
         p.addEllipse(QPointF(12, 12), 8, 8);
         lines({{10, 8.5}, {16, 12}, {10, 15.5}}, true);
         break;
-    case NeoKind::Data:
+    case NgKind::Data:
         lines({{8.5, 7.5}, {4, 12}, {8.5, 16.5}});
         lines({{15.5, 7.5}, {20, 12}, {15.5, 16.5}});
         lines({{13.2, 6}, {10.8, 18}});
         break;
-    case NeoKind::Package:
+    case NgKind::Package:
         lines({{4, 8}, {12, 4}, {20, 8}, {20, 16}, {12, 20}, {4, 16}}, true);
         lines({{4, 8}, {12, 12}, {20, 8}});
         lines({{12, 12}, {12, 20}});
         break;
-    case NeoKind::Document:
+    case NgKind::Document:
         lines({{7, 3}, {14, 3}, {19, 8}, {19, 21}, {7, 21}}, true);
         lines({{14, 3}, {14, 8}, {19, 8}});
         lines({{10, 13}, {16, 13}});
@@ -125,9 +125,9 @@ QPainterPath neoGlyph(int category)
     return p;
 }
 
-// dolphin-neo: the main colour of an icon — the average of its pixels weighted by how saturated they are,
+// dolphin-ng: the main colour of an icon — the average of its pixels weighted by how saturated they are,
 // lightened enough to read on a dark row. Cached per icon name. Invalid if the icon has no usable pixels.
-QColor neoIconColor(const QString &iconName, const QPixmap &pixmap)
+QColor ngIconColor(const QString &iconName, const QPixmap &pixmap)
 {
     static QHash<QString, QColor> cache;
     const auto cached = cache.constFind(iconName);
@@ -163,11 +163,11 @@ QColor neoIconColor(const QString &iconName, const QPixmap &pixmap)
     return result;
 }
 
-// dolphin-neo: the two buttons shown on the hovered row, "Open" and a menu with everything else
-class NeoRowActions : public QGraphicsWidget
+// dolphin-ng: the two buttons shown on the hovered row, "Open" and a menu with everything else
+class NgRowActions : public QGraphicsWidget
 {
 public:
-    NeoRowActions(QGraphicsItem *parent, std::function<void()> open, std::function<void(const QPoint &)> menu)
+    NgRowActions(QGraphicsItem *parent, std::function<void()> open, std::function<void(const QPoint &)> menu)
         : QGraphicsWidget(parent)
         , m_open(std::move(open))
         , m_menu(std::move(menu))
@@ -291,8 +291,8 @@ qreal KStandardItemListWidgetInformant::preferredRoleColumnWidth(const QByteArra
     const QString text = roleText(role, values);
     qreal width = KStandardItemListWidget::columnPadding(option);
     if (role != "text") {
-        // dolphin-neo: extra room between the columns of the details view (DOLPHIN_NEO_COLGAP, pixels)
-        static const int gap = neoSettingInt("COLGAP", 28);
+        // dolphin-ng: extra room between the columns of the details view (DOLPHIN_NG_COLGAP, pixels)
+        static const int gap = ngSettingInt("COLGAP", 28);
         width += gap;
     }
 
@@ -472,9 +472,9 @@ void KStandardItemListWidgetInformant::calculateDetailsLayoutItemSizeHints(QVect
                                                                            const KItemListView *view) const
 {
     const KItemListStyleOption &option = view->styleOption();
-    // dolphin-neo: two text lines per row
-    const int textHeight = neoTwoLineList() ? 2 * option.fontMetrics.height() + 4 : option.fontMetrics.height();
-    const qreal height = neoNoIcons() ? option.padding * 2 + textHeight + 24 // no icon: the row is as tall as its two lines of text
+    // dolphin-ng: two text lines per row
+    const int textHeight = ngTwoLineList() ? 2 * option.fontMetrics.height() + 4 : option.fontMetrics.height();
+    const qreal height = ngNoIcons() ? option.padding * 2 + textHeight + 24 // no icon: the row is as tall as its two lines of text
                                       : option.padding * 2 + qMax(option.iconSize, textHeight);
     logicalHeightHints.fill(std::make_pair(height, false));
     logicalWidthHint = -1.0;
@@ -569,13 +569,13 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
 
     KItemListWidget::paint(painter, option, widget);
 
-    if (m_layout == IconsLayout && neoTiles()) {
-        // dolphin-neo: a dark rounded tile with a hairline of light on top, like the cards of the list
+    if (m_layout == IconsLayout && ngTiles()) {
+        // dolphin-ng: a dark rounded tile with a hairline of light on top, like the cards of the list
         const QRectF tile = rect().adjusted(3, 3, -3, -3);
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
         painter->setPen(Qt::NoPen);
-        const bool darkScheme = neoIsDark(styleOption().palette);
+        const bool darkScheme = ngIsDark(styleOption().palette);
         painter->setBrush(darkScheme ? QColor(0, 0, 0, 62) : QColor(0, 0, 0, 14));
         painter->drawRoundedRect(tile, 12, 12);
         painter->setPen(QPen(darkScheme ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
@@ -583,17 +583,17 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         painter->restore();
     }
 
-    const bool neoRow = m_layout == DetailsLayout && neoNoIcons();
-    if (neoRow && !m_neoSigla.isEmpty()) {
+    const bool ngRow = m_layout == DetailsLayout && ngNoIcons();
+    if (ngRow && !m_ngSigla.isEmpty()) {
         // the file type as a watermark: large, faint letters at the start of the row, fading out under the name
-        const bool openRows = neoRowStyle() == NeoRowStyle::Open;
+        const bool openRows = ngRowStyle() == NgRowStyle::Open;
         const QRectF rowRect = openRows ? selectionRectFull() : selectionRectFull().adjusted(3, 3, -3, -3);
         qreal x0 = rowRect.left() + (openRows ? 16 : 10);
         QFont watermarkFont(m_customizedFont);
         watermarkFont.setPixelSize(qMax(12, qRound(size().height() * 0.50)));
         watermarkFont.setWeight(QFont::Black);
         watermarkFont.setLetterSpacing(QFont::PercentageSpacing, 94);
-        const qreal fade = QFontMetricsF(watermarkFont).horizontalAdvance(m_neoSigla) + m_customizedFontMetrics.height() * 1.5;
+        const qreal fade = QFontMetricsF(watermarkFont).horizontalAdvance(m_ngSigla) + m_customizedFontMetrics.height() * 1.5;
         QPainterPath clip;
         clip.addRoundedRect(rowRect, openRows ? 0 : 5, openRows ? 0 : 5);
         painter->save();
@@ -601,7 +601,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
 
         // the row takes the colour of the file's category, strongest at the start and gone by the middle
         QLinearGradient wash(rowRect.left(), 0, rowRect.left() + rowRect.width() * (openRows ? 0.40 : 0.62), 0);
-        QColor washStart = m_neoTint, washMid = m_neoTint, washEnd = m_neoTint;
+        QColor washStart = m_ngTint, washMid = m_ngTint, washEnd = m_ngTint;
         washStart.setAlphaF(openRows ? 0.14 : 0.22);
         washMid.setAlphaF(openRows ? 0.05 : 0.06);
         washEnd.setAlphaF(0.0);
@@ -610,12 +610,12 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         wash.setColorAt(1.0, washEnd);
         painter->fillRect(rowRect, wash);
 
-        const NeoMark mark = neoMark();
-        if (mark != NeoMark::Watermark) {
+        const NgMark mark = ngMark();
+        if (mark != NgMark::Watermark) {
             // Glyph and abbreviation as one mark, in the colour of the file's kind.
             const qreal h = size().height();
             const qreal fontPx = m_customizedFontMetrics.height();
-            QColor soft = m_neoTint, edge = m_neoTint, block = m_neoTint;
+            QColor soft = m_ngTint, edge = m_ngTint, block = m_ngTint;
             soft.setAlphaF(0.16);
             edge.setAlphaF(0.36);
             block.setAlphaF(0.20);
@@ -624,9 +624,9 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
                 painter->save();
                 painter->translate(box.topLeft());
                 painter->scale(box.width() / 24.0, box.height() / 24.0);
-                painter->setPen(QPen(m_neoTint, 1.7 * 24.0 / box.width(), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                painter->setPen(QPen(m_ngTint, 1.7 * 24.0 / box.width(), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
                 painter->setBrush(Qt::NoBrush);
-                painter->drawPath(neoGlyph(m_neoCategory));
+                painter->drawPath(ngGlyph(m_ngCategory));
                 painter->restore();
             };
             auto sigla = [this, painter](const QRectF &box, qreal pixelSize, int flags) {
@@ -635,10 +635,10 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
                 font.setWeight(QFont::Bold);
                 font.setLetterSpacing(QFont::PercentageSpacing, 106);
                 painter->setFont(font);
-                painter->setPen(m_neoTint);
-                painter->drawText(box, flags, m_neoSigla);
+                painter->setPen(m_ngTint);
+                painter->drawText(box, flags, m_ngSigla);
             };
-            if (mark == NeoMark::Tile) {
+            if (mark == NgMark::Tile) {
                 const qreal side = h - 18;
                 const QRectF tile(x0 + 3, (h - side) / 2.0, side, side);
                 painter->setPen(QPen(edge, 1));
@@ -647,7 +647,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
                 const qreal g = side * 0.40;
                 glyph(QRectF(tile.center().x() - g / 2, tile.top() + side * 0.15, g, g));
                 sigla(QRectF(tile.left(), tile.top() + side * 0.60, side, side * 0.30), fontPx * 0.46, Qt::AlignCenter);
-            } else if (mark == NeoMark::Pill) {
+            } else if (mark == NgMark::Pill) {
                 const qreal pillHeight = qMin(h - 20, fontPx * 1.5), pillWidth = fontPx * 4.8;
                 const QRectF pill(x0 + 3, (h - pillHeight) / 2.0, pillWidth, pillHeight);
                 painter->setPen(QPen(edge, 1));
@@ -656,7 +656,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
                 const qreal g = pillHeight * 0.56;
                 glyph(QRectF(pill.left() + pillHeight * 0.36, pill.center().y() - g / 2, g, g));
                 sigla(QRectF(pill.left() + pillHeight * 0.36 + g + 6, pill.top(), pillWidth, pillHeight), fontPx * 0.56, Qt::AlignLeft | Qt::AlignVCenter);
-            } else if (mark == NeoMark::Signs) {
+            } else if (mark == NgMark::Signs) {
                 const qreal g = 22;
                 glyph(QRectF(x0 + 7, (h - g) / 2.0, g, g));
                 sigla(QRectF(x0 + 7 + g + 9, 0, fontPx * 4, h), fontPx * 0.66, Qt::AlignLeft | Qt::AlignVCenter);
@@ -669,41 +669,41 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
             }
         } else {
             // the type icon, faint, then the abbreviation
-            if (!m_neoIcon.isNull()) {
-                const qreal iconSide = m_neoIcon.width() / m_neoIcon.devicePixelRatio();
+            if (!m_ngIcon.isNull()) {
+                const qreal iconSide = m_ngIcon.width() / m_ngIcon.devicePixelRatio();
                 painter->setOpacity(0.55); // the pixmap itself already fades from left to right
-                painter->drawPixmap(QPointF(x0, (size().height() - iconSide) / 2.0), m_neoIcon);
+                painter->drawPixmap(QPointF(x0, (size().height() - iconSide) / 2.0), m_ngIcon);
                 painter->setOpacity(1.0);
                 x0 += iconSide + 8;
             }
-            // The abbreviation. DOLPHIN_NEO_SIGLA picks how it is drawn:
+            // The abbreviation. DOLPHIN_NG_SIGLA picks how it is drawn:
             //   fill (default)     large solid letters in the row colour, faint
             //   outline            hollow letters: a thin outline that thins out to the right, barely filled
             //   label              small, widely spaced capitals in the full row colour
-            static const QByteArray siglaStyle = neoSetting("SIGLA").toLower().toLatin1();
+            static const QByteArray siglaStyle = ngSetting("SIGLA").toLower().toLatin1();
             const qreal rowHeight = size().height();
             if (siglaStyle == "label") {
                 QFont labelFont(m_customizedFont);
                 labelFont.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.66)));
                 labelFont.setWeight(QFont::DemiBold);
                 labelFont.setLetterSpacing(QFont::PercentageSpacing, 118);
-                QColor ink = m_neoTint;
+                QColor ink = m_ngTint;
                 ink.setAlphaF(0.92);
                 painter->setFont(labelFont);
                 painter->setPen(ink);
-                painter->drawText(QRectF(x0, 0, fade * 2, rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
+                painter->drawText(QRectF(x0, 0, fade * 2, rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_ngSigla);
             } else if (siglaStyle != "outline") {
-                QColor ink = m_neoTint;
-                ink.setAlphaF(neoIsDark(styleOption().palette) ? 0.36 : 0.30);
+                QColor ink = m_ngTint;
+                ink.setAlphaF(ngIsDark(styleOption().palette) ? 0.36 : 0.30);
                 painter->setFont(watermarkFont);
                 painter->setPen(ink);
-                painter->drawText(QRectF(x0, -rowHeight, fade * 2, 3 * rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_neoSigla);
+                painter->drawText(QRectF(x0, -rowHeight, fade * 2, 3 * rowHeight), Qt::AlignLeft | Qt::AlignVCenter, m_ngSigla);
             } else {
                 const QFontMetricsF metrics(watermarkFont);
                 QPainterPath letters;
-                letters.addText(QPointF(x0, (rowHeight + metrics.capHeight()) / 2.0), watermarkFont, m_neoSigla);
+                letters.addText(QPointF(x0, (rowHeight + metrics.capHeight()) / 2.0), watermarkFont, m_ngSigla);
                 QLinearGradient outline(x0, 0, x0 + fade, 0);
-                QColor strong = m_neoTint, weak = m_neoTint, body = m_neoTint;
+                QColor strong = m_ngTint, weak = m_ngTint, body = m_ngTint;
                 strong.setAlphaF(0.80);
                 weak.setAlphaF(0.28);
                 body.setAlphaF(0.07);
@@ -716,17 +716,17 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         }
         painter->restore();
 
-        if (m_neoBarFraction >= 0) {
+        if (m_ngBarFraction >= 0) {
             QColor groove = styleOption().palette.color(QPalette::Text);
             groove.setAlphaF(0.10);
             painter->save();
             painter->setRenderHint(QPainter::Antialiasing);
             painter->setPen(Qt::NoPen);
             painter->setBrush(groove);
-            painter->drawRoundedRect(m_neoBarRect, 2, 2);
-            painter->setBrush(m_neoTint);
-            const qreal filled = qMax(qreal(4), m_neoBarRect.width() * m_neoBarFraction);
-            painter->drawRoundedRect(QRectF(m_neoBarRect.right() - filled, m_neoBarRect.top(), filled, m_neoBarRect.height()), 2, 2);
+            painter->drawRoundedRect(m_ngBarRect, 2, 2);
+            painter->setBrush(m_ngTint);
+            const qreal filled = qMax(qreal(4), m_ngBarRect.width() * m_ngBarFraction);
+            painter->drawRoundedRect(QRectF(m_ngBarRect.right() - filled, m_ngBarRect.top(), filled, m_ngBarRect.height()), 2, 2);
             painter->restore();
         }
     }
@@ -738,7 +738,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
     // Overlays are not baked into the icon pixmap: it gets rescaled to its final
     // size in drawPixmap(), which would rescale them too. They are drawn at a
     // fixed size by drawOverlays() below. See bug 498211.
-    const auto pixmap = neoRow ? QPixmap() : m_pixmap; // dolphin-neo: no icon in the icon-less row
+    const auto pixmap = ngRow ? QPixmap() : m_pixmap; // dolphin-ng: no icon in the icon-less row
 
     const KItemListStyleOption &itemListStyleOption = styleOption();
     if (isHovered() && !pixmap.isNull()) {
@@ -808,7 +808,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
     painter->drawStaticText(textInfo->pos, textInfo->staticText);
 
     bool clipAdditionalInfoBounds = false;
-    if (m_supportsItemExpanding && m_sortedVisibleRoles.count() > 1 && !(m_layout == DetailsLayout && neoTwoLineList())) {
+    if (m_supportsItemExpanding && m_sortedVisibleRoles.count() > 1 && !(m_layout == DetailsLayout && ngTwoLineList())) {
         // Prevent a possible overlapping of the additional-information-texts with the icon.
         // This will happen if the user has resized the width of the name-column to be very narrow while having folders expanded.
         // We only want to draw additional info text outside the area of the icon or expansion area, so we set a clip rect that does not contain the icon area.
@@ -834,10 +834,10 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
     painter->setPen(m_additionalInfoTextColor);
     painter->setFont(m_customizedFont);
 
-    const bool neoActionsShown = neoRow && m_neoActions && m_neoActions->isVisible();
+    const bool ngActionsShown = ngRow && m_ngActions && m_ngActions->isVisible();
     for (int i = 1; i < m_sortedVisibleRoles.count(); ++i) {
-        if (neoActionsShown && m_sortedVisibleRoles[i] == m_neoDateRole) {
-            continue; // dolphin-neo: the hover actions take the place of the date
+        if (ngActionsShown && m_sortedVisibleRoles[i] == m_ngDateRole) {
+            continue; // dolphin-ng: the hover actions take the place of the date
         }
         const TextInfo *textInfo = m_textInfo.value(m_sortedVisibleRoles[i]);
         painter->drawStaticText(textInfo->pos, textInfo->staticText);
@@ -918,14 +918,14 @@ QRectF KStandardItemListWidget::textFocusRect() const
     return m_textRect;
 }
 
-int KStandardItemListWidget::neoActionAt(const QPointF &pos) const
+int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
 {
-    if (!m_neoActions || !m_neoActions->isVisible() || !m_neoActionsRect.contains(pos)) {
+    if (!m_ngActions || !m_ngActions->isVisible() || !m_ngActionsRect.contains(pos)) {
         return 0;
     }
-    // same split as NeoRowActions: "Open", then two square buttons: preview and menu
-    const qreal side = m_neoActionsRect.height();
-    const qreal menuLeft = m_neoActionsRect.right() - side;
+    // same split as NgRowActions: "Open", then two square buttons: preview and menu
+    const qreal side = m_ngActionsRect.height();
+    const qreal menuLeft = m_ngActionsRect.right() - side;
     const qreal previewLeft = menuLeft - 6 - side;
     if (pos.x() >= menuLeft) {
         return 2;
@@ -940,8 +940,8 @@ QRectF KStandardItemListWidget::selectionRectFull() const
 {
     const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
     const int padding = styleOption().padding;
-    if (m_layout == DetailsLayout && neoTwoLineList()) {
-        // dolphin-neo: there are no columns, the whole row is the item
+    if (m_layout == DetailsLayout && ngTwoLineList()) {
+        // dolphin-ng: there are no columns, the whole row is the item
         return QRectF(leftPadding(), 0, size().width() - leftPadding(), size().height());
     }
     if (m_layout == DetailsLayout) {
@@ -1232,15 +1232,15 @@ void KStandardItemListWidget::hoveredChanged(bool hovered)
     }
     m_dirtyLayout = true;
 
-    // dolphin-neo: actions of the hovered row
-    if (m_layout == DetailsLayout && neoNoIcons()) {
+    // dolphin-ng: actions of the hovered row
+    if (m_layout == DetailsLayout && ngNoIcons()) {
         if (hovered) {
-            if (!m_neoActions) {
+            if (!m_ngActions) {
                 auto controllerOf = [this]() -> KItemListController * {
                     const auto *view = dynamic_cast<KItemListView *>(parentItem());
                     return view ? view->controller() : nullptr;
                 };
-                m_neoActions = new NeoRowActions(
+                m_ngActions = new NgRowActions(
                     this,
                     [this, controllerOf] {
                         if (KItemListController *controller = controllerOf()) {
@@ -1256,13 +1256,13 @@ void KStandardItemListWidget::hoveredChanged(bool hovered)
                             Q_EMIT controller->itemContextMenuRequested(index(), QPointF(screenPos));
                         }
                     });
-                m_neoActions->setFont(m_customizedFont);
+                m_ngActions->setFont(m_customizedFont);
             }
             triggerCacheRefreshing();
-            m_neoActions->setGeometry(m_neoActionsRect);
-            m_neoActions->setVisible(!m_neoActionsRect.isEmpty());
-        } else if (m_neoActions) {
-            m_neoActions->hide();
+            m_ngActions->setGeometry(m_ngActionsRect);
+            m_ngActions->setVisible(!m_ngActionsRect.isEmpty());
+        } else if (m_ngActions) {
+            m_ngActions->hide();
         }
         update();
     }
@@ -1963,13 +1963,13 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
     qreal x = firstColumnInc;
     const qreal standardY = qMax(qreal(option.padding), (widgetHeight - fontHeight) / 2.0);
 
-    if (neoTwoLineList()) {
-        // dolphin-neo, with icons:   +------+  Name                                            Date
+    if (ngTwoLineList()) {
+        // dolphin-ng, with icons:   +------+  Name                                            Date
         //                            | Icon |  Size · Type · other roles
-        // dolphin-neo, icon-less:    TYPE (watermark)  Name                        Size        Date / actions on hover
+        // dolphin-ng, icon-less:    TYPE (watermark)  Name                        Size        Date / actions on hover
         //                                              Type · other roles          [bar]
         static const QSet<QByteArray> dateRoles{"modificationtime", "creationtime", "accesstime", "deletiontime"};
-        const bool noIcons = neoNoIcons();
+        const bool noIcons = ngNoIcons();
         QByteArray dateRole;
         for (const QByteArray &role : std::as_const(m_sortedVisibleRoles)) {
             if (dateRoles.contains(role)) {
@@ -1977,21 +1977,21 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
                 break;
             }
         }
-        m_neoDateRole = dateRole;
+        m_ngDateRole = dateRole;
         const qreal gap = columnWidthInc / 2;
         qreal left = firstColumnInc + gap;
         if (noIcons) {
-            switch (neoMark()) {
-            case NeoMark::Tile:
+            switch (ngMark()) {
+            case NgMark::Tile:
                 left = leftPadding() + 13 + (widgetHeight - 18) + 16;
                 break;
-            case NeoMark::Pill:
+            case NgMark::Pill:
                 left = leftPadding() + 13 + fontHeight * 4.8 + 16;
                 break;
-            case NeoMark::Signs:
+            case NgMark::Signs:
                 left = leftPadding() + 17 + 22 + 9 + fontHeight * 2.7 + 14;
                 break;
-            case NeoMark::Header:
+            case NgMark::Header:
                 left = leftPadding() + 3 + 62 + 16;
                 break;
             default:
@@ -2021,23 +2021,23 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             textInfo->pos = QPointF(right - dateWidth, standardY);
         }
         qreal blockLeft = right;
-        m_neoActionsRect = QRectF();
+        m_ngActionsRect = QRectF();
         if (noIcons) {
             const qreal dateColumn = roomForDate ? qMax(qreal(fontHeight * 9), qreal(176)) : qreal(fontHeight * 8.2); // fixed, so that the sizes line up
             const qreal actionsWidth = qMin(dateColumn, qreal(fontHeight * 8.2));
             const qreal actionsHeight = qMin(widgetHeight - 12, qreal(fontHeight * 1.7));
-            m_neoActionsRect = QRectF(right - actionsWidth, (widgetHeight - actionsHeight) / 2.0, actionsWidth, actionsHeight);
+            m_ngActionsRect = QRectF(right - actionsWidth, (widgetHeight - actionsHeight) / 2.0, actionsWidth, actionsHeight);
             blockLeft = right - dateColumn;
         } else if (dateWidth > 0) {
             blockLeft = right - dateWidth - 3 * gap;
         }
-        if (m_neoActions) {
-            m_neoActions->setGeometry(m_neoActionsRect);
+        if (m_ngActions) {
+            m_ngActions->setGeometry(m_ngActionsRect);
         }
 
         // icon-less: the size sits in its own column, with a bar on a logarithmic scale (1 KiB ... 10 GiB)
-        m_neoBarFraction = -1;
-        m_neoBarRect = QRectF();
+        m_ngBarFraction = -1;
+        m_ngBarRect = QRectF();
         const bool sizeColumn = noIcons && m_sortedVisibleRoles.contains("size");
         if (sizeColumn && !roomForSize) {
             m_textInfo.value("size")->staticText.setText(QString());
@@ -2052,45 +2052,45 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             textInfo->pos = QPointF(sizeRight - width, firstY);
             const qlonglong bytes = values.value("size").toLongLong();
             if (!values.value("isDir").toBool() && bytes > 0) {
-                m_neoBarFraction = qBound(0.03, (std::log10(double(bytes)) - 3.0) / 7.0, 1.0);
+                m_ngBarFraction = qBound(0.03, (std::log10(double(bytes)) - 3.0) / 7.0, 1.0);
                 const qreal barWidth = columnWidth - 10;
-                m_neoBarRect = QRectF(sizeRight - barWidth, secondY + fontHeight / 2.0 - 2, barWidth, 4);
+                m_ngBarRect = QRectF(sizeRight - barWidth, secondY + fontHeight / 2.0 - 2, barWidth, 4);
             }
             blockLeft = sizeRight - columnWidth;
         }
         const qreal textRight = blockLeft - 2 * gap;
 
         if (noIcons) {
-            const NeoKind kind = neoKindFor(values.value("text").toString(), values.value("isDir").toBool());
-            m_neoSigla = kind.sigla;
-            m_neoTint = kind.tint;
-            m_neoCategory = int(kind.category);
+            const NgKind kind = ngKindFor(values.value("text").toString(), values.value("isDir").toBool());
+            m_ngSigla = kind.sigla;
+            m_ngTint = kind.tint;
+            m_ngCategory = int(kind.category);
             const QString iconName = values.value("iconName").toString();
             const int iconSide = qMax(16, qRound(widgetHeight * 0.62));
-            if (iconName != m_neoIconName || m_neoIcon.isNull() || qRound(m_neoIcon.width() / m_neoIcon.devicePixelRatio()) != iconSide) {
-                m_neoIconName = iconName;
-                m_neoIcon = iconName.isEmpty() ? QPixmap() : QIcon::fromTheme(iconName).pixmap(QSize(iconSide, iconSide), KItemViewsUtils::devicePixelRatio(this));
-                m_neoIconFaded = false;
+            if (iconName != m_ngIconName || m_ngIcon.isNull() || qRound(m_ngIcon.width() / m_ngIcon.devicePixelRatio()) != iconSide) {
+                m_ngIconName = iconName;
+                m_ngIcon = iconName.isEmpty() ? QPixmap() : QIcon::fromTheme(iconName).pixmap(QSize(iconSide, iconSide), KItemViewsUtils::devicePixelRatio(this));
+                m_ngIconFaded = false;
             }
             // the row, the abbreviation and the size bar take the main colour of the type icon
-            const bool darkScheme = neoIsDark(styleOption().palette);
-            const QColor iconColor = neoIconColor(iconName, m_neoIcon);
-            m_neoTint = neoAccent(iconColor.isValid() ? iconColor : m_neoTint, darkScheme);
-            if (!m_neoIcon.isNull() && !m_neoIconFaded) {
+            const bool darkScheme = ngIsDark(styleOption().palette);
+            const QColor iconColor = ngIconColor(iconName, m_ngIcon);
+            m_ngTint = ngAccent(iconColor.isValid() ? iconColor : m_ngTint, darkScheme);
+            if (!m_ngIcon.isNull() && !m_ngIconFaded) {
                 // watermark: the icon fades out from left to right (done once, after its colour was read)
-                QPainter fade(&m_neoIcon);
+                QPainter fade(&m_ngIcon);
                 fade.setCompositionMode(QPainter::CompositionMode_DestinationIn);
-                const qreal side = m_neoIcon.width() / m_neoIcon.devicePixelRatio();
+                const qreal side = m_ngIcon.width() / m_ngIcon.devicePixelRatio();
                 QLinearGradient mask(0, 0, side, 0);
                 mask.setColorAt(0.0, QColor(0, 0, 0, 255));
                 mask.setColorAt(0.45, QColor(0, 0, 0, 200));
                 mask.setColorAt(1.0, QColor(0, 0, 0, 30));
                 fade.fillRect(QRectF(0, 0, side, side), mask);
                 fade.end();
-                m_neoIconFaded = true;
+                m_ngIconFaded = true;
             }
         } else {
-            m_neoSigla.clear();
+            m_ngSigla.clear();
         }
 
         qreal secondX = left;
@@ -2271,8 +2271,8 @@ void KStandardItemListWidget::drawOverlays(QPainter *painter) const
 
 void KStandardItemListWidget::drawPixmap(QPainter *painter, const QPixmap &pixmap)
 {
-    // dolphin-neo: in the tiles of the icons view the picture gets rounded corners
-    const bool rounded = m_layout == IconsLayout && neoTiles();
+    // dolphin-ng: in the tiles of the icons view the picture gets rounded corners
+    const bool rounded = m_layout == IconsLayout && ngTiles();
     if (rounded) {
         QPainterPath clip;
         clip.addRoundedRect(QRectF(m_pixmapPos, QSizeF(m_scaledPixmapSize)), 9, 9);

@@ -1,4 +1,4 @@
-> **This is dolphin-neo**, an experimental fork of Dolphin with a different file list. What changes, how to build it and what is unfinished: [NEO.md](NEO.md). The rest of this file is Dolphin's own README.
+> **This is dolphin-ng**, an experimental fork of Dolphin with a different file list. What changes, how to build it and what is unfinished: [NG.md](NG.md). The rest of this file is Dolphin's own README.
 
 # Dolphin
 

@@ -111,7 +111,7 @@ public:
     QRectF selectionRectCore() const override;
     QRectF expansionToggleRect() const override;
     QRectF selectionToggleRect() const override;
-    int neoActionAt(const QPointF &pos) const override;
+    int ngActionAt(const QPointF &pos) const override;
     QPixmap createDragPixmap(const QStyleOptionGraphicsItem *option, QWidget *widget = nullptr) override;
     /** @see KItemListWidget::startActivateSoonAnimation() */
     void startActivateSoonAnimation(int timeUntilActivation) override;
@@ -285,18 +285,18 @@ private:
 
     QRectF m_textRect;
 
-    // dolphin-neo: icon-less row (see neoNoIcons())
-    QString m_neoSigla; // file type abbreviation drawn as a watermark
-    int m_neoCategory = 0; // NeoKind::Category of the file, for the line glyph of the type mark
-    QString m_neoIconName; // type icon drawn, faint, before the abbreviation
-    QPixmap m_neoIcon;
-    bool m_neoIconFaded = false;
-    QColor m_neoTint; // colour of the file's category
-    QByteArray m_neoDateRole; // the date role shown at the right edge, if any
-    QRectF m_neoBarRect; // size bar
-    qreal m_neoBarFraction = -1;
-    QRectF m_neoActionsRect; // where the hover actions go
-    QGraphicsWidget *m_neoActions = nullptr;
+    // dolphin-ng: icon-less row (see ngNoIcons())
+    QString m_ngSigla; // file type abbreviation drawn as a watermark
+    int m_ngCategory = 0; // NgKind::Category of the file, for the line glyph of the type mark
+    QString m_ngIconName; // type icon drawn, faint, before the abbreviation
+    QPixmap m_ngIcon;
+    bool m_ngIconFaded = false;
+    QColor m_ngTint; // colour of the file's category
+    QByteArray m_ngDateRole; // the date role shown at the right edge, if any
+    QRectF m_ngBarRect; // size bar
+    qreal m_ngBarFraction = -1;
+    QRectF m_ngActionsRect; // where the hover actions go
+    QGraphicsWidget *m_ngActions = nullptr;
 
     QList<QByteArray> m_sortedVisibleRoles;
 

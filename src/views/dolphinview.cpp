@@ -202,8 +202,8 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
     connect(controller, &KItemListController::itemsActivated, this, &DolphinView::slotItemsActivated);
     connect(controller, &KItemListController::itemMiddleClicked, this, &DolphinView::slotItemMiddleClicked);
     connect(controller, &KItemListController::itemContextMenuRequested, this, &DolphinView::slotItemContextMenuRequested);
-    connect(controller, &KItemListController::neoPreviewRequested, this, [this](int index, const QRect &rowRect) {
-        Q_EMIT neoPreviewRequested(m_model->fileItem(index), rowRect); // dolphin-neo
+    connect(controller, &KItemListController::ngPreviewRequested, this, [this](int index, const QRect &rowRect) {
+        Q_EMIT ngPreviewRequested(m_model->fileItem(index), rowRect); // dolphin-ng
     });
     connect(controller, &KItemListController::viewContextMenuRequested, this, &DolphinView::slotViewContextMenuRequested);
     connect(controller, &KItemListController::headerContextMenuRequested, this, &DolphinView::slotHeaderContextMenuRequested);

@@ -2158,7 +2158,7 @@ void DolphinMainWindow::setupActions()
     m_backAction->popupMenu()->installEventFilter(middleClickEventFilter);
     m_forwardAction->popupMenu()->installEventFilter(middleClickEventFilter);
     KStandardAction::up(this, &DolphinMainWindow::goUp, actionCollection());
-    // dolphin-neo: a toolbar action that goes to the root of the file system
+    // dolphin-ng: a toolbar action that goes to the root of the file system
     QAction *rootAction = actionCollection()->addAction(QStringLiteral("go_root"));
     rootAction->setText(QStringLiteral("Root"));
     rootAction->setIcon(QIcon::fromTheme(QStringLiteral("folder-root")));
