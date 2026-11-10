@@ -31,6 +31,9 @@
 #include <KIO/JobUiDelegateFactory>
 #include <KIO/MkpathJob>
 #include <KIO/ApplicationLauncherJob>
+#include <QFileInfo>
+#include <KMessageBox>
+#include <KIO/CommandLauncherJob>
 #include <KIO/OpenUrlJob>
 #include <KIO/PreviewJob>
 #include <KLocalizedString>
@@ -573,9 +576,10 @@ public:
         : QWidget(parent)
         , m_view(view)
     {
-        auto *layout = new QHBoxLayout(this);
-        layout->setContentsMargins(16, 14, 16, 14);
-        layout->setSpacing(18);
+        // a tall card: the preview on top, then name and details, then the buttons (two per row)
+        auto *layout = new QVBoxLayout(this);
+        layout->setContentsMargins(14, 14, 14, 14);
+        layout->setSpacing(8);
 
         m_preview = new QLabel(this);
         m_preview->setTextFormat(Qt::PlainText);
@@ -587,8 +591,6 @@ public:
         m_stack->addWidget(m_image);
         layout->addLayout(m_stack, 1);
 
-        auto *side = new QVBoxLayout();
-        side->setSpacing(6);
         m_title = new QLabel(this);
         QFont bold = m_title->font();
         bold.setBold(true);
@@ -596,45 +598,159 @@ public:
         m_meta = new QLabel(this);
         m_meta->setWordWrap(true);
         m_meta->setEnabled(false); // dimmed
-        side->addWidget(m_title);
-        side->addWidget(m_meta);
-        side->addStretch();
-        auto *buttons = new QGridLayout();
-        buttons->setSpacing(6);
-        int buttonIndex = 0;
-        auto button = [this, buttons, &buttonIndex](const QString &text, std::function<void()> action) {
-            auto *b = new QPushButton(text, this);
-            connect(b, &QPushButton::clicked, this, [this, action] {
-                hide();
-                action();
-            });
-            buttons->addWidget(b, buttonIndex / 2, buttonIndex % 2); // two per row
-            ++buttonIndex;
-            return b;
-        };
-        button(QStringLiteral("Apri"), [this] {
+        layout->addWidget(m_title);
+        layout->addWidget(m_meta);
+
+        m_buttons = new QGridLayout();
+        m_buttons->setSpacing(6);
+        layout->addLayout(m_buttons);
+        addButton(QStringLiteral("Apri"), [this] {
             Q_EMIT m_view->itemActivated(m_item);
         })->setDefault(true);
-        button(QStringLiteral("Apri con…"), [this] {
+        addButton(QStringLiteral("Apri con…"), [this] {
             auto *job = new KIO::ApplicationLauncherJob(); // no application given: asks which one
             job->setUrls({m_item.url()});
             job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
             job->start();
         });
-        button(QStringLiteral("Rinomina"), [this] {
+        addButton(QStringLiteral("Rinomina"), [this] {
             m_view->renameSelectedItems(); // the controller selected the item before asking for the preview
         });
-        button(QStringLiteral("Copia percorso"), [this] {
+        addButton(QStringLiteral("Copia percorso"), [this] {
             QGuiApplication::clipboard()->setText(m_item.isLocalFile() ? m_item.localPath() : m_item.url().toDisplayString());
         });
-        side->addLayout(buttons);
-        auto *sideWidget = new QWidget(this);
-        sideWidget->setLayout(side);
-        sideWidget->setFixedWidth(270);
-        layout->addWidget(sideWidget);
+        m_fixedButtons = m_buttonCount;
 
         qApp->installEventFilter(this);
         hide();
+    }
+
+    QPushButton *addButton(const QString &text, std::function<void()> action, bool keepOpen = false)
+    {
+        auto *button = new QPushButton(text, this);
+        connect(button, &QPushButton::clicked, this, [this, action, keepOpen] {
+            if (!keepOpen) {
+                hide();
+            }
+            action();
+        });
+        m_buttons->addWidget(button, m_buttonCount / 2, m_buttonCount % 2);
+        ++m_buttonCount;
+        return button;
+    }
+
+    // Runs a command line tool in the folder of the item; the folder view picks the result up by itself.
+    void run(const QString &program, const QStringList &arguments)
+    {
+        if (QStandardPaths::findExecutable(program).isEmpty()) {
+            KMessageBox::error(window(), QStringLiteral("Serve il programma «%1», che non è installato.").arg(program));
+            return;
+        }
+        auto *job = new KIO::CommandLauncherJob(program, arguments);
+        job->setWorkingDirectory(m_item.url().adjusted(QUrl::RemoveFilename).toLocalFile());
+        job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
+        job->start();
+    }
+
+    // a button that opens a menu of choices; `choices` are (label, arguments for `program`) pairs
+    void addMenuButton(const QString &text, const QString &program, const QList<std::pair<QString, QStringList>> &choices)
+    {
+        QPushButton *button = addButton(text, [] {}, true);
+        auto *menu = new QMenu(button);
+        for (const auto &[label, arguments] : choices) {
+            menu->addAction(label, this, [this, program, arguments] {
+                hide();
+                run(program, arguments);
+            });
+        }
+        button->setMenu(menu);
+    }
+
+    // The buttons that make sense for this kind of file (images, archives, PDF, audio, video).
+    void rebuildTypeButtons()
+    {
+        while (m_buttonCount > m_fixedButtons) {
+            --m_buttonCount;
+            QLayoutItem *item = m_buttons->itemAtPosition(m_buttonCount / 2, m_buttonCount % 2);
+            QWidget *widget = item ? item->widget() : nullptr; // removeWidget() frees the item itself
+            if (widget) {
+                m_buttons->removeWidget(widget);
+                widget->hide();
+                widget->deleteLater();
+            }
+        }
+        if (!m_item.isLocalFile() || m_item.isDir()) {
+            return;
+        }
+        const QString path = m_item.localPath();
+        const QFileInfo info(path);
+        const QString base = info.completeBaseName();
+        const QString suffix = info.suffix();
+        const QString mime = m_item.mimetype();
+        const bool isImage = mime.startsWith(QLatin1String("image/")) && !mime.contains(QLatin1String("svg"));
+        static const QSet<QString> archives{QStringLiteral("application/zip"),
+                                            QStringLiteral("application/x-tar"),
+                                            QStringLiteral("application/x-compressed-tar"),
+                                            QStringLiteral("application/x-bzip-compressed-tar"),
+                                            QStringLiteral("application/x-xz-compressed-tar"),
+                                            QStringLiteral("application/x-zstd-compressed-tar"),
+                                            QStringLiteral("application/x-7z-compressed"),
+                                            QStringLiteral("application/vnd.rar"),
+                                            QStringLiteral("application/x-rar"),
+                                            QStringLiteral("application/gzip"),
+                                            QStringLiteral("application/x-bzip"),
+                                            QStringLiteral("application/x-xz"),
+                                            QStringLiteral("application/zstd")};
+        if (isImage) {
+            addMenuButton(QStringLiteral("Ridimensiona…"),
+                          QStringLiteral("magick"),
+                          {{QStringLiteral("75 %"), {path, QStringLiteral("-resize"), QStringLiteral("75%"), QStringLiteral("%1-75.%2").arg(base, suffix)}},
+                           {QStringLiteral("50 %"), {path, QStringLiteral("-resize"), QStringLiteral("50%"), QStringLiteral("%1-50.%2").arg(base, suffix)}},
+                           {QStringLiteral("25 %"), {path, QStringLiteral("-resize"), QStringLiteral("25%"), QStringLiteral("%1-25.%2").arg(base, suffix)}},
+                           {QStringLiteral("Larghezza 1920"), {path, QStringLiteral("-resize"), QStringLiteral("1920x>"), QStringLiteral("%1-1920.%2").arg(base, suffix)}},
+                           {QStringLiteral("Larghezza 1280"), {path, QStringLiteral("-resize"), QStringLiteral("1280x>"), QStringLiteral("%1-1280.%2").arg(base, suffix)}},
+                           {QStringLiteral("Larghezza 800"), {path, QStringLiteral("-resize"), QStringLiteral("800x>"), QStringLiteral("%1-800.%2").arg(base, suffix)}}});
+            QList<std::pair<QString, QStringList>> formats;
+            for (const char *format : {"png", "jpg", "webp", "avif", "tiff", "bmp"}) {
+                if (QString::fromLatin1(format) != suffix.toLower() && !(suffix.toLower() == QLatin1String("jpeg") && QLatin1String(format) == QLatin1String("jpg"))) {
+                    formats.append({QString::fromLatin1(format).toUpper(), {path, QStringLiteral("%1.%2").arg(base, QString::fromLatin1(format))}});
+                }
+            }
+            addMenuButton(QStringLiteral("Converti in…"), QStringLiteral("magick"), formats);
+        } else if (archives.contains(mime)) {
+            addButton(QStringLiteral("Estrai qui in sottocartella"), [this, path] {
+                if (!QStandardPaths::findExecutable(QStringLiteral("ark")).isEmpty()) {
+                    run(QStringLiteral("ark"), {QStringLiteral("--batch"), QStringLiteral("--autosubfolder"), path});
+                } else {
+                    const QString folder = QFileInfo(path).completeBaseName();
+                    QDir(QFileInfo(path).absolutePath()).mkdir(folder);
+                    run(QStringLiteral("bsdtar"), {QStringLiteral("-xf"), path, QStringLiteral("-C"), folder});
+                }
+            });
+        } else if (mime == QLatin1String("application/pdf")) {
+            addButton(QStringLiteral("Estrai il testo (TXT)"), [this, path, base] {
+                run(QStringLiteral("pdftotext"), {QStringLiteral("-layout"), path, QStringLiteral("%1.txt").arg(base)});
+            });
+            addButton(QStringLiteral("Pagine in immagini (PNG)"), [this, path, base] {
+                run(QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), path, base});
+            });
+        } else if (mime.startsWith(QLatin1String("audio/"))) {
+            if (suffix.toLower() != QLatin1String("mp3")) {
+                addButton(QStringLiteral("Converti in MP3"), [this, path, base] {
+                    run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+                });
+            }
+            addButton(QStringLiteral("Converti in FLAC"), [this, path, base] {
+                run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("%1.flac").arg(base)});
+            });
+        } else if (mime.startsWith(QLatin1String("video/"))) {
+            addButton(QStringLiteral("Converti in MP4 (H.264)"), [this, path, base] {
+                run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
+            });
+            addButton(QStringLiteral("Estrai l'audio (MP3)"), [this, path, base] {
+                run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+            });
+        }
     }
 
     // Opened by hovering a row (PREVIEW_HOVER): the card goes away when the mouse leaves both the row and the card.
@@ -670,19 +786,21 @@ public:
             return;
         }
         m_item = item;
-        m_title->setText(m_title->fontMetrics().elidedText(item.text(), Qt::ElideMiddle, 266));
+        m_title->setText(m_title->fontMetrics().elidedText(item.text(), Qt::ElideMiddle, 420));
         m_title->setToolTip(item.text());
-        m_meta->setText(QStringLiteral("%1\n%2\n%3").arg(item.mimeComment(), item.isDir() ? QString() : KIO::convertSize(item.size()), QLocale().toString(item.time(KFileItem::ModificationTime), QLocale::ShortFormat)));
+        m_meta->setText(QStringLiteral("%1 · %2 · %3").arg(item.mimeComment(), item.isDir() ? QString() : KIO::convertSize(item.size()), QLocale().toString(item.time(KFileItem::ModificationTime), QLocale::ShortFormat)));
+        rebuildTypeButtons();
         fillPreview();
 
         QWidget *host = parentWidget();
-        const int height = 262;
+        const int width = qMin(460, qMax(340, rowRect.width() - 6));
+        const int height = qMin(host->height() - 8, 470);
         const QPoint below = host->mapFromGlobal(rowRect.bottomLeft());
         int y = below.y() + 2;
         if (y + height > host->height() - 6) {
             y = host->mapFromGlobal(rowRect.topLeft()).y() - height - 2; // no room below: open above the row
         }
-        setGeometry(below.x() + 3, qMax(4, y), qMax(420, rowRect.width() - 6), height);
+        setGeometry(below.x() + 3, qMax(4, y), width, height);
         show();
         raise();
     }
@@ -837,6 +955,9 @@ private:
     bool m_fullPicture = false;
     QLabel *m_title;
     QLabel *m_meta;
+    QGridLayout *m_buttons;
+    int m_buttonCount = 0;
+    int m_fixedButtons = 0; // the first ones are for every file; the rest depend on its type
     QElapsedTimer m_hiddenAt;
     bool m_hover = false; // opened by resting the mouse on the row
 };
