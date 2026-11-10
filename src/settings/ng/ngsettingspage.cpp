@@ -160,6 +160,8 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_hoverDelay->setSingleStep(100);
     m_hoverDelay->setSuffix(QStringLiteral(" ms"));
     form->addRow(QStringLiteral("Dopo:"), m_hoverDelay);
+    m_float = new QCheckBox(QStringLiteral("La scheda di anteprima galleggia sopra la finestra (può uscire dal riquadro)"), this);
+    form->addRow(QString(), m_float);
 
     // ---- Vista a icone ----------------------------------------------------------------------------------
     QFormLayout *iconsForm = nullptr;
@@ -183,12 +185,12 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
                  {m_motion, "GLASS_MOTION"}, {m_lavaStyle, "LAVA_STYLE"}, {m_lavaSize, "LAVA_SIZE"}, {m_lavaColours, "LAVA_COLORS"}, {m_lavaSpeed, "LAVA_SPEED"},
                  {m_rim, "GLASS_RIM"},      {m_devices, "DEVICES"},     {m_twoLines, "LIST"},        {m_rows, "ROWS"},        {m_icons, "ICONS"},
                  {m_mark, "MARK"},          {m_sigla, "SIGLA"},         {m_ago, "DATE_AGO"},         {m_tiles, "TILES"},          {m_rowDates, "ROW_DATES"},
-                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}};
+                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}};
     for (const auto &entry : bound) {
         entry.widget->setEnabled(!ngSettingFromEnvironment(entry.name));
     }
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates}) {
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
@@ -279,6 +281,7 @@ void NgSettingsPage::loadSettings()
     const int hover = ngSettingInt("PREVIEW_HOVER", 0);
     m_hoverPreview->setChecked(hover > 0);
     m_hoverDelay->setValue(hover > 0 ? qBound(100, hover, 5000) : 700);
+    m_float->setChecked(ngSetting("PREVIEW_FLOAT") == QLatin1String("1"));
     m_tiles->setChecked(ngSetting("TILES").toLower() != QLatin1String("off"));
 }
 
@@ -316,6 +319,7 @@ void NgSettingsPage::applySettings()
                                                                                 : ContentDisplaySettings::EnumDirectorySizeMode::ContentCount);
         ContentDisplaySettings::self()->save();
     }
+    setNgSetting("PREVIEW_FLOAT", m_float->isChecked() ? QStringLiteral("1") : QString());
     setNgSetting("PREVIEW_HOVER", m_hoverPreview->isChecked() ? QString::number(m_hoverDelay->value()) : QString());
     setNgSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
 
@@ -345,6 +349,7 @@ void NgSettingsPage::restoreDefaults()
     m_rowDates->setChecked(true);
     m_hoverPreview->setChecked(false);
     m_hoverDelay->setValue(700);
+    m_float->setChecked(false);
     m_folderSizes->setChecked(false);
     m_tiles->setChecked(true);
 }

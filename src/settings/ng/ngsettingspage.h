@@ -66,6 +66,7 @@ private:
     QCheckBox *m_hoverPreview;
     QCheckBox *m_folderSizes;
     QSpinBox *m_hoverDelay;
+    QCheckBox *m_float;
     QFormLayout *m_listForm;
     // icons view
     QCheckBox *m_tiles;

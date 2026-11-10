@@ -71,6 +71,7 @@
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QMimeDatabase>
+#include <QScreen>
 #include <QVideoSink>
 #include <QVideoFrame>
 #include <QAudioOutput>
@@ -796,7 +797,46 @@ public:
         layout->addWidget(m_typeRow);
 
         qApp->installEventFilter(this);
+        applyWindowMode();
+        connect(NgSettings::instance(), &NgSettings::changed, this, [this] {
+            applyWindowMode();
+        });
         hide();
+    }
+
+    // PREVIEW_FLOAT=1: the card is a frameless window of its own above Dolphin's window, free to open over the
+    // side panel or past the window's edge; otherwise it is a child of the view and stays inside it.
+    void applyWindowMode()
+    {
+        const bool floating = ngSetting("PREVIEW_FLOAT") == QLatin1String("1");
+        if (floating == isWindow()) {
+            return;
+        }
+        hide();
+        if (floating) {
+            setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+            setAttribute(Qt::WA_TranslucentBackground, true);
+            setAttribute(Qt::WA_ShowWithoutActivating, true);
+        } else {
+            setWindowFlags(Qt::Widget);
+            setAttribute(Qt::WA_TranslucentBackground, false);
+            setAttribute(Qt::WA_ShowWithoutActivating, false);
+        }
+    }
+
+    // where the card may go: the screen (floating) or the view it belongs to, in the card's own coordinates
+    QRect hostArea() const
+    {
+        if (isWindow()) {
+            const QScreen *screen = QGuiApplication::screenAt(m_rowRect.center());
+            return (screen ? screen : parentWidget()->screen())->availableGeometry();
+        }
+        return QRect(QPoint(0, 0), parentWidget()->size());
+    }
+
+    QPoint toHost(const QPoint &globalPos) const
+    {
+        return isWindow() ? globalPos : parentWidget()->mapFromGlobal(globalPos);
     }
 
     // Opened by hovering a row (PREVIEW_HOVER): the card goes away when the mouse leaves both the row and the card.
@@ -917,9 +957,9 @@ protected:
             if (m_resizing & Qt::BottomEdge) {
                 next.setHeight(m_resizeSize.height() + delta.y());
             }
-            const QWidget *host = parentWidget();
-            next.setWidth(qBound(MinimumWidth, next.width(), qMax(MinimumWidth, host->width() - x() - 4)));
-            next.setHeight(qBound(MinimumHeight, next.height(), qMax(MinimumHeight, host->height() - y() - 4)));
+            const QRect area = hostArea();
+            next.setWidth(qBound(MinimumWidth, next.width(), qMax(MinimumWidth, area.right() - x() - 4)));
+            next.setHeight(qBound(MinimumHeight, next.height(), qMax(MinimumHeight, area.bottom() - y() - 4)));
             resize(next);
             return;
         }
@@ -999,6 +1039,8 @@ protected:
             } else if (event->type() == QEvent::KeyPress && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) {
                 close();
                 return true;
+            } else if (isWindow() && watched == m_view->window() && (event->type() == QEvent::Move || event->type() == QEvent::Resize || event->type() == QEvent::WindowDeactivate || event->type() == QEvent::Hide)) {
+                hide(); // the floating card is tied to the row's place on screen
             }
         }
         return QWidget::eventFilter(watched, event);
@@ -1300,7 +1342,7 @@ private:
     // short block of lines; audio only the bar. A width the user dragged it to is kept (PREVIEW_SIZE).
     void place()
     {
-        QWidget *host = parentWidget();
+        const QRect area = hostArea();
         int width = 440;
         int height = 0; // 0: from the content
         const QStringList saved = ngSetting("PREVIEW_SIZE").split(QLatin1Char('x'));
@@ -1320,7 +1362,7 @@ private:
                 width = 520;
             }
         }
-        width = qMin(width, qMax(MinimumWidth, host->width() - 8));
+        width = qMin(width, qMax(MinimumWidth, area.width() - 8));
         const int artWidth = width - 16;
         int artHeight;
         switch (m_kind) {
@@ -1350,16 +1392,16 @@ private:
             m_art->setMinimumHeight(90);
             m_art->setMaximumHeight(QWIDGETSIZE_MAX);
         }
-        height = qMin(qMax(height, MinimumHeight), qMax(MinimumHeight, host->height() - 8));
+        height = qMin(qMax(height, MinimumHeight), qMax(MinimumHeight, area.height() - 8));
 
-        const QPoint below = host->mapFromGlobal(m_rowRect.bottomLeft());
+        const QPoint below = toHost(m_rowRect.bottomLeft());
         int y = below.y() + 2;
-        if (y + height > host->height() - 6) {
-            y = host->mapFromGlobal(m_rowRect.topLeft()).y() - height - 2; // no room below: open above the row
+        if (y + height > area.bottom() - 6) {
+            y = toHost(m_rowRect.topLeft()).y() - height - 2; // no room below: open above the row
         }
         int x = below.x() + 3;
-        x = qMin(x, qMax(4, host->width() - width - 4));
-        setGeometry(x, qMax(4, y), width, height);
+        x = qMin(x, qMax(area.left() + 4, area.right() - width - 4));
+        setGeometry(x, qMax(area.top() + 4, y), width, height);
     }
 
     void fillPreview()
