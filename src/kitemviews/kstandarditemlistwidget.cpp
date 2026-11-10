@@ -1037,6 +1037,13 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
         if (m_ngCardMenu.contains(pos)) {
             return 2;
         }
+        // 4: the pointer rests on the picture of an image or a PDF (quick view; hover only, never a click)
+        if (m_ngCardThumb.contains(pos)) {
+            const QString name = data().value("text").toString();
+            if (m_ngCategory == int(NgKind::Image) || name.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive)) {
+                return 4;
+            }
+        }
         return 0;
     }
     if (!m_ngActions || !m_ngActions->isVisible() || !m_ngActionsRect.contains(pos)) {

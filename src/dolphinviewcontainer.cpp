@@ -218,6 +218,121 @@ private:
 // dolphin-ng: the bar above the two-line list, which has no column header. On one line (wrapping when narrow):
 // "Sort by" — one button per visible role, clicking the active one reverses the order;
 // "Filtri" — a button with a menu of filters: all, files only, and one per kind of file, each with its count.
+// dolphin-ng: the quick view. While the pointer rests on the picture of a card, a larger rendition floats next to
+// the card: the picture itself for images, the first page for PDFs. It never takes the mouse, so moving away
+// (or scrolling, or clicking) simply ends it.
+class NgQuickView : public QWidget
+{
+public:
+    explicit NgQuickView(QWidget *host)
+        : QWidget(host)
+        , m_host(host)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+        hide();
+    }
+
+    void showFor(const KFileItem &item, const QRect &itemRectGlobal)
+    {
+        if (item.isNull() || !item.isLocalFile()) {
+            return;
+        }
+        m_url = item.url();
+        m_anchor = QRect(m_host->mapFromGlobal(itemRectGlobal.topLeft()), itemRectGlobal.size());
+        const QSize limit(qMin(560, m_host->width() - 40), qMin(480, m_host->height() - 40));
+        const qreal dpr = devicePixelRatioF();
+        if (item.mimetype().startsWith(QLatin1String("image/"))) {
+            QImageReader reader(item.localPath());
+            reader.setAutoTransform(true);
+            QSize size = reader.size();
+            if (size.isValid() && (size.width() > limit.width() * dpr || size.height() > limit.height() * dpr)) {
+                size.scale(limit * dpr, Qt::KeepAspectRatio);
+                reader.setScaledSize(size); // decoded at the size shown: quick even for large photos
+            }
+            setPicture(QPixmap::fromImage(reader.read()), limit);
+        } else {
+            // a PDF (or anything else with a thumbnailer): the preview job renders the first page
+            KIO::PreviewJob *job = KIO::filePreview(KFileItemList{item}, limit * dpr);
+            job->setScaleType(KIO::PreviewJob::Scaled);
+            const QUrl url = m_url;
+            connect(job, &KIO::PreviewJob::gotPreview, this, [this, url, limit](const KFileItem &, const QPixmap &pixmap) {
+                if (url == m_url) {
+                    setPicture(pixmap, limit);
+                }
+            });
+        }
+    }
+
+    void end()
+    {
+        m_url.clear();
+        hide();
+    }
+
+protected:
+    void setPicture(QPixmap pixmap, const QSize &limit)
+    {
+        if (pixmap.isNull() || m_url.isEmpty()) {
+            return;
+        }
+        const qreal dpr = devicePixelRatioF();
+        QSize shown = pixmap.size() / pixmap.devicePixelRatio();
+        if (pixmap.devicePixelRatio() == 1.0) {
+            shown = (QSizeF(pixmap.size()) / dpr).toSize();
+            pixmap.setDevicePixelRatio(dpr);
+        }
+        if (shown.width() > limit.width() || shown.height() > limit.height()) {
+            shown.scale(limit, Qt::KeepAspectRatio);
+        }
+        m_pixmap = pixmap;
+        const int pad = 8;
+        const QSize size = shown + QSize(2 * pad, 2 * pad);
+        // beside the card: to its right, else to its left; never over it, so that the pointer stays on the card
+        int x = m_anchor.right() + 10;
+        if (x + size.width() > m_host->width() - 6) {
+            x = m_anchor.left() - 10 - size.width();
+        }
+        if (x < 6) {
+            x = qBound(6, m_anchor.center().x() - size.width() / 2, qMax(6, m_host->width() - 6 - size.width()));
+        }
+        int y = m_anchor.center().y() - size.height() / 2;
+        if (x < m_anchor.right() && x + size.width() > m_anchor.left()) {
+            y = m_anchor.bottom() + 10; // no room at either side: below the card, or above it
+            if (y + size.height() > m_host->height() - 6) {
+                y = m_anchor.top() - 10 - size.height();
+            }
+        }
+        y = qBound(6, y, qMax(6, m_host->height() - 6 - size.height()));
+        setGeometry(x, y, size.width(), size.height());
+        show();
+        raise();
+        update();
+    }
+
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        const QRectF frame = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        painter.setPen(QPen(QColor(255, 255, 255, 46), 1));
+        painter.setBrush(QColor(22, 23, 26, 242));
+        painter.drawRoundedRect(frame, 12, 12);
+        const QRectF inner = QRectF(rect()).adjusted(8, 8, -8, -8);
+        QPainterPath clip;
+        clip.addRoundedRect(inner, 7, 7);
+        painter.setClipPath(clip);
+        painter.drawPixmap(inner, m_pixmap, QRectF(m_pixmap.rect()));
+    }
+
+private:
+    QWidget *m_host;
+    QUrl m_url;
+    QRect m_anchor;
+    QPixmap m_pixmap;
+};
+
 static void ngOpenLightbox(DolphinView *view, const KFileItem &item); // see NgLightbox
 
 class NgSortBar : public QWidget
@@ -1867,6 +1982,18 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
             previewCard->hoverEnded();
         });
         connect(m_view, &DolphinView::urlChanged, previewCard, &QWidget::hide);
+        auto *quickView = new NgQuickView(this);
+        connect(m_view, &DolphinView::ngQuickViewRequested, quickView, [quickView, previewCard](const KFileItem &item, const QRect &itemRect) {
+            if (!previewCard->isVisible()) {
+                quickView->showFor(item, itemRect);
+            }
+        });
+        connect(m_view, &DolphinView::ngQuickViewEnded, quickView, [quickView] {
+            quickView->end();
+        });
+        connect(m_view, &DolphinView::urlChanged, quickView, [quickView] {
+            quickView->end();
+        });
     }
     m_topLayout->addWidget(m_view, positionFor.view, 0);
     m_topLayout->addWidget(m_filterBar, positionFor.filterBar, 0);

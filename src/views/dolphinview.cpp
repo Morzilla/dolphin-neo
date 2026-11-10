@@ -222,6 +222,32 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
     connect(controller, &KItemListController::itemHovered, this, &DolphinView::slotItemHovered);
     connect(controller, &KItemListController::itemUnhovered, this, &DolphinView::slotItemUnhovered);
     connect(controller, &KItemListController::ngActionHovered, this, [this](int index, int action) {
+        // the picture of a card: a larger view after a short rest (CARDS_QUICKVIEW=off disables, a number sets the delay)
+        const QString quick = ngSetting("CARDS_QUICKVIEW").toLower();
+        if (action == 4 && quick != QLatin1String("off") && !m_dragging) {
+            if (!m_ngQuickTimer) {
+                m_ngQuickTimer = new QTimer(this);
+                m_ngQuickTimer->setSingleShot(true);
+                connect(m_ngQuickTimer, &QTimer::timeout, this, [this] {
+                    const KFileItem item = m_model->fileItem(m_ngQuickIndex);
+                    const KItemListView *view = m_container->controller()->view();
+                    if (item.isNull() || m_dragging || !view->scene() || view->scene()->views().isEmpty()) {
+                        return;
+                    }
+                    const QGraphicsView *graphicsView = view->scene()->views().constFirst();
+                    const QRectF rect = view->itemRect(m_ngQuickIndex);
+                    const QPoint topLeft = graphicsView->viewport()->mapToGlobal(graphicsView->mapFromScene(view->mapToScene(rect.topLeft())));
+                    Q_EMIT ngQuickViewRequested(item, QRect(topLeft, rect.size().toSize()));
+                });
+            }
+            m_ngQuickIndex = index;
+            bool ok = false;
+            const int delay = quick.toInt(&ok);
+            m_ngQuickTimer->start(ok && delay > 0 ? delay : 350);
+        } else if (m_ngQuickTimer) {
+            m_ngQuickTimer->stop();
+            Q_EMIT ngQuickViewEnded();
+        }
         m_ngOnPreviewButton = action == 3;
         if (m_ngOnPreviewButton) {
             m_ngHoverIndex = index;
@@ -231,6 +257,10 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
         }
     });
     connect(m_view, &KItemListView::scrollOffsetChanged, this, [this] {
+        if (m_ngQuickTimer) {
+            m_ngQuickTimer->stop();
+            Q_EMIT ngQuickViewEnded();
+        }
         m_ngHoverSuppressed = true; // dolphin-ng: see the wheel case of eventFilter()
         if (m_ngHoverTimer) {
             m_ngHoverTimer->stop();

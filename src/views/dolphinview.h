@@ -546,6 +546,9 @@ Q_SIGNALS:
     /** dolphin-ng: the mouse rested on \a item for PREVIEW_HOVER milliseconds / left it (or the view). */
     void ngHoverPreviewRequested(const KFileItem &item, const QRect &rowRect);
     void ngHoverPreviewEnded();
+    /** dolphin-ng: the pointer rested on the picture of a card (\a itemRect, global) / left it. */
+    void ngQuickViewRequested(const KFileItem &item, const QRect &itemRect);
+    void ngQuickViewEnded();
 
     /**
      * request the property dialog
@@ -1063,6 +1066,8 @@ private:
     ToolTipManager *m_toolTipManager;
     QTimer *m_ngHoverTimer = nullptr; // dolphin-ng: preview on hover
     int m_ngHoverIndex = -1;
+    QTimer *m_ngQuickTimer = nullptr; // dolphin-ng: quick view of a card's picture
+    int m_ngQuickIndex = -1;
     bool m_ngHoverSuppressed = false; // after a scroll, until the mouse moves again
     bool m_ngOnPreviewButton = false; // the pointer rests on the eye of the row
     void ngArmHoverPreview();
