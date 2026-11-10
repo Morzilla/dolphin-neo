@@ -181,6 +181,14 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_cardsFit->addItem(QStringLiteral("Card di misura fissa, spazio distribuito fra le colonne"), QString());
     m_cardsFit->addItem(QStringLiteral("Le card si allargano fino a riempire la riga"), QStringLiteral("stretch"));
     cardsForm->addRow(QStringLiteral("Griglia:"), m_cardsFit);
+    m_cardsInfo = new QComboBox(this);
+    m_cardsInfo->addItem(QStringLiteral("Creato e modificato"), QString());
+    m_cardsInfo->addItem(QStringLiteral("Anche tipo e permessi"), QStringLiteral("full"));
+    cardsForm->addRow(QStringLiteral("Dettagli nella card:"), m_cardsInfo);
+    m_cardsMark = new QComboBox(this);
+    m_cardsMark->addItem(QStringLiteral("L'icona del tipo"), QString());
+    m_cardsMark->addItem(QStringLiteral("Il tipo come sfondo: colore e sigla in filigrana (le immagini tengono l'anteprima)"), QStringLiteral("type"));
+    cardsForm->addRow(QStringLiteral("Segno del tipo:"), m_cardsMark);
     auto *cardsNote = new QLabel(QStringLiteral("La vista si attiva dal menu Visualizza (Card, Ctrl+4) o dal pulsante «Card» nella barra dei filtri; lo zoom cambia la misura delle card."), this);
     cardsNote->setWordWrap(true);
     cardsNote->setEnabled(false);
@@ -202,7 +210,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
                  {m_motion, "GLASS_MOTION"}, {m_lavaStyle, "LAVA_STYLE"}, {m_lavaSize, "LAVA_SIZE"}, {m_lavaColours, "LAVA_COLORS"}, {m_lavaSpeed, "LAVA_SPEED"},
                  {m_rim, "GLASS_RIM"},      {m_devices, "DEVICES"},     {m_twoLines, "LIST"},        {m_rows, "ROWS"},        {m_icons, "ICONS"},
                  {m_mark, "MARK"},          {m_sigla, "SIGLA"},         {m_ago, "DATE_AGO"},         {m_tiles, "TILES"},          {m_rowDates, "ROW_DATES"},
-                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}};
+                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}, {m_cardsInfo, "CARDS_INFO"}, {m_cardsMark, "CARDS_MARK"}};
     for (const auto &entry : bound) {
         entry.widget->setEnabled(!ngSettingFromEnvironment(entry.name));
     }
@@ -211,7 +219,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
-    for (QComboBox *combo : {m_backdrop, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla, m_cards, m_cardsFit}) {
+    for (QComboBox *combo : {m_backdrop, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla, m_cards, m_cardsFit, m_cardsInfo, m_cardsMark}) {
         connect(combo, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     }
     for (QSlider *slider : {m_glass, m_blur, m_lavaSize, m_lavaSpeed}) {
@@ -304,6 +312,8 @@ void NgSettingsPage::loadSettings()
     m_cards->setCurrentIndex(int(ngCardStyle()));
     Q_UNUSED(looks)
     m_cardsFit->setCurrentIndex(ngCardsStretch() ? 1 : 0);
+    m_cardsInfo->setCurrentIndex(ngSetting("CARDS_INFO").toLower() == QLatin1String("full") ? 1 : 0);
+    m_cardsMark->setCurrentIndex(ngSetting("CARDS_MARK").toLower() == QLatin1String("type") ? 1 : 0);
 }
 
 void NgSettingsPage::applySettings()
@@ -345,6 +355,8 @@ void NgSettingsPage::applySettings()
     setNgSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
     setNgSetting("CARDS", m_cards->currentData().toString());
     setNgSetting("CARDS_FIT", m_cardsFit->currentData().toString());
+    setNgSetting("CARDS_INFO", m_cardsInfo->currentData().toString());
+    setNgSetting("CARDS_MARK", m_cardsMark->currentData().toString());
 
     ngSettingsInvalidate(); // everything that depends on these re-reads them now
 }

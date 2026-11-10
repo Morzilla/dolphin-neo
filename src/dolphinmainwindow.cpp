@@ -89,6 +89,7 @@
 #include <QFileInfo>
 #include <QLineEdit>
 #include <QMenuBar>
+#include <QVBoxLayout>
 #include <QPushButton>
 #include <QSharedPointer>
 #include <QShowEvent>
@@ -187,7 +188,21 @@ DolphinMainWindow::DolphinMainWindow()
     connect(m_tabWidget, &DolphinTabWidget::activeViewChanged, this, &DolphinMainWindow::activeViewChanged);
     connect(m_tabWidget, &DolphinTabWidget::tabCountChanged, this, &DolphinMainWindow::tabCountChanged);
     connect(m_tabWidget, &DolphinTabWidget::currentUrlChanged, this, &DolphinMainWindow::updateWindowTitle);
-    setCentralWidget(m_tabWidget);
+    {
+        // dolphin-ng: the sort/filter bar sits above the tabs and follows the active view
+        auto *central = new QWidget(this);
+        auto *centralLayout = new QVBoxLayout(central);
+        centralLayout->setContentsMargins(0, 0, 0, 0);
+        centralLayout->setSpacing(0);
+        m_ngSortBar = ngCreateSortBar(central);
+        m_ngSortBar->setVisible(ngTwoLineList());
+        connect(NgSettings::instance(), &NgSettings::changed, m_ngSortBar, [this] {
+            m_ngSortBar->setVisible(ngTwoLineList());
+        });
+        centralLayout->addWidget(m_ngSortBar);
+        centralLayout->addWidget(m_tabWidget, 1);
+        setCentralWidget(central);
+    }
     // dolphin-ng: the handle between the panels and the view stays usable but draws nothing
     auto applyNgWindowSettings = [this] {
         setStyleSheet(ngTwoLineList() ? QStringLiteral("QMainWindow::separator { background: transparent; width: 4px; height: 4px; }") : QString());
@@ -1692,6 +1707,7 @@ void DolphinMainWindow::activeViewChanged(DolphinViewContainer *viewContainer)
     Q_ASSERT(viewContainer);
 
     m_activeViewContainer = viewContainer;
+    ngSortBarFollow(m_ngSortBar, viewContainer->view()); // dolphin-ng
 
     if (oldViewContainer) {
         // Disconnect all signals between the old view container (container,

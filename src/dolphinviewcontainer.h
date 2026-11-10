@@ -530,4 +530,8 @@ private:
     std::unique_ptr<DolphinUrlNavigator::VisualState> m_urlNavigatorVisualState;
 };
 
+// dolphin-ng: the sort/filter bar of the window, placed above the tabs; ngSortBarFollow() points it at the active view
+QWidget *ngCreateSortBar(QWidget *parent);
+void ngSortBarFollow(QWidget *bar, DolphinView *view);
+
 #endif // DOLPHINVIEWCONTAINER_H

@@ -92,6 +92,16 @@ DOLPHIN_EXPORT NgCardStyle ngCardStyle();
 /** dolphin-ng: cards grow to fill the row (DOLPHIN_NG_CARDS_FIT=stretch) instead of keeping their size. */
 DOLPHIN_EXPORT bool ngCardsStretch();
 
+/** dolphin-ng: a command that makes sense for a file of its kind (resize or convert a picture, extract an archive...). */
+struct NgQuickAction {
+    QString label;
+    QString program;
+    QStringList arguments; // used when there are no choices
+    QList<std::pair<QString, QStringList>> choices; // a menu: label and arguments, all run with the program
+};
+/** dolphin-ng: the quick actions of a local file, from its path and MIME type; empty for folders and unknown kinds. */
+DOLPHIN_EXPORT QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &mime);
+
 /** dolphin-ng: what replaces the icon — a short type abbreviation, the colour and the category of the file. */
 struct NgKind {
     enum Category { Folder, Image, Document, Sheet, Archive, Media, Data, Package, Other, CategoryCount };

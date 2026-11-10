@@ -538,6 +538,11 @@ Q_SIGNALS:
 
     /** dolphin-ng: show a preview of \a item next to its row (\a rowRect, global coordinates). */
     void ngPreviewRequested(const KFileItem &item, const QRect &rowRect);
+
+private:
+    void ngRunQuickAction(const KFileItem &item, int action); // dolphin-ng: a quick action chip of a card
+
+Q_SIGNALS:
     /** dolphin-ng: the mouse rested on \a item for PREVIEW_HOVER milliseconds / left it (or the view). */
     void ngHoverPreviewRequested(const KFileItem &item, const QRect &rowRect);
     void ngHoverPreviewEnded();

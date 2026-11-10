@@ -218,9 +218,9 @@ private:
 class NgSortBar : public QWidget
 {
 public:
-    NgSortBar(DolphinView *view, QWidget *parent)
+    explicit NgSortBar(QWidget *parent)
         : QWidget(parent)
-        , m_view(view)
+        , m_view(nullptr)
     {
         applyChipStyle();
         auto *row = new QHBoxLayout(this);
@@ -238,8 +238,31 @@ public:
         m_filter->setToolTip(QStringLiteral("Mostra solo gli elementi il cui nome contiene il testo. Esc svuota il campo."));
         row->addWidget(m_filter, 0, Qt::AlignTop);
         connect(m_filter, &QLineEdit::textChanged, this, [this](const QString &text) {
-            m_view->setNameFilter(text);
+            if (m_view) {
+                m_view->setNameFilter(text);
+            }
         });
+    }
+
+    // The bar sits above the tabs and shows the active view: this moves it to another one.
+    void follow(DolphinView *view)
+    {
+        if (m_view == view) {
+            return;
+        }
+        if (m_view) {
+            disconnect(m_view, nullptr, this, nullptr);
+        }
+        m_view = view;
+        m_active = All;
+        m_total = 0;
+        if (!m_filter->text().isEmpty()) {
+            m_filter->clear();
+        }
+        if (!view) {
+            rebuild();
+            return;
+        }
         connect(view, &DolphinView::urlChanged, this, [this] {
             if (!m_filter->text().isEmpty()) {
                 m_filter->clear(); // a new folder starts unfiltered
@@ -292,16 +315,20 @@ private:
     void applyChipStyle()
     {
         const QString ink = ngIsDark(palette()) ? QStringLiteral("255, 255, 255") : QStringLiteral("0, 0, 0");
+        // the sheet of a menu, as Breeze paints it: the window colour mixed with 30 % of the base colour
+        const QColor window = palette().color(QPalette::Window), base = palette().color(QPalette::Base);
+        const QColor menuSheet(qRound(window.red() * 0.7 + base.red() * 0.3), qRound(window.green() * 0.7 + base.green() * 0.3), qRound(window.blue() * 0.7 + base.blue() * 0.3));
         setStyleSheet(QStringLiteral("QToolButton { border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; background: transparent; color: palette(window-text); }"
                                      "QToolButton:hover { background: rgba(%1, 0.08); }"
                                      "QToolButton:pressed { background: rgba(%1, 0.14); }"
                                      "QToolButton:checked { background: rgba(%1, 0.16); border-color: rgba(%1, 0.20); }"
                                      "QToolButton:checked:hover { background: rgba(%1, 0.20); }"
                                      "QToolButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: right center; left: -3px; }"
+                                     "QToolButton[menuOpen=\"true\"], QToolButton[menuOpen=\"true\"]:hover, QToolButton[menuOpen=\"true\"]:checked, QToolButton[menuOpen=\"true\"]:pressed { background: %2; border-color: transparent; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }"
                                      "QLineEdit { border: 1px solid rgba(%1, 0.14); border-radius: 6px; padding: 3px 8px; background: rgba(%1, 0.06); color: palette(window-text); }"
                                      "QLineEdit:hover { border-color: rgba(%1, 0.22); }"
                                      "QLineEdit:focus { border-color: rgba(%1, 0.34); background: rgba(%1, 0.08); }")
-                          .arg(ink));
+                          .arg(ink, menuSheet.name()));
     }
 
     QToolButton *chip(const QString &text, bool checked)
@@ -324,6 +351,28 @@ private:
         m_flow->addWidget(label);
     }
 
+    // A button that opens a menu: while the menu is open the button loses its own highlight and takes the colour
+    // of the menu, so that the two read as one piece (the style joins them, see Breeze NG).
+    void menuButton(QToolButton *button)
+    {
+        QMenu *menu = button->menu();
+        if (!menu) {
+            return;
+        }
+        auto repolish = [button](bool open) {
+            button->setProperty("menuOpen", open);
+            button->style()->unpolish(button);
+            button->style()->polish(button);
+            button->update();
+        };
+        connect(menu, &QMenu::aboutToShow, button, [repolish] {
+            repolish(true);
+        });
+        connect(menu, &QMenu::aboutToHide, button, [repolish] {
+            repolish(false);
+        });
+    }
+
     void rebuild()
     {
         while (QLayoutItem *item = m_flow->takeAt(0)) {
@@ -332,6 +381,10 @@ private:
                 item->widget()->deleteLater(); // a button may be in the middle of its own click
             }
             delete item;
+        }
+        if (!m_view) {
+            m_flow->invalidate();
+            return;
         }
         const bool list = m_view->viewMode() == DolphinView::DetailsView;
 
@@ -414,6 +467,7 @@ private:
                 });
             }
             cards->setMenu(menu);
+            menuButton(cards);
             connect(cards, &QToolButton::clicked, this, [this, cardsOn] {
                 if (cardsOn) {
                     m_view->setViewMode(m_modeBeforeCards == DolphinView::CardsView ? DolphinView::DetailsView : m_modeBeforeCards);
@@ -470,6 +524,7 @@ private:
             }
         }
         button->setMenu(menu);
+        menuButton(button);
         button->setText(QStringLiteral("Filtri: %1").arg(current));
         m_flow->addWidget(button);
 
@@ -499,7 +554,7 @@ private:
     // Count the items of each kind. Only while no filter is active: a filtered view no longer lists the rest.
     void count()
     {
-        if (m_active != All) {
+        if (m_active != All || !m_view) {
             return;
         }
         const KFileItemList items = m_view->items();
@@ -1738,10 +1793,7 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
 
     m_topLayout->addWidget(m_messageWidget, positionFor.messageWidget, 0);
     {
-        // dolphin-ng: the sort/filter bar and the preview card belong to the two-line list
-        auto *sortBar = new NgSortBar(m_view, this);
-        m_topLayout->addWidget(sortBar, positionFor.sortBar, 0);
-        sortBar->setVisible(ngTwoLineList());
+        // dolphin-ng: the preview card (the sort/filter bar is the window's, above the tabs: ngCreateSortBar)
         auto *previewCard = new NgPreviewCard(m_view, this);
         connect(m_view, &DolphinView::ngPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
             previewCard->showFor(item, rowRect);
@@ -1753,9 +1805,6 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
             previewCard->hoverEnded();
         });
         connect(m_view, &DolphinView::urlChanged, previewCard, &QWidget::hide);
-        connect(NgSettings::instance(), &NgSettings::changed, sortBar, [sortBar] {
-            sortBar->setVisible(ngTwoLineList());
-        });
     }
     m_topLayout->addWidget(m_view, positionFor.view, 0);
     m_topLayout->addWidget(m_filterBar, positionFor.filterBar, 0);
@@ -2763,3 +2812,16 @@ QRect DolphinViewContainer::preferredSmallStatusBarGeometry()
 }
 
 #include "moc_dolphinviewcontainer.cpp"
+
+// dolphin-ng: the sort/filter bar of the window (see NgSortBar); it follows the active view
+QWidget *ngCreateSortBar(QWidget *parent)
+{
+    return new NgSortBar(parent);
+}
+
+void ngSortBarFollow(QWidget *bar, DolphinView *view)
+{
+    if (auto *sortBar = dynamic_cast<NgSortBar *>(bar)) {
+        sortBar->follow(view);
+    }
+}

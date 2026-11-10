@@ -20,6 +20,9 @@
 #include <QApplication>
 #include <QSet>
 #include <QLinearGradient>
+#include <QFileInfo>
+#include <QStandardPaths>
+#include <tuple>
 #include <QPainter>
 #include <QPropertyAnimation>
 #include <QStyleOption>
@@ -198,6 +201,88 @@ NgCardStyle ngCardStyle()
 bool ngCardsStretch()
 {
     return ngSetting("CARDS_FIT").toLower() == QLatin1String("stretch");
+}
+
+QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &mime)
+{
+    QList<NgQuickAction> actions;
+    if (localPath.isEmpty() || mime.isEmpty() || mime == QLatin1String("inode/directory")) {
+        return actions;
+    }
+    const QFileInfo info(localPath);
+    const QString base = info.completeBaseName();
+    const QString suffix = info.suffix();
+    const QString lowerSuffix = suffix.toLower();
+    const bool isImage = mime.startsWith(QLatin1String("image/")) && !mime.contains(QLatin1String("svg"));
+    static const QSet<QString> archives{QStringLiteral("application/zip"),
+                                        QStringLiteral("application/x-tar"),
+                                        QStringLiteral("application/x-compressed-tar"),
+                                        QStringLiteral("application/x-bzip-compressed-tar"),
+                                        QStringLiteral("application/x-xz-compressed-tar"),
+                                        QStringLiteral("application/x-zstd-compressed-tar"),
+                                        QStringLiteral("application/x-7z-compressed"),
+                                        QStringLiteral("application/vnd.rar"),
+                                        QStringLiteral("application/x-rar"),
+                                        QStringLiteral("application/gzip"),
+                                        QStringLiteral("application/x-bzip"),
+                                        QStringLiteral("application/x-xz"),
+                                        QStringLiteral("application/zstd")};
+    auto simple = [&actions](const QString &label, const QString &program, const QStringList &arguments) {
+        NgQuickAction action;
+        action.label = label;
+        action.program = program;
+        action.arguments = arguments;
+        actions.append(action);
+    };
+    if (isImage) {
+        NgQuickAction resize;
+        resize.label = QStringLiteral("Ridimensiona…");
+        resize.program = QStringLiteral("magick");
+        for (const auto &[label, spec, tag] : {std::make_tuple(QStringLiteral("75 %"), QStringLiteral("75%"), QStringLiteral("75")),
+                                               std::make_tuple(QStringLiteral("50 %"), QStringLiteral("50%"), QStringLiteral("50")),
+                                               std::make_tuple(QStringLiteral("25 %"), QStringLiteral("25%"), QStringLiteral("25")),
+                                               std::make_tuple(QStringLiteral("Larghezza 1920"), QStringLiteral("1920x>"), QStringLiteral("1920")),
+                                               std::make_tuple(QStringLiteral("Larghezza 1280"), QStringLiteral("1280x>"), QStringLiteral("1280")),
+                                               std::make_tuple(QStringLiteral("Larghezza 800"), QStringLiteral("800x>"), QStringLiteral("800"))}) {
+            resize.choices.append({label, {localPath, QStringLiteral("-resize"), spec, QStringLiteral("%1-%2.%3").arg(base, tag, suffix)}});
+        }
+        actions.append(resize);
+        NgQuickAction convert;
+        convert.label = QStringLiteral("Converti…");
+        convert.program = QStringLiteral("magick");
+        for (const char *format : {"png", "jpg", "webp", "avif", "tiff", "bmp"}) {
+            const QString target = QString::fromLatin1(format);
+            if (target != lowerSuffix && !(lowerSuffix == QLatin1String("jpeg") && target == QLatin1String("jpg"))) {
+                convert.choices.append({target.toUpper(), {localPath, QStringLiteral("%1.%2").arg(base, target)}});
+            }
+        }
+        actions.append(convert);
+        if (mime == QLatin1String("image/gif")) {
+            simple(QStringLiteral("In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-movflags"), QStringLiteral("faststart"), QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"), QStringLiteral("-vf"), QStringLiteral("scale=trunc(iw/2)*2:trunc(ih/2)*2"), QStringLiteral("%1.mp4").arg(base)});
+        }
+    } else if (archives.contains(mime)) {
+        static const bool hasArk = !QStandardPaths::findExecutable(QStringLiteral("ark")).isEmpty();
+        if (hasArk) {
+            simple(QStringLiteral("Estrai"), QStringLiteral("ark"), {QStringLiteral("--batch"), QStringLiteral("--autosubfolder"), localPath});
+        } else {
+            simple(QStringLiteral("Estrai"), QStringLiteral("bsdtar"), {QStringLiteral("-xf"), localPath, QStringLiteral("--one-top-level=%1").arg(base)});
+        }
+    } else if (mime == QLatin1String("application/pdf")) {
+        simple(QStringLiteral("Testo"), QStringLiteral("pdftotext"), {QStringLiteral("-layout"), localPath, QStringLiteral("%1.txt").arg(base)});
+        simple(QStringLiteral("Pagine PNG"), QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), localPath, base});
+    } else if (mime.startsWith(QLatin1String("audio/"))) {
+        if (lowerSuffix != QLatin1String("mp3")) {
+            simple(QStringLiteral("In MP3"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+        }
+        if (lowerSuffix != QLatin1String("flac")) {
+            simple(QStringLiteral("In FLAC"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("%1.flac").arg(base)});
+        }
+    } else if (mime.startsWith(QLatin1String("video/"))) {
+        simple(QStringLiteral("In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
+        simple(QStringLiteral("Audio MP3"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+        simple(QStringLiteral("Fotogramma"), QStringLiteral("ffmpeg"), {QStringLiteral("-ss"), QStringLiteral("1"), QStringLiteral("-i"), localPath, QStringLiteral("-frames:v"), QStringLiteral("1"), QStringLiteral("%1-1s.png").arg(base)});
+    }
+    return actions;
 }
 
 namespace

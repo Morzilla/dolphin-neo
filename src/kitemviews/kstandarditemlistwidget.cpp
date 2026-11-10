@@ -1023,6 +1023,11 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
 {
     if (m_layout == CardsLayout) {
         const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
+        for (int i = 0; i < m_ngCardActions.count(); ++i) {
+            if (m_ngCardActions.at(i).rect.contains(pos)) {
+                return 10 + i;
+            }
+        }
         if (!isHovered()) {
             return 0;
         }
@@ -2626,6 +2631,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     m_ngAgo.clear();
     m_ngCardEye = QRectF();
     m_ngCardMenu = QRectF();
+    m_ngCardActions.clear();
     m_ngCardThumb = QRectF();
     m_ngCardIconSide = 0;
     m_textRect = QRectF();
@@ -2682,20 +2688,32 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     const QString owner = values.value("owner").toString();
     QDateTime modified = ngDateTimeOf(values.value("modificationtime"));
     QDateTime created = ngDateTimeOf(values.value("creationtime"));
-    if (!created.isValid() || !modified.isValid()) {
-        if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
-            if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
-                const KFileItem fileItem = fileModel->fileItem(index());
-                if (!fileItem.isNull()) {
-                    if (!created.isValid()) {
-                        created = fileItem.time(KFileItem::CreationTime);
-                    }
-                    if (!modified.isValid()) {
-                        modified = fileItem.time(KFileItem::ModificationTime);
-                    }
+    QList<NgQuickAction> quickActions;
+    if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
+        if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
+            const KFileItem fileItem = fileModel->fileItem(index());
+            if (!fileItem.isNull()) {
+                if (!created.isValid()) {
+                    created = fileItem.time(KFileItem::CreationTime);
+                }
+                if (!modified.isValid()) {
+                    modified = fileItem.time(KFileItem::ModificationTime);
+                }
+                if (!isDir && fileItem.isLocalFile()) {
+                    quickActions = ngQuickActionsFor(fileItem.localPath(), fileItem.mimetype());
                 }
             }
         }
+    }
+    const bool fullInfo = ngSetting("CARDS_INFO").toLower() == QLatin1String("full"); // type and permissions too
+    // CARDS_MARK=type: no icon, the type is the background of the card (its colour and a big faint abbreviation);
+    // pictures keep their preview in any case
+    const bool markType = ngSetting("CARDS_MARK").toLower() == QLatin1String("type");
+    const bool showPicture = !markType || m_ngCardPreview;
+    m_ngCardWatermark = markType && !m_ngCardPreview;
+    QStringList actionLabels;
+    for (const NgQuickAction &action : std::as_const(quickActions)) {
+        actionLabels << (action.choices.isEmpty() ? action.label : action.label + QStringLiteral(" ▾"));
     }
     auto dateLine = [&locale](const QDateTime &when) {
         return QStringLiteral("%1 · %2").arg(locale.toString(when.date(), QStringLiteral("dd/MM/yy")), ngAgoText(when));
@@ -2733,7 +2751,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         m_ngCardTexts.append(entry);
     };
     // chips left to right from (x, y); those that do not fit are dropped. Returns the bottom edge.
-    auto chipRow = [this, &chipFm, chipHeight](qreal x, qreal y, qreal right, const QStringList &texts, int tintedCount) {
+    auto chipRow = [this, &chipFm, chipHeight](qreal x, qreal y, qreal right, const QStringList &texts, int tintedCount, QList<NgChip> *into = nullptr) {
         int i = 0;
         for (const QString &text : texts) {
             if (text.isEmpty()) {
@@ -2748,7 +2766,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             chip.text = text;
             chip.rect = QRectF(x, y, width, chipHeight);
             chip.tinted = i < tintedCount;
-            m_ngChips.append(chip);
+            (into ? *into : m_ngChips).append(chip);
             x += width + 4;
             ++i;
         }
@@ -2787,7 +2805,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         // | Permessi   -rw-r--r-- · daniele
         const qreal bandHeight = qRound(qMin(card.height() * 0.37, 120.0));
         m_ngCardThumb = QRectF(card.left(), card.top(), card.width(), bandHeight);
-        m_ngCardIconSide = qMin<qreal>(option.iconSize, bandHeight * 0.56);
+        m_ngCardIconSide = showPicture ? qMin<qreal>(option.iconSize, bandHeight * 0.56) : 0;
         const qreal x0 = card.left() + pad;
         const qreal right = card.right() - pad;
         qreal y = m_ngCardThumb.bottom() + pad * 0.8;
@@ -2808,9 +2826,11 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         if (modified.isValid()) {
             lines.append({QStringLiteral("Modificato"), dateLine(modified), false});
         }
-        lines.append({QStringLiteral("Tipo"), typeText, false});
-        if (!permissions.isEmpty()) {
-            lines.append({QStringLiteral("Permessi"), joined({permissions, owner}), true});
+        if (fullInfo) {
+            lines.append({QStringLiteral("Tipo"), typeText, false});
+            if (!permissions.isEmpty()) {
+                lines.append({QStringLiteral("Permessi"), joined({permissions, owner}), true});
+            }
         }
         const qreal lineHeight = smallFm.height() + 2;
         qreal labelWidth = 0;
@@ -2818,8 +2838,9 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             labelWidth = qMax(labelWidth, smallFm.horizontalAdvance(line.label));
         }
         labelWidth += 10;
-        const int fit = qBound(0, int((card.bottom() - pad - y) / lineHeight), int(lines.count()));
-        qreal lineY = y; // the lines follow the chips; what is left stays empty at the bottom
+        const qreal actionsHeight = actionLabels.isEmpty() ? 0 : chipHeight + 6;
+        const int fit = qBound(0, int((card.bottom() - pad - actionsHeight - y) / lineHeight), int(lines.count()));
+        qreal lineY = y; // the lines follow the chips
         for (int i = 0; i < fit; ++i) {
             const Line &line = lines.at(i);
             putText(line.label, QPointF(x0, lineY + smallFm.ascent()), small, 2);
@@ -2828,18 +2849,22 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             putText(valueFm.elidedText(line.value, Qt::ElideRight, right - x0 - labelWidth), QPointF(x0 + labelWidth, lineY + smallFm.ascent()), valueFont, 0);
             lineY += lineHeight;
         }
+        if (!actionLabels.isEmpty()) {
+            // the quick actions sit at the bottom of the card
+            chipRow(x0, card.bottom() - pad - chipHeight, right, actionLabels, 0, &m_ngCardActions);
+        }
     } else if (look == NgCardStyle::Scheda) {
         // +------+  Name
         // | icon |  2,4 MiB · Immagine PNG
         // +------+  Creato 05/11/26 · 5 giorni fa · Modificato ...
         // [PNG]    [-rw-r--r--]                              👁 ⋯
-        const qreal columnWidth = qBound(44.0, card.height() * 0.5, 64.0);
+        const qreal columnWidth = showPicture ? qBound(44.0, card.height() * 0.5, 64.0) : 0;
         const qreal x0 = card.left() + pad;
         const qreal right = card.right() - pad;
         const qreal footTop = card.bottom() - pad - chipHeight;
-        m_ngCardThumb = QRectF(x0, card.top() + pad, columnWidth, footTop - 4 - (card.top() + pad));
-        m_ngCardIconSide = qMax(16.0, qMin<qreal>(option.iconSize, qMin(columnWidth, m_ngCardThumb.height()) - 4));
-        {
+        if (showPicture) {
+            m_ngCardThumb = QRectF(x0, card.top() + pad, columnWidth, footTop - 4 - (card.top() + pad));
+            m_ngCardIconSide = qMax(16.0, qMin<qreal>(option.iconSize, qMin(columnWidth, m_ngCardThumb.height()) - 4));
             const qreal width = chipFm.horizontalAdvance(m_ngSigla) + 14;
             NgChip chip;
             chip.text = m_ngSigla;
@@ -2847,11 +2872,11 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             chip.tinted = true;
             m_ngChips.append(chip);
         }
-        const qreal x1 = x0 + columnWidth + pad;
+        const qreal x1 = showPicture ? x0 + columnWidth + pad : x0;
         qreal y = card.top() + pad;
         setName(x1, y, right - x1);
         y += nameFm.height() + 3;
-        putText(smallFm.elidedText(joined({sizeText, countText, typeText}), Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
+        putText(smallFm.elidedText(joined({sizeText, countText, fullInfo ? typeText : QString()}), Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
         y += smallFm.height() + 2;
         QStringList when;
         if (created.isValid()) {
@@ -2862,7 +2887,12 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         }
         putText(smallFm.elidedText(joined(when), Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
         actionsAt(right, footTop + (chipHeight - actionSide) / 2.0);
-        chipRow(x1, footTop, hovered ? m_ngCardEye.left() - 6 : right, {permissions, owner}, 0);
+        const qreal footRight = hovered ? m_ngCardEye.left() - 6 : right;
+        if (!actionLabels.isEmpty()) {
+            chipRow(x1, footTop, footRight, actionLabels, 0, &m_ngCardActions);
+        } else if (fullInfo) {
+            chipRow(x1, footTop, footRight, {permissions, owner}, 0);
+        }
     } else {
         // (icon) Name
         // [PNG] [2,4 MiB] [-rw-r--r--]                    👁 ⋯
@@ -2873,14 +2903,31 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         const qreal x0 = card.left() + pad;
         const qreal right = card.right() - pad;
         const qreal iconSide = qMax(16.0, qMin<qreal>(option.iconSize, qRound(fh * 1.7)));
-        m_ngCardThumb = QRectF(x0, card.top() + pad, iconSide, iconSide);
-        m_ngCardIconSide = iconSide;
         qreal y = card.top() + pad;
-        const qreal nameX = x0 + iconSide + 10;
-        setName(nameX, y + (iconSide - nameFm.height()) / 2.0, right - nameX);
-        y += iconSide + 8;
+        qreal nameX = x0;
+        qreal nameRight = right;
+        if (!showPicture) {
+            // the type is the background: the name starts at the left edge
+        } else if (markType) {
+            // a preview, as a small picture at the right of the name
+            const qreal side = qRound(fh * 2.6);
+            m_ngCardThumb = QRectF(right - side, y, side, side);
+            m_ngCardIconSide = side;
+            nameRight = right - side - 10;
+        } else {
+            m_ngCardThumb = QRectF(x0, y, iconSide, iconSide);
+            m_ngCardIconSide = iconSide;
+            nameX = x0 + iconSide + 10;
+        }
+        const qreal lineHeightC = m_ngCardThumb.isEmpty() ? nameFm.height() : m_ngCardThumb.height();
+        setName(nameX, y + (lineHeightC - nameFm.height()) / 2.0, nameRight - nameX);
+        y += lineHeightC + 8;
         actionsAt(right, y - 1);
-        y = chipRow(x0, y, hovered ? m_ngCardEye.left() - 6 : right, {m_ngSigla, sizeText, countText, permissions}, 1) + 8;
+        y = chipRow(x0, y, hovered ? m_ngCardEye.left() - 6 : right, {m_ngSigla, sizeText, countText, fullInfo ? permissions : QString()}, 1) + 4;
+        if (!actionLabels.isEmpty()) {
+            y = chipRow(x0, y, right, actionLabels, 0, &m_ngCardActions) + 4;
+        }
+        y += 4;
 
         QFont bigFont = m_customizedFont;
         bigFont.setPointSizeF(bigFont.pointSizeF() * 1.45);
@@ -2985,8 +3032,55 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
 
+    // ---- the type as the background: its colour washes into the card, its abbreviation stays in watermark
+    if (m_ngCardWatermark && !m_ngSigla.isEmpty()) {
+        const QRectF card = rect();
+        QPainterPath clip;
+        clip.addRoundedRect(card, 12, 12);
+        painter->save();
+        painter->setClipPath(clip, Qt::IntersectClip);
+        QColor washStart = m_ngTint, washMid = m_ngTint, washEnd = m_ngTint;
+        washStart.setAlphaF(dark ? 0.24 : 0.20);
+        washMid.setAlphaF(0.07);
+        washEnd.setAlphaF(0.0);
+        QLinearGradient wash;
+        if (look == NgCardStyle::Tessera) {
+            wash = QLinearGradient(card.topLeft(), QPointF(card.left(), card.top() + card.height() * 0.7));
+        } else if (look == NgCardStyle::Scheda) {
+            wash = QLinearGradient(card.topLeft(), QPointF(card.left() + card.width() * 0.75, card.top()));
+        } else {
+            wash = QLinearGradient(card.topLeft(), QPointF(card.left() + card.width() * 0.6, card.top() + card.height() * 0.6));
+        }
+        wash.setColorAt(0.0, washStart);
+        wash.setColorAt(0.45, washMid);
+        wash.setColorAt(1.0, washEnd);
+        painter->fillRect(card, wash);
+        QFont watermarkFont(m_customizedFont);
+        watermarkFont.setWeight(QFont::Black);
+        watermarkFont.setLetterSpacing(QFont::PercentageSpacing, 96);
+        QColor ink = m_ngTint;
+        ink.setAlphaF(dark ? 0.15 : 0.13);
+        painter->setPen(ink);
+        if (look == NgCardStyle::Tessera) {
+            watermarkFont.setPixelSize(qMax(14, qRound(m_ngCardThumb.height() * 0.66)));
+            painter->setFont(watermarkFont);
+            painter->drawText(m_ngCardThumb.adjusted(10, 0, -8, 0), Qt::AlignRight | Qt::AlignVCenter, m_ngSigla);
+        } else if (look == NgCardStyle::Scheda) {
+            watermarkFont.setPixelSize(qMax(14, qRound(card.height() * 0.40)));
+            painter->setFont(watermarkFont);
+            painter->drawText(card.adjusted(8, 0, 0, 6), Qt::AlignLeft | Qt::AlignBottom, m_ngSigla);
+        } else {
+            watermarkFont.setPixelSize(qMax(14, qRound(card.height() * 0.36)));
+            painter->setFont(watermarkFont);
+            painter->drawText(card.adjusted(6, card.height() * 0.22, 0, 0), Qt::AlignLeft | Qt::AlignTop, m_ngSigla);
+        }
+        painter->restore();
+    }
+
     // ---- the picture: a band across the top (Tessera) or the icon in its area
-    if (look == NgCardStyle::Tessera && !m_ngCardThumb.isEmpty()) {
+    if (m_ngCardWatermark) {
+        // no icon: the watermark says the type
+    } else if (look == NgCardStyle::Tessera && !m_ngCardThumb.isEmpty()) {
         QPainterPath rounded;
         rounded.addRoundedRect(m_ngCardThumb.adjusted(0, 0, 0, 14), 12, 12);
         QPainterPath box;
@@ -3040,6 +3134,25 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                 chipText = chipText.darker(135);
             }
             painter->setPen(chipText);
+            painter->drawText(chip.rect, Qt::AlignCenter, chip.text);
+        }
+    }
+
+    // ---- the quick actions: outlined pills, filled a little while the card is hovered
+    if (!m_ngCardActions.isEmpty()) {
+        QFont chipFont = m_customizedFont;
+        chipFont.setPointSizeF(chipFont.pointSizeF() * 0.88);
+        painter->setFont(chipFont);
+        QColor edge = text;
+        edge.setAlphaF(0.22);
+        QColor fill = text;
+        fill.setAlphaF(isHovered() ? 0.08 : 0.0);
+        for (const NgChip &chip : std::as_const(m_ngCardActions)) {
+            painter->setPen(QPen(edge, 1));
+            painter->setBrush(fill);
+            const qreal radius = chip.rect.height() / 2.0;
+            painter->drawRoundedRect(chip.rect.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+            painter->setPen(isHovered() ? text : m_additionalInfoTextColor);
             painter->drawText(chip.rect, Qt::AlignCenter, chip.text);
         }
     }

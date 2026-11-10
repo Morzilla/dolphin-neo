@@ -138,6 +138,8 @@ Q_SIGNALS:
     void ngPreviewRequested(int index, const QRect &rowRect);
     /** dolphin-ng: the inline row action under the pointer changed (0: none; 1 open, 2 menu, 3 preview). */
     void ngActionHovered(int index, int action);
+    /** dolphin-ng: the quick action number \a action (see ngQuickActionsFor()) of the item was clicked on its card. */
+    void ngQuickActionRequested(int index, int action);
 
     /**
      * Emitted if a context-menu is requested for the KItemListView.

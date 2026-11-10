@@ -68,6 +68,9 @@
 #include <QGraphicsOpacityEffect>
 #include <QGraphicsSceneDragDropEvent>
 #include <QLabel>
+#include <KIO/CommandLauncherJob>
+#include <QStandardPaths>
+#include <QCursor>
 #include <QMenu>
 #include <QMimeDatabase>
 #include <QPixmapCache>
@@ -206,6 +209,9 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
     connect(controller, &KItemListController::itemContextMenuRequested, this, &DolphinView::slotItemContextMenuRequested);
     connect(controller, &KItemListController::ngPreviewRequested, this, [this](int index, const QRect &rowRect) {
         Q_EMIT ngPreviewRequested(m_model->fileItem(index), rowRect); // dolphin-ng
+    });
+    connect(controller, &KItemListController::ngQuickActionRequested, this, [this](int index, int action) {
+        ngRunQuickAction(m_model->fileItem(index), action); // dolphin-ng
     });
     connect(controller, &KItemListController::viewContextMenuRequested, this, &DolphinView::slotViewContextMenuRequested);
     connect(controller, &KItemListController::headerContextMenuRequested, this, &DolphinView::slotHeaderContextMenuRequested);
@@ -2608,6 +2614,40 @@ void DolphinView::applyViewProperties(const ViewProperties &props)
     m_view->endTransaction();
 
     Q_EMIT viewSettingsChanged(props.isDefaults());
+}
+
+void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
+{
+    if (item.isNull() || !item.isLocalFile()) {
+        return;
+    }
+    const QList<NgQuickAction> actions = ngQuickActionsFor(item.localPath(), item.mimetype());
+    if (number < 0 || number >= actions.count()) {
+        return;
+    }
+    const NgQuickAction action = actions.at(number);
+    const QString folder = item.url().adjusted(QUrl::RemoveFilename).toLocalFile();
+    auto run = [this, folder](const QString &program, const QStringList &arguments) {
+        if (QStandardPaths::findExecutable(program).isEmpty()) {
+            KMessageBox::error(window(), QStringLiteral("Serve il programma «%1», che non è installato.").arg(program));
+            return;
+        }
+        auto *job = new KIO::CommandLauncherJob(program, arguments);
+        job->setWorkingDirectory(folder);
+        job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
+        job->start();
+    };
+    if (action.choices.isEmpty()) {
+        run(action.program, action.arguments);
+        return;
+    }
+    QMenu menu(this);
+    for (const auto &[label, arguments] : action.choices) {
+        menu.addAction(label, this, [run, program = action.program, arguments] {
+            run(program, arguments);
+        });
+    }
+    menu.exec(QCursor::pos());
 }
 
 void DolphinView::updateDefaultZoomLevel()

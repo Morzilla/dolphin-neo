@@ -332,8 +332,10 @@ private:
     QRectF m_ngCardThumb; // the thumbnail band (Tessera) or the icon area
     qreal m_ngCardIconSide = 0; // side of the icon when the pixmap is not a preview
     bool m_ngCardPreview = false; // the pixmap is a preview, not the icon of the type
+    bool m_ngCardWatermark = false; // the type is drawn as the background instead of the icon
     QRectF m_ngCardEye; // hover actions: preview and menu
     QRectF m_ngCardMenu;
+    QList<NgChip> m_ngCardActions; // quick actions of the file's kind, see ngQuickActionsFor(); clicked through ngActionAt() (10 + n)
 
     QList<QByteArray> m_sortedVisibleRoles;
 

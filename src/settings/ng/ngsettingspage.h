@@ -73,6 +73,8 @@ private:
     // cards view
     QComboBox *m_cards;
     QComboBox *m_cardsFit;
+    QComboBox *m_cardsInfo;
+    QComboBox *m_cardsMark;
 };
 
 #endif
