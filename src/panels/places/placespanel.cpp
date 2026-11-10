@@ -31,6 +31,8 @@
 #include <QMenu>
 #include <QMimeData>
 #include <QPainter>
+#include <QPainterPath>
+#include <QCursor>
 #include <QShowEvent>
 #include <QTimer>
 
@@ -123,14 +125,48 @@ PlacesPanel::PlacesPanel(QWidget *parent)
 
 PlacesPanel::~PlacesPanel() = default;
 
+// dolphin-ng: the selected entry sits on a glass pill like the section titles; the hovered entry gets a fainter one.
+// Painted under the delegate, which draws no highlight of its own.
+void PlacesPanel::ngPaintPills()
+{
+    QPainter painter(viewport());
+    painter.setRenderHint(QPainter::Antialiasing);
+    const bool dark = ngIsDark(palette());
+    auto pill = [&](const QModelIndex &index, qreal strength) {
+        if (!index.isValid()) {
+            return;
+        }
+        // the same pill as the section titles: a faint white veil with a hairline edge, fully rounded ends
+        const QRectF rect = QRectF(visualRect(index)).adjusted(2.5, 2.5, -2.5, -2.5);
+        if (rect.isEmpty()) {
+            return;
+        }
+        const qreal radius = rect.height() / 2.0;
+        painter.setPen(QPen(dark ? QColor(255, 255, 255, qRound(46 * strength)) : QColor(0, 0, 0, qRound(30 * strength)), 1));
+        painter.setBrush(dark ? QColor(255, 255, 255, qRound(30 * strength)) : QColor(255, 255, 255, qRound(150 * strength)));
+        painter.drawRoundedRect(rect, radius, radius);
+    };
+    const QModelIndexList selected = selectionModel() ? selectionModel()->selectedIndexes() : QModelIndexList();
+    QModelIndex hovered;
+    if (viewport()->underMouse()) {
+        hovered = indexAt(viewport()->mapFromGlobal(QCursor::pos()));
+    }
+    for (const QModelIndex &index : selected) {
+        pill(index, 1.0);
+    }
+    if (hovered.isValid() && !selected.contains(hovered)) {
+        pill(hovered, 0.5);
+    }
+}
+
 void PlacesPanel::ngApplyPalette()
 {
     QPalette glass = m_ngPalette;
     if (ngSetting("SIDEBAR").toLower() != QLatin1String("plain")) {
         // the style highlights the selected and hovered entries with the palette's highlight colour;
         // a translucent white (black on light schemes) turns that into a glass pill over the backdrop
-        const int base = ngIsDark(glass) ? 255 : 0;
-        glass.setColor(QPalette::Highlight, QColor(base, base, base, 46));
+        // the pill itself is painted in paintEvent(); the style must not draw a second one
+        glass.setColor(QPalette::Highlight, QColor(255, 255, 255, 0)); // white, not black: the style mixes the rgb with its own alpha
         glass.setColor(QPalette::HighlightedText, glass.color(QPalette::WindowText));
     }
     setPalette(glass);
@@ -159,8 +195,11 @@ void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
 // draw each one again as a small dark pill with light text, on top of the original.
 void PlacesPanel::paintEvent(QPaintEvent *event)
 {
-    KFilePlacesView::paintEvent(event);
     const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
+    if (!plain) {
+        ngPaintPills();
+    }
+    KFilePlacesView::paintEvent(event);
     const auto *placesModel = qobject_cast<KFilePlacesModel *>(model());
     if (plain || !placesModel) {
         return;

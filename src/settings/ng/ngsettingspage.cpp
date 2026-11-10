@@ -5,6 +5,7 @@
 #include "ngsettingspage.h"
 
 #include "kitemviews/kitemlistwidget.h"
+#include "dolphin_contentdisplaysettings.h"
 
 #include <KColorButton>
 #include <KUrlRequester>
@@ -16,6 +17,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QSlider>
+#include <QSpinBox>
 #include <QVBoxLayout>
 
 // The labels are in Italian for now, like the other dolphin-ng strings; they should go through i18n.
@@ -144,6 +146,20 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
 
     m_ago = new QCheckBox(QStringLiteral("Sotto la data, i giorni trascorsi"), this);
     form->addRow(QString(), m_ago);
+    m_rowDates = new QCheckBox(QStringLiteral("Sotto il nome: «Creato … (giorni fa) · Modificato … (giorni fa)»"), this);
+    form->addRow(QString(), m_rowDates);
+
+    m_folderSizes = new QCheckBox(QStringLiteral("Cartelle: spazio occupato dal contenuto e numero di elementi"), this);
+    m_folderSizes->setToolTip(QStringLiteral("Misura il contenuto delle cartelle (impostazione di Dolphin «Dimensione delle cartelle: dimensione del contenuto», con il suo limite di profondità). Altrimenti solo il numero di elementi."));
+    form->addRow(QString(), m_folderSizes);
+
+    m_hoverPreview = new QCheckBox(QStringLiteral("Apri l'anteprima quando il mouse si ferma su una riga"), this);
+    form->addRow(QString(), m_hoverPreview);
+    m_hoverDelay = new QSpinBox(this);
+    m_hoverDelay->setRange(100, 5000);
+    m_hoverDelay->setSingleStep(100);
+    m_hoverDelay->setSuffix(QStringLiteral(" ms"));
+    form->addRow(QStringLiteral("Dopo:"), m_hoverDelay);
 
     // ---- Vista a icone ----------------------------------------------------------------------------------
     QFormLayout *iconsForm = nullptr;
@@ -166,14 +182,16 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     } bound[] = {{m_glassPanel, "SIDEBAR"}, {m_backdrop, "GLASS_MODE"}, {m_image, "GLASS_IMAGE"},   {m_glass, "GLASS"},      {m_blur, "GLASS_BLUR"},
                  {m_motion, "GLASS_MOTION"}, {m_lavaStyle, "LAVA_STYLE"}, {m_lavaSize, "LAVA_SIZE"}, {m_lavaColours, "LAVA_COLORS"}, {m_lavaSpeed, "LAVA_SPEED"},
                  {m_rim, "GLASS_RIM"},      {m_devices, "DEVICES"},     {m_twoLines, "LIST"},        {m_rows, "ROWS"},        {m_icons, "ICONS"},
-                 {m_mark, "MARK"},          {m_sigla, "SIGLA"},         {m_ago, "DATE_AGO"},         {m_tiles, "TILES"}};
+                 {m_mark, "MARK"},          {m_sigla, "SIGLA"},         {m_ago, "DATE_AGO"},         {m_tiles, "TILES"},          {m_rowDates, "ROW_DATES"},
+                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}};
     for (const auto &entry : bound) {
         entry.widget->setEnabled(!ngSettingFromEnvironment(entry.name));
     }
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles}) {
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
+    connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
     for (QComboBox *combo : {m_backdrop, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla}) {
         connect(combo, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     }
@@ -182,7 +200,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     }
     connect(m_image, &KUrlRequester::textChanged, this, &NgSettingsPage::changed);
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_icons}) {
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_icons, m_hoverPreview}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::updateDependencies);
     }
     for (QComboBox *combo : {m_backdrop, m_lavaColours, m_mark}) {
@@ -216,6 +234,7 @@ void NgSettingsPage::updateDependencies()
     const bool marks = !m_icons->isChecked();
     m_listForm->setRowVisible(m_mark, marks);
     m_listForm->setRowVisible(m_sigla, marks && m_mark->currentIndex() == 0);
+    m_listForm->setRowVisible(m_hoverDelay, m_hoverPreview->isChecked());
 }
 
 void NgSettingsPage::loadSettings()
@@ -255,6 +274,11 @@ void NgSettingsPage::loadSettings()
     m_mark->setCurrentIndex(qMax(0, m_mark->findData(ngSetting("MARK").toLower())));
     m_sigla->setCurrentIndex(qMax(0, m_sigla->findData(ngSetting("SIGLA", QStringLiteral("fill")).toLower())));
     m_ago->setChecked(ngSetting("DATE_AGO").toLower() != QLatin1String("hide"));
+    m_rowDates->setChecked(ngSetting("ROW_DATES").toLower() != QLatin1String("hide"));
+    m_folderSizes->setChecked(ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentSize);
+    const int hover = ngSettingInt("PREVIEW_HOVER", 0);
+    m_hoverPreview->setChecked(hover > 0);
+    m_hoverDelay->setValue(hover > 0 ? qBound(100, hover, 5000) : 700);
     m_tiles->setChecked(ngSetting("TILES").toLower() != QLatin1String("off"));
 }
 
@@ -286,6 +310,13 @@ void NgSettingsPage::applySettings()
     setNgSetting("MARK", m_mark->currentData().toString());
     setNgSetting("SIGLA", m_sigla->currentData().toString());
     setNgSetting("DATE_AGO", m_ago->isChecked() ? QString() : QStringLiteral("hide"));
+    setNgSetting("ROW_DATES", m_rowDates->isChecked() ? QString() : QStringLiteral("hide"));
+    if (m_folderSizes->isChecked() != (ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentSize)) {
+        ContentDisplaySettings::setDirectorySizeMode(m_folderSizes->isChecked() ? ContentDisplaySettings::EnumDirectorySizeMode::ContentSize
+                                                                                : ContentDisplaySettings::EnumDirectorySizeMode::ContentCount);
+        ContentDisplaySettings::self()->save();
+    }
+    setNgSetting("PREVIEW_HOVER", m_hoverPreview->isChecked() ? QString::number(m_hoverDelay->value()) : QString());
     setNgSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
 
     ngSettingsInvalidate(); // everything that depends on these re-reads them now
@@ -311,6 +342,10 @@ void NgSettingsPage::restoreDefaults()
     m_mark->setCurrentIndex(0);
     m_sigla->setCurrentIndex(0);
     m_ago->setChecked(true);
+    m_rowDates->setChecked(true);
+    m_hoverPreview->setChecked(false);
+    m_hoverDelay->setValue(700);
+    m_folderSizes->setChecked(false);
     m_tiles->setChecked(true);
 }
 

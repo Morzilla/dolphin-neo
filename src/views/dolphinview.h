@@ -532,6 +532,9 @@ Q_SIGNALS:
 
     /** dolphin-ng: show a preview of \a item next to its row (\a rowRect, global coordinates). */
     void ngPreviewRequested(const KFileItem &item, const QRect &rowRect);
+    /** dolphin-ng: the mouse rested on \a item for PREVIEW_HOVER milliseconds / left it (or the view). */
+    void ngHoverPreviewRequested(const KFileItem &item, const QRect &rowRect);
+    void ngHoverPreviewEnded();
 
     /**
      * request the property dialog
@@ -1047,6 +1050,8 @@ private:
     KItemListContainer *m_container;
 
     ToolTipManager *m_toolTipManager;
+    QTimer *m_ngHoverTimer = nullptr; // dolphin-ng: preview on hover
+    int m_ngHoverIndex = -1;
 
     QTimer *m_selectionChangedTimer;
 

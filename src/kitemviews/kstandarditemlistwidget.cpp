@@ -8,6 +8,7 @@
 
 #include "dolphin_contentdisplaysettings.h"
 #include "kfileitemlistview.h"
+#include "kfileitemmodel.h"
 #include "kitemlistcontroller.h"
 #include "kitemlistselectionmanager.h"
 #include "private/kfileitemclipboard.h"
@@ -59,6 +60,32 @@ NgMark ngMark()
                                               : NgMark::Watermark;
     }
     return mark;
+}
+
+// "oggi", "ieri", "7 giorni fa", "2 anni fa"
+QString ngAgoText(const QDateTime &when)
+{
+    const qint64 days = when.date().daysTo(QDate::currentDate());
+    if (days <= 0) {
+        return QStringLiteral("oggi");
+    }
+    if (days == 1) {
+        return QStringLiteral("ieri");
+    }
+    if (days < 365) {
+        return QStringLiteral("%1 giorni fa").arg(days);
+    }
+    const qint64 years = days / 365;
+    return years == 1 ? QStringLiteral("1 anno fa") : QStringLiteral("%1 anni fa").arg(years);
+}
+
+QDateTime ngDateTimeOf(const QVariant &raw)
+{
+    // the model keeps the raw epoch seconds for the modification time (see KFileItemModel), a QDateTime for other roles
+    if (raw.typeId() == QMetaType::QDateTime) {
+        return raw.toDateTime();
+    }
+    return raw.toLongLong() > 0 ? QDateTime::fromSecsSinceEpoch(raw.toLongLong()) : QDateTime();
 }
 
 // A line drawing for each kind of file, in a 24 x 24 box, to be stroked.
@@ -846,12 +873,20 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         const TextInfo *textInfo = m_textInfo.value(m_sortedVisibleRoles[i]);
         painter->drawStaticText(textInfo->pos, textInfo->staticText);
     }
-    if (ngRow && !ngActionsShown && !m_ngAgo.isEmpty()) {
+    if (ngRow && (!m_ngAgo.isEmpty() || !m_ngCount.isEmpty())) {
         QColor dim = m_additionalInfoTextColor;
         dim.setAlpha(qRound(dim.alpha() * 0.6));
         painter->setPen(dim);
-        painter->drawText(m_ngAgoPos, m_ngAgo);
+        if (!ngActionsShown && !m_ngAgo.isEmpty()) {
+            painter->drawText(m_ngAgoPos, m_ngAgo);
+        }
+        if (!m_ngCount.isEmpty()) {
+            painter->drawText(m_ngCountPos, m_ngCount);
+        }
         painter->setPen(m_additionalInfoTextColor);
+    }
+    if (ngRow && !m_ngDates.isEmpty()) {
+        painter->drawText(m_ngDatesPos, m_ngDates);
     }
 
     if (!m_rating.isNull()) {
@@ -2040,22 +2075,11 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             textInfo->staticText.setText(text);
             // the days gone by since that date go on the second line (DATE_AGO=hide turns them off)
             const bool showAgo = ngSetting("DATE_AGO").toLower() != QLatin1String("hide");
-            // the model keeps the raw epoch seconds (see KFileItemModel), other roles a QDateTime
-            const QVariant raw = values.value(dateRole);
-            const QDateTime when = raw.typeId() == QMetaType::QDateTime ? raw.toDateTime() : (raw.toLongLong() > 0 ? QDateTime::fromSecsSinceEpoch(raw.toLongLong()) : QDateTime());
+            const QDateTime when = ngDateTimeOf(values.value(dateRole));
             if (showAgo && when.isValid()) {
                 const qint64 days = when.date().daysTo(QDate::currentDate());
-                if (days <= 1 && ContentDisplaySettings::useShortRelativeDates()) {
-                    // the date text already reads "Oggi"/"Ieri"/"... minuti fa"
-                } else if (days <= 0) {
-                    m_ngAgo = QStringLiteral("oggi");
-                } else if (days == 1) {
-                    m_ngAgo = QStringLiteral("ieri");
-                } else if (days < 365) {
-                    m_ngAgo = QStringLiteral("%1 giorni fa").arg(days);
-                } else {
-                    const qint64 years = days / 365;
-                    m_ngAgo = years == 1 ? QStringLiteral("1 anno fa") : QStringLiteral("%1 anni fa").arg(years);
+                if (!(days <= 1 && ContentDisplaySettings::useShortRelativeDates())) { // else the date text already reads "Oggi"/"Ieri"/"... minuti fa"
+                    m_ngAgo = ngAgoText(when);
                 }
                 textInfo->pos = QPointF(right - dateWidth, firstY);
                 m_ngAgoPos = QPointF(right - m_customizedFontMetrics.horizontalAdvance(m_ngAgo), secondY + m_customizedFontMetrics.ascent());
@@ -2081,6 +2105,7 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
         // icon-less: the size sits in its own column, with a bar on a logarithmic scale (1 KiB ... 10 GiB)
         m_ngBarFraction = -1;
         m_ngBarRect = QRectF();
+        m_ngCount.clear();
         const bool sizeColumn = noIcons && m_sortedVisibleRoles.contains("size");
         if (sizeColumn && !roomForSize) {
             m_textInfo.value("size")->staticText.setText(QString());
@@ -2094,10 +2119,17 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             textInfo->staticText.setText(text);
             textInfo->pos = QPointF(sizeRight - width, firstY);
             const qlonglong bytes = values.value("size").toLongLong();
-            if (!values.value("isDir").toBool() && bytes > 0) {
+            const bool isDir = values.value("isDir").toBool();
+            if (!isDir && bytes > 0) {
                 m_ngBarFraction = qBound(0.03, (std::log10(double(bytes)) - 3.0) / 7.0, 1.0);
                 const qreal barWidth = columnWidth - 10;
                 m_ngBarRect = QRectF(sizeRight - barWidth, secondY + fontHeight / 2.0 - 2, barWidth, 4);
+            }
+            // a folder whose contents were measured (ContentSize mode) shows the size above and the item count below
+            m_ngCount.clear();
+            if (isDir && bytes >= 0 && values.contains("count") && ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentSize) {
+                m_ngCount = i18ncp("@item:intable", "%1 item", "%1 items", values.value("count").toInt());
+                m_ngCountPos = QPointF(sizeRight - m_customizedFontMetrics.horizontalAdvance(m_ngCount), secondY + m_customizedFontMetrics.ascent());
             }
             blockLeft = sizeRight - columnWidth;
         }
@@ -2137,6 +2169,44 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
         }
 
         qreal secondX = left;
+        // ROW_DATES (default on): the second line opens with "Creato <data> (<quanto fa>) · Modificato <data> (<quanto fa>)"
+        m_ngDates.clear();
+        if (ngSetting("ROW_DATES").toLower() != QLatin1String("hide")) {
+            QDateTime created;
+            QDateTime modified = ngDateTimeOf(values.value("modificationtime"));
+            if (values.contains("creationtime")) {
+                created = ngDateTimeOf(values.value("creationtime"));
+            } else if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
+                // the creation time is not a requested role: read it from the item itself
+                if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
+                    const KFileItem fileItem = fileModel->fileItem(index());
+                    if (!fileItem.isNull()) {
+                        created = fileItem.time(KFileItem::CreationTime);
+                        if (!modified.isValid()) {
+                            modified = fileItem.time(KFileItem::ModificationTime);
+                        }
+                    }
+                }
+            }
+            const QLocale locale;
+            QStringList parts;
+            if (created.isValid() && (!modified.isValid() || qAbs(created.secsTo(modified)) > 60)) {
+                parts << QStringLiteral("Creato %1 (%2)").arg(locale.toString(created.date(), QLocale::ShortFormat), ngAgoText(created));
+            }
+            if (modified.isValid()) {
+                parts << QStringLiteral("Modificato %1 (%2)").arg(locale.toString(modified.date(), QLocale::ShortFormat), ngAgoText(modified));
+            }
+            m_ngDates = parts.join(QStringLiteral("  \u00B7  "));
+            if (!m_ngDates.isEmpty()) {
+                const qreal available = textRight - left;
+                if (m_customizedFontMetrics.horizontalAdvance(m_ngDates) > available) {
+                    m_ngDates = m_customizedFontMetrics.elidedText(m_ngDates, Qt::ElideRight, qMax(qreal(0), available));
+                }
+                m_ngDatesPos = QPointF(left, secondY + m_customizedFontMetrics.ascent());
+                secondX += m_customizedFontMetrics.horizontalAdvance(m_ngDates) + gap;
+            }
+        }
+        static const QSet<QByteArray> allDateRoles{"modificationtime", "creationtime", "accesstime", "deletiontime"};
         for (const QByteArray &role : std::as_const(m_sortedVisibleRoles)) {
             TextInfo *textInfo = m_textInfo.value(role);
             if (role == "text") {
@@ -2151,7 +2221,7 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
                 textInfo->pos = QPointF(left, firstY);
                 m_textRect = QRectF(left - option.padding, 0, width + 2 * option.padding, widgetHeight);
             } else if (role != dateRole && !(sizeColumn && role == "size")) {
-                QString text = roleText(role, values);
+                QString text = (!m_ngDates.isEmpty() && allDateRoles.contains(role)) ? QString() : roleText(role, values); // the dates line already says it
                 if (!text.isEmpty() && secondX > left) {
                     text.prepend(QStringLiteral("\u00B7  "));
                 }

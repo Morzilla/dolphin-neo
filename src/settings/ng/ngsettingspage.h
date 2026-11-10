@@ -13,6 +13,7 @@ class QCheckBox;
 class QComboBox;
 class QFormLayout;
 class QSlider;
+class QSpinBox;
 class QWidget;
 
 /**
@@ -61,6 +62,10 @@ private:
     QComboBox *m_sigla;
     QCheckBox *m_icons;
     QCheckBox *m_ago;
+    QCheckBox *m_rowDates;
+    QCheckBox *m_hoverPreview;
+    QCheckBox *m_folderSizes;
+    QSpinBox *m_hoverDelay;
     QFormLayout *m_listForm;
     // icons view
     QCheckBox *m_tiles;

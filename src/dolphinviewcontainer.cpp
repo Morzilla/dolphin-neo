@@ -637,8 +637,33 @@ public:
         hide();
     }
 
+    // Opened by hovering a row (PREVIEW_HOVER): the card goes away when the mouse leaves both the row and the card.
+    void showForHover(const KFileItem &item, const QRect &rowRect)
+    {
+        if (isVisible() && item.url() == m_item.url()) {
+            return;
+        }
+        m_hiddenAt.invalidate();
+        showFor(item, rowRect);
+        m_hover = true;
+    }
+
+    void hoverEnded()
+    {
+        if (!m_hover || !isVisible()) {
+            return;
+        }
+        // give the mouse a moment to reach the card
+        QTimer::singleShot(260, this, [this] {
+            if (m_hover && isVisible() && !underMouse()) {
+                hide();
+            }
+        });
+    }
+
     void showFor(const KFileItem &item, const QRect &rowRect)
     {
+        m_hover = false;
         // a second click on the same preview button closes the card (the press already hid it)
         if (m_hiddenAt.isValid() && m_hiddenAt.elapsed() < 400 && item.url() == m_item.url()) {
             m_hiddenAt.invalidate();
@@ -696,6 +721,19 @@ protected:
             }
         }
         return QWidget::eventFilter(watched, event);
+    }
+
+    void leaveEvent(QEvent *event) override
+    {
+        QWidget::leaveEvent(event);
+        if (m_hover && isVisible()) {
+            // left the card: if the mouse is not back on a row, close; a row re-opens it after its delay
+            QTimer::singleShot(120, this, [this] {
+                if (m_hover && isVisible() && !underMouse()) {
+                    hide();
+                }
+            });
+        }
     }
 
     void hideEvent(QHideEvent *event) override
@@ -800,6 +838,7 @@ private:
     QLabel *m_title;
     QLabel *m_meta;
     QElapsedTimer m_hiddenAt;
+    bool m_hover = false; // opened by resting the mouse on the row
 };
 
 DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
@@ -920,6 +959,12 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
         auto *previewCard = new NgPreviewCard(m_view, this);
         connect(m_view, &DolphinView::ngPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
             previewCard->showFor(item, rowRect);
+        });
+        connect(m_view, &DolphinView::ngHoverPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
+            previewCard->showForHover(item, rowRect);
+        });
+        connect(m_view, &DolphinView::ngHoverPreviewEnded, previewCard, [previewCard] {
+            previewCard->hoverEnded();
         });
         connect(m_view, &DolphinView::urlChanged, previewCard, &QWidget::hide);
         connect(NgSettings::instance(), &NgSettings::changed, sortBar, [sortBar] {

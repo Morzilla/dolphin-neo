@@ -18,6 +18,7 @@
 #include "kitemviews/kfileitemlistview.h"
 #include "kitemviews/kfileitemmodel.h"
 #include "kitemviews/kitemlistcontainer.h"
+#include "kitemviews/kitemlistwidget.h"
 #include "kitemviews/kitemlistcontroller.h"
 #include "kitemviews/kitemlistheader.h"
 #include "kitemviews/kitemlistselectionmanager.h"
@@ -72,6 +73,7 @@
 #include <QPixmapCache>
 #include <QScrollBar>
 #include <QSize>
+#include <QGraphicsView>
 #include <QTimer>
 #include <QToolTip>
 #include <QVBoxLayout>
@@ -1467,6 +1469,32 @@ void DolphinView::slotItemHovered(int index)
 {
     const KFileItem item = m_model->fileItem(index);
 
+    // dolphin-ng: PREVIEW_HOVER = milliseconds the mouse has to rest on a row before its preview opens (0/empty: never)
+    const int hoverDelay = ngSettingInt("PREVIEW_HOVER", 0);
+    if (hoverDelay > 0 && !m_dragging) {
+        if (!m_ngHoverTimer) {
+            m_ngHoverTimer = new QTimer(this);
+            m_ngHoverTimer->setSingleShot(true);
+            connect(m_ngHoverTimer, &QTimer::timeout, this, [this] {
+                const KFileItem hovered = m_model->fileItem(m_ngHoverIndex);
+                if (hovered.isNull() || m_dragging) {
+                    return;
+                }
+                const KItemListView *view = m_container->controller()->view();
+                QRect rowRect;
+                if (view->scene() && !view->scene()->views().isEmpty()) {
+                    const QGraphicsView *graphicsView = view->scene()->views().constFirst();
+                    const QRectF rect = view->itemRect(m_ngHoverIndex);
+                    const QPoint topLeft = graphicsView->viewport()->mapToGlobal(graphicsView->mapFromScene(view->mapToScene(rect.topLeft())));
+                    rowRect = QRect(topLeft, rect.size().toSize());
+                }
+                Q_EMIT ngHoverPreviewRequested(hovered, rowRect);
+            });
+        }
+        m_ngHoverIndex = index;
+        m_ngHoverTimer->start(qMax(100, hoverDelay));
+    }
+
     if (GeneralSettings::showToolTips() && !m_dragging) {
         QRectF itemRect = m_container->controller()->view()->itemContextRect(index);
         const QPoint pos = m_container->mapToGlobal(itemRect.topLeft().toPoint());
@@ -1486,6 +1514,10 @@ void DolphinView::slotItemHovered(int index)
 void DolphinView::slotItemUnhovered(int index)
 {
     Q_UNUSED(index)
+    if (m_ngHoverTimer) {
+        m_ngHoverTimer->stop(); // dolphin-ng
+        Q_EMIT ngHoverPreviewEnded();
+    }
     hideToolTip();
     Q_EMIT requestItemInfo(KFileItem());
 }

@@ -295,6 +295,10 @@ private:
     QColor m_ngTint; // colour of the file's category
     QByteArray m_ngDateRole; // the date role shown at the right edge, if any
     QString m_ngAgo; // "3 giorni fa", under the date
+    QString m_ngCount; // folders: "20 elementi" under the size of the contents
+    QString m_ngDates; // second line: "Creato ... (7 giorni fa) · Modificato ... (ieri)"
+    QPointF m_ngDatesPos;
+    QPointF m_ngCountPos;
     QPointF m_ngAgoPos;
     QRectF m_ngBarRect; // size bar
     qreal m_ngBarFraction = -1;
