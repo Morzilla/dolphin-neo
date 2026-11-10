@@ -11,6 +11,8 @@
 
 #include "placespanel.h"
 
+#include <QScrollBar>
+
 #include "dolphindockwidget.h"
 
 #include "kitemviews/kitemlistwidget.h"
@@ -538,13 +540,22 @@ void PlacesPanel::ngLayoutBottom()
     const int extra = shown ? m_ngBottom->height() + 8 : 0;
     setViewportMargins(10, 12, 10, 12 + 62 + extra);
     if (shown) {
-        m_ngBottom->setGeometry(14, height() - 12 - 62 - m_ngBottom->height(), width() - 28, m_ngBottom->height());
+        // when the places need a scroll bar it runs down the right edge of the whole panel: the section ends
+        // beside it instead of under it
+        QScrollBar *bar = verticalScrollBar();
+        if (!m_ngBarWatched) {
+            m_ngBarWatched = true;
+            bar->installEventFilter(this);
+        }
+        const int beside = bar->isVisible() ? bar->width() + 2 : 0;
+        m_ngBottom->setGeometry(14, height() - 12 - 62 - m_ngBottom->height(), width() - 28 - beside, m_ngBottom->height());
     }
 }
 
 bool PlacesPanel::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == m_ngBottom && (event->type() == QEvent::Resize || event->type() == QEvent::Show || event->type() == QEvent::Hide)) {
+    const bool barToggled = m_ngBarWatched && watched == verticalScrollBar() && (event->type() == QEvent::Show || event->type() == QEvent::Hide);
+    if (barToggled || (watched == m_ngBottom && (event->type() == QEvent::Resize || event->type() == QEvent::Show || event->type() == QEvent::Hide))) {
         if (!m_ngLayouting) {
             m_ngLayouting = true;
             ngLayoutBottom();

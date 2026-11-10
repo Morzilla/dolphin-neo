@@ -42,6 +42,7 @@ private:
     void ngLayoutBottom();
     QWidget *m_ngBottom = nullptr;
     bool m_ngLayouting = false;
+    bool m_ngBarWatched = false;
 
     Q_OBJECT
 
