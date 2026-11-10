@@ -1052,6 +1052,8 @@ private:
     ToolTipManager *m_toolTipManager;
     QTimer *m_ngHoverTimer = nullptr; // dolphin-ng: preview on hover
     int m_ngHoverIndex = -1;
+    bool m_ngHoverSuppressed = false; // after a scroll, until the mouse moves again
+    void ngArmHoverPreview();
 
     QTimer *m_selectionChangedTimer;
 

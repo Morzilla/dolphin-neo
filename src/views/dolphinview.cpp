@@ -212,6 +212,12 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
     connect(controller, &KItemListController::mouseButtonPressed, this, &DolphinView::slotMouseButtonPressed);
     connect(controller, &KItemListController::itemHovered, this, &DolphinView::slotItemHovered);
     connect(controller, &KItemListController::itemUnhovered, this, &DolphinView::slotItemUnhovered);
+    connect(m_view, &KItemListView::scrollOffsetChanged, this, [this] {
+        m_ngHoverSuppressed = true; // dolphin-ng: see the wheel case of eventFilter()
+        if (m_ngHoverTimer) {
+            m_ngHoverTimer->stop();
+        }
+    });
     connect(controller, &KItemListController::itemDropEvent, this, &DolphinView::slotItemDropEvent);
     connect(controller, &KItemListController::escapePressed, this, &DolphinView::stopLoading);
     connect(controller, &KItemListController::modelChanged, this, &DolphinView::slotModelChanged);
@@ -1112,6 +1118,24 @@ bool DolphinView::eventFilter(QObject *watched, QEvent *event)
         }
         break;
 
+    case QEvent::GraphicsSceneWheel:
+        if (watched == m_view) {
+            // dolphin-ng: scrolling moves rows under the mouse; none of them may open the hover preview
+            m_ngHoverSuppressed = true;
+            if (m_ngHoverTimer) {
+                m_ngHoverTimer->stop();
+            }
+        }
+        break;
+
+    case QEvent::GraphicsSceneHoverMove:
+    case QEvent::GraphicsSceneMouseMove:
+        if (watched == m_view && m_ngHoverSuppressed) {
+            m_ngHoverSuppressed = false; // the mouse moved: the row under it counts again
+            ngArmHoverPreview();
+        }
+        break;
+
     case QEvent::GraphicsSceneDragEnter:
         if (watched == m_view) {
             m_dragging = true;
@@ -1470,29 +1494,9 @@ void DolphinView::slotItemHovered(int index)
     const KFileItem item = m_model->fileItem(index);
 
     // dolphin-ng: PREVIEW_HOVER = milliseconds the mouse has to rest on a row before its preview opens (0/empty: never)
-    const int hoverDelay = ngSettingInt("PREVIEW_HOVER", 0);
-    if (hoverDelay > 0 && !m_dragging) {
-        if (!m_ngHoverTimer) {
-            m_ngHoverTimer = new QTimer(this);
-            m_ngHoverTimer->setSingleShot(true);
-            connect(m_ngHoverTimer, &QTimer::timeout, this, [this] {
-                const KFileItem hovered = m_model->fileItem(m_ngHoverIndex);
-                if (hovered.isNull() || m_dragging) {
-                    return;
-                }
-                const KItemListView *view = m_container->controller()->view();
-                QRect rowRect;
-                if (view->scene() && !view->scene()->views().isEmpty()) {
-                    const QGraphicsView *graphicsView = view->scene()->views().constFirst();
-                    const QRectF rect = view->itemRect(m_ngHoverIndex);
-                    const QPoint topLeft = graphicsView->viewport()->mapToGlobal(graphicsView->mapFromScene(view->mapToScene(rect.topLeft())));
-                    rowRect = QRect(topLeft, rect.size().toSize());
-                }
-                Q_EMIT ngHoverPreviewRequested(hovered, rowRect);
-            });
-        }
-        m_ngHoverIndex = index;
-        m_ngHoverTimer->start(qMax(100, hoverDelay));
+    m_ngHoverIndex = index;
+    if (!m_ngHoverSuppressed) { // while the list scrolls under a still mouse the rows passing by must not open it
+        ngArmHoverPreview();
     }
 
     if (GeneralSettings::showToolTips() && !m_dragging) {
@@ -1511,11 +1515,40 @@ void DolphinView::slotItemHovered(int index)
     Q_EMIT requestItemInfo(item);
 }
 
+void DolphinView::ngArmHoverPreview()
+{
+    const int hoverDelay = ngSettingInt("PREVIEW_HOVER", 0);
+    if (hoverDelay <= 0 || m_dragging || m_ngHoverIndex < 0) {
+        return;
+    }
+    if (!m_ngHoverTimer) {
+        m_ngHoverTimer = new QTimer(this);
+        m_ngHoverTimer->setSingleShot(true);
+        connect(m_ngHoverTimer, &QTimer::timeout, this, [this] {
+            const KFileItem hovered = m_model->fileItem(m_ngHoverIndex);
+            if (hovered.isNull() || m_dragging) {
+                return;
+            }
+            const KItemListView *view = m_container->controller()->view();
+            QRect rowRect;
+            if (view->scene() && !view->scene()->views().isEmpty()) {
+                const QGraphicsView *graphicsView = view->scene()->views().constFirst();
+                const QRectF rect = view->itemRect(m_ngHoverIndex);
+                const QPoint topLeft = graphicsView->viewport()->mapToGlobal(graphicsView->mapFromScene(view->mapToScene(rect.topLeft())));
+                rowRect = QRect(topLeft, rect.size().toSize());
+            }
+            Q_EMIT ngHoverPreviewRequested(hovered, rowRect);
+        });
+    }
+    m_ngHoverTimer->start(qMax(100, hoverDelay));
+}
+
 void DolphinView::slotItemUnhovered(int index)
 {
     Q_UNUSED(index)
+    m_ngHoverIndex = -1; // dolphin-ng
     if (m_ngHoverTimer) {
-        m_ngHoverTimer->stop(); // dolphin-ng
+        m_ngHoverTimer->stop();
         Q_EMIT ngHoverPreviewEnded();
     }
     hideToolTip();

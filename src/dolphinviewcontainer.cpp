@@ -665,6 +665,14 @@ public:
             });
         }
         button->setMenu(menu);
+        connect(menu, &QMenu::aboutToHide, this, [this] {
+            // menu closed without a choice while the card was opened by hovering: close it unless the mouse is back on it
+            QTimer::singleShot(300, this, [this] {
+                if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
+                    hide();
+                }
+            });
+        });
     }
 
     // The buttons that make sense for this kind of file (images, archives, PDF, audio, video).
@@ -772,7 +780,7 @@ public:
         }
         // give the mouse a moment to reach the card
         QTimer::singleShot(260, this, [this] {
-            if (m_hover && isVisible() && !underMouse()) {
+            if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
                 hide();
             }
         });
@@ -931,8 +939,8 @@ protected:
         if (m_hover && isVisible()) {
             // left the card: if the mouse is not back on a row, close; a row re-opens it after its delay
             QTimer::singleShot(120, this, [this] {
-                if (m_hover && isVisible() && !underMouse()) {
-                    hide();
+                if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
+                    hide(); // (a menu of the card holds the mouse: not a leave)
                 }
             });
         }
