@@ -455,10 +455,10 @@ void DolphinDockWidget::paintEvent(QPaintEvent *event)
 {
     QDockWidget::paintEvent(event);
     QPainter painter(this);
-    paintNeoGlass(painter);
+    paintNgGlass(painter);
 }
 
-bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
+bool DolphinDockWidget::paintNgGlass(QPainter &painter)
 {
     if (ngGlassPlain() || isFloating()) {
         return false;
@@ -512,7 +512,7 @@ bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
         tint.setAlphaF(1.0 - qBound(0, ngSettingInt("GLASS", 55), 100) / 100.0);
         painter.fillRect(card, tint);
         painter.restore();
-    } else if (m_lavaTimer && m_lavaTimer->isActive()) {
+    } else if (m_lavaTimer && m_lavaTimer->isActive() && ngSetting("GLASS_MOTION").toLower() != QLatin1String("drift")) {
         m_lavaTimer->stop();
     }
     if (lava) {
@@ -526,7 +526,38 @@ bool DolphinDockWidget::paintNeoGlass(QPainter &painter)
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
         const QPointF onScreen = QPointF(mapToGlobal(card.topLeft().toPoint()) - currentScreen->geometry().topLeft());
         const qreal factor = qreal(backdrop.width()) / currentScreen->geometry().width();
-        painter.drawPixmap(card, backdrop, QRectF(onScreen * factor, card.size() * factor));
+        QRectF source(onScreen * factor, card.size() * factor);
+        if (ngSetting("GLASS_MOTION").toLower() == QLatin1String("drift")) {
+            // GLASS_MOTION=drift: the picture breathes (zooms in and out a little) and drifts, very slowly
+            if (!m_lavaTimer) {
+                m_lavaTimer = new QTimer(this);
+                m_lavaTimer->setInterval(80);
+                connect(m_lavaTimer, &QTimer::timeout, this, [this] {
+                    if (isVisible() && window()->isActiveWindow()) {
+                        update();
+                    }
+                });
+            }
+            if (!m_lavaTimer->isActive()) {
+                m_lavaTimer->start();
+            }
+            static QElapsedTimer motionClock;
+            if (!motionClock.isValid()) {
+                motionClock.start();
+            }
+            const qreal seconds = motionClock.elapsed() / 1000.0 * (qBound(0, ngSettingInt("LAVA_SPEED", 30), 100) / 30.0);
+            const qreal zoom = 1.10 + 0.08 * qSin(2 * M_PI * seconds / 140.0); // between 1.02 and 1.18
+            const QPointF drift(backdrop.width() * 0.025 * qSin(2 * M_PI * seconds / 190.0), backdrop.height() * 0.025 * qCos(2 * M_PI * seconds / 230.0));
+            const QPointF centre = source.center() + drift;
+            source = QRectF(QPointF(), source.size() / zoom);
+            source.moveCenter(centre);
+            // stay inside the picture
+            source.moveLeft(qBound(0.0, source.left(), backdrop.width() - source.width()));
+            source.moveTop(qBound(0.0, source.top(), backdrop.height() - source.height()));
+        } else if (m_lavaTimer && m_lavaTimer->isActive() && !lava) {
+            m_lavaTimer->stop();
+        }
+        painter.drawPixmap(card, backdrop, source);
         QColor tint = palette().color(QPalette::Window);
         tint.setAlphaF(1.0 - qBound(0, ngSettingInt("GLASS", 55), 100) / 100.0); // how much of the picture shows
         painter.fillRect(card, tint);

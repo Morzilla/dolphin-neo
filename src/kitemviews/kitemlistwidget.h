@@ -28,7 +28,7 @@ class KItemListSelectionToggle;
 DOLPHIN_EXPORT QString ngSetting(const char *name, const QString &fallback = QString());
 DOLPHIN_EXPORT int ngSettingInt(const char *name, int fallback);
 /** Store a value in dolphinrc; an empty value removes it. */
-DOLPHIN_EXPORT void setNeoSetting(const char *name, const QString &value);
+DOLPHIN_EXPORT void setNgSetting(const char *name, const QString &value);
 /** True if the environment decides this setting, so the stored value is ignored. */
 DOLPHIN_EXPORT bool ngSettingFromEnvironment(const char *name);
 
@@ -40,7 +40,7 @@ DOLPHIN_EXPORT bool ngSettingFromEnvironment(const char *name);
 enum class NgRowStyle { Stripe, Card, Line, None, Open };
 DOLPHIN_EXPORT NgRowStyle ngRowStyle();
 /** dolphin-ng: change the row style now and remember it (dolphinrc, group DolphinNG). */
-DOLPHIN_EXPORT void setNeoRowStyle(NgRowStyle style);
+DOLPHIN_EXPORT void setNgRowStyle(NgRowStyle style);
 
 /**
  * dolphin-ng: the details view shows each item on two lines (name; then the other columns joined,

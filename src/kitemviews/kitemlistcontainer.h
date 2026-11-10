@@ -64,6 +64,8 @@ private Q_SLOTS:
     void stopScroller();
 
 private:
+    QWidget *m_ngScrollBarCover = nullptr; // dolphin-ng: hides the separator some styles draw next to the scrollbar
+
     void updateGeometries();
     void updateSmoothScrollers(Qt::Orientation orientation);
 

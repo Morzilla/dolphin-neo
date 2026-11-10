@@ -34,7 +34,7 @@ public:
      * Returns false if nothing opaque was painted (stock look, or the "live blur" hole), in which
      * case it cannot be used to wipe something drawn on top of the card.
      */
-    bool paintNeoGlass(QPainter &painter);
+    bool paintNgGlass(QPainter &painter);
 
 protected:
     /**

@@ -8,6 +8,8 @@
 
 #include "dolphinmainwindow.h"
 
+#include "kitemviews/kitemlistwidget.h"
+
 #include "admin/workerintegration.h"
 #include "dolphin_generalsettings.h"
 #include "dolphinbookmarkhandler.h"
@@ -177,6 +179,10 @@ DolphinMainWindow::DolphinMainWindow()
     connect(m_tabWidget, &DolphinTabWidget::tabCountChanged, this, &DolphinMainWindow::tabCountChanged);
     connect(m_tabWidget, &DolphinTabWidget::currentUrlChanged, this, &DolphinMainWindow::updateWindowTitle);
     setCentralWidget(m_tabWidget);
+    if (ngTwoLineList()) {
+        // dolphin-ng: the handle between the panels and the view stays usable but draws nothing
+        setStyleSheet(QStringLiteral("QMainWindow::separator { background: transparent; width: 4px; height: 4px; }"));
+    }
 
     m_actionTextHelper = new SelectionMode::ActionTextHelper(this);
     setupActions();

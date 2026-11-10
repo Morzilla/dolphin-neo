@@ -41,6 +41,9 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_backdrop->addItem(QStringLiteral("Gradiente animato (molto lento)"), QStringLiteral("lava"));
     m_backdrop->addItem(QStringLiteral("Blur vero del desktop *"), QStringLiteral("live"));
     form->addRow(QStringLiteral("Sfondo del pannello:"), m_backdrop);
+    m_motion = new QCheckBox(QStringLiteral("L'immagine si muove lentamente (zoom e scorrimento)"), this);
+    form->addRow(QString(), m_motion);
+
     m_lavaStyle = new QComboBox(this);
     m_lavaStyle->addItem(QStringLiteral("Gradiente che scorre"), QString());
     m_lavaStyle->addItem(QStringLiteral("Macchie (lava lamp)"), QStringLiteral("blobs"));
@@ -92,7 +95,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
 
     m_rows = new QComboBox(this);
     m_rows->addItem(QStringLiteral("Schede"), QStringLiteral("card"));
-    m_rows->addItem(QStringLiteral("Aperte, separate da un filo"), QStringLiteral("open"));
+    m_rows->addItem(QStringLiteral("Aperte, senza separatori"), QStringLiteral("open"));
     m_rows->addItem(QStringLiteral("Filo che sfuma ai lati"), QStringLiteral("line"));
     m_rows->addItem(QStringLiteral("Strisce alternate (Dolphin originale)"), QStringLiteral("stripe"));
     m_rows->addItem(QStringLiteral("Nessuno sfondo"), QStringLiteral("none"));
@@ -138,6 +141,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_twoLines->setEnabled(!ngSettingFromEnvironment("LIST"));
     m_glassPanel->setEnabled(!ngSettingFromEnvironment("SIDEBAR"));
     m_backdrop->setEnabled(!ngSettingFromEnvironment("GLASS_MODE"));
+    m_motion->setEnabled(!ngSettingFromEnvironment("GLASS_MOTION"));
     m_lavaSpeed->setEnabled(!ngSettingFromEnvironment("LAVA_SPEED"));
     m_devices->setEnabled(!ngSettingFromEnvironment("DEVICES"));
 
@@ -152,6 +156,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     connect(m_twoLines, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_glassPanel, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_backdrop, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
+    connect(m_motion, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_lavaSpeed, &QSlider::valueChanged, this, &NgSettingsPage::changed);
     connect(m_lavaSize, &QSlider::valueChanged, this, &NgSettingsPage::changed);
     connect(m_lavaStyle, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
@@ -175,6 +180,7 @@ void NgSettingsPage::loadSettings()
     m_twoLines->setChecked(ngSetting("LIST").toLower() != QLatin1String("columns"));
     m_glassPanel->setChecked(ngSetting("SIDEBAR").toLower() != QLatin1String("plain"));
     m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(ngSetting("GLASS_MODE").toLower())));
+    m_motion->setChecked(ngSetting("GLASS_MOTION").toLower() == QLatin1String("drift"));
     m_lavaSpeed->setValue(qBound(5, ngSettingInt("LAVA_SPEED", 30), 100));
     m_lavaSize->setValue(qBound(10, ngSettingInt("LAVA_SIZE", 55), 100));
     m_lavaStyle->setCurrentIndex(ngSetting("LAVA_STYLE").toLower() == QLatin1String("blobs") ? 1 : 0);
@@ -197,28 +203,29 @@ void NgSettingsPage::loadSettings()
 
 void NgSettingsPage::applySettings()
 {
-    setNeoSetting("GLASS_IMAGE", m_image->text().trimmed());
-    setNeoSetting("GLASS", QString::number(m_glass->value()));
-    setNeoSetting("GLASS_BLUR", QString::number(m_blur->value()));
-    setNeoSetting("SIGLA", m_sigla->currentData().toString());
-    setNeoSetting("MARK", m_mark->currentData().toString());
-    setNeoSetting("ICONS", m_icons->isChecked() ? QStringLiteral("show") : QString());
-    setNeoSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
-    setNeoSetting("LIST", m_twoLines->isChecked() ? QString() : QStringLiteral("columns"));
-    setNeoSetting("SIDEBAR", m_glassPanel->isChecked() ? QString() : QStringLiteral("plain"));
-    setNeoSetting("GLASS_MODE", m_backdrop->currentData().toString());
-    setNeoSetting("LAVA_SPEED", QString::number(m_lavaSpeed->value()));
-    setNeoSetting("LAVA_SIZE", QString::number(m_lavaSize->value()));
-    setNeoSetting("LAVA_STYLE", m_lavaStyle->currentData().toString());
+    setNgSetting("GLASS_IMAGE", m_image->text().trimmed());
+    setNgSetting("GLASS", QString::number(m_glass->value()));
+    setNgSetting("GLASS_BLUR", QString::number(m_blur->value()));
+    setNgSetting("SIGLA", m_sigla->currentData().toString());
+    setNgSetting("MARK", m_mark->currentData().toString());
+    setNgSetting("ICONS", m_icons->isChecked() ? QStringLiteral("show") : QString());
+    setNgSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
+    setNgSetting("LIST", m_twoLines->isChecked() ? QString() : QStringLiteral("columns"));
+    setNgSetting("SIDEBAR", m_glassPanel->isChecked() ? QString() : QStringLiteral("plain"));
+    setNgSetting("GLASS_MODE", m_backdrop->currentData().toString());
+    setNgSetting("GLASS_MOTION", m_motion->isChecked() ? QStringLiteral("drift") : QString());
+    setNgSetting("LAVA_SPEED", QString::number(m_lavaSpeed->value()));
+    setNgSetting("LAVA_SIZE", QString::number(m_lavaSize->value()));
+    setNgSetting("LAVA_STYLE", m_lavaStyle->currentData().toString());
     const int colours = m_lavaColours->currentIndex();
-    setNeoSetting("LAVA_COLORS",
+    setNgSetting("LAVA_COLORS",
                   colours == 0   ? QString()
                   : colours == 1 ? QStringLiteral("wallpaper")
                                  : QStringLiteral("%1,%2,%3").arg(m_lavaColour[0]->color().name(), m_lavaColour[1]->color().name(), m_lavaColour[2]->color().name()));
-    setNeoSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
+    setNgSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
     if (m_rows->isEnabled()) {
         static const NgRowStyle order[] = {NgRowStyle::Card, NgRowStyle::Open, NgRowStyle::Line, NgRowStyle::Stripe, NgRowStyle::None};
-        setNeoRowStyle(order[qBound(0, m_rows->currentIndex(), 4)]);
+        setNgRowStyle(order[qBound(0, m_rows->currentIndex(), 4)]);
     }
 
     // sidebar and row style apply at once: repaint everything
@@ -244,6 +251,7 @@ void NgSettingsPage::restoreDefaults()
     m_twoLines->setChecked(true);
     m_glassPanel->setChecked(true);
     m_backdrop->setCurrentIndex(0);
+    m_motion->setChecked(false);
     m_lavaSpeed->setValue(30);
     m_lavaSize->setValue(55);
     m_lavaStyle->setCurrentIndex(0);

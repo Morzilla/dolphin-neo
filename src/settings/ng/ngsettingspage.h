@@ -42,6 +42,7 @@ private:
     QCheckBox *m_twoLines;
     QCheckBox *m_glassPanel;
     QComboBox *m_backdrop;
+    QCheckBox *m_motion;
     QSlider *m_lavaSpeed;
     QSlider *m_lavaSize;
     QComboBox *m_lavaColours;

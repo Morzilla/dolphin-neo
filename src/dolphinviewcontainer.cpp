@@ -48,6 +48,7 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QActionGroup>
 #include <QMenu>
 #include <QToolButton>
@@ -209,8 +210,28 @@ public:
         : QWidget(parent)
         , m_view(view)
     {
-        m_flow = new NgFlowLayout(this, 4, 4);
-        m_flow->setContentsMargins(14, 4, 14, 6);
+        auto *row = new QHBoxLayout(this);
+        row->setContentsMargins(14, 4, 14, 6);
+        row->setSpacing(10);
+        m_flow = new NgFlowLayout(nullptr, 4, 4);
+        m_flow->setContentsMargins(0, 0, 0, 0);
+        row->addLayout(m_flow, 1);
+
+        // instant filter of the current folder: what you type narrows the list as you type
+        m_filter = new QLineEdit(this);
+        m_filter->setPlaceholderText(QStringLiteral("Cerca nella cartella"));
+        m_filter->setClearButtonEnabled(true);
+        m_filter->setFixedWidth(230);
+        m_filter->setToolTip(QStringLiteral("Mostra solo gli elementi il cui nome contiene il testo. Esc svuota il campo."));
+        row->addWidget(m_filter, 0, Qt::AlignTop);
+        connect(m_filter, &QLineEdit::textChanged, this, [this](const QString &text) {
+            m_view->setNameFilter(text);
+        });
+        connect(view, &DolphinView::urlChanged, this, [this] {
+            if (!m_filter->text().isEmpty()) {
+                m_filter->clear(); // a new folder starts unfiltered
+            }
+        });
 
         connect(view, &DolphinView::sortRoleChanged, this, [this] {
             rebuild();
@@ -365,7 +386,7 @@ private:
         rows->setIcon(QIcon::fromTheme(open ? QStringLiteral("view-list-text") : QStringLiteral("view-list-details")));
         rows->setText(open ? QStringLiteral("Righe: aperte") : QStringLiteral("Righe: schede"));
         connect(rows, &QToolButton::clicked, this, [this, open] {
-            setNeoRowStyle(open ? NgRowStyle::Card : NgRowStyle::Open);
+            setNgRowStyle(open ? NgRowStyle::Card : NgRowStyle::Open);
             const QList<QGraphicsView *> graphicsViews = m_view->findChildren<QGraphicsView *>();
             for (QGraphicsView *graphicsView : graphicsViews) {
                 graphicsView->viewport()->update();
@@ -421,6 +442,7 @@ private:
 
     DolphinView *m_view;
     NgFlowLayout *m_flow;
+    QLineEdit *m_filter;
     int m_active = All;
     int m_total = 0;
     int m_counts[NgKind::CategoryCount] = {};

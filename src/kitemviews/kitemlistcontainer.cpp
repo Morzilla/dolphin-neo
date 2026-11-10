@@ -8,6 +8,8 @@
 
 #include "kitemlistcontainer.h"
 
+#include "kitemlistwidget.h"
+
 #include "kitemlistcontroller.h"
 #include "kitemlistview.h"
 #include "private/kitemlistsmoothscroller.h"
@@ -407,6 +409,26 @@ void KItemListContainer::updateGeometries()
         // visibilities and the view geometry may have changed in re-layout.
         static_cast<KItemListContainerViewport *>(viewport())->scene()->setSceneRect(m_controller->view()->geometry());
         static_cast<KItemListContainerViewport *>(viewport())->viewport()->setGeometry(m_controller->view()->geometry().toRect());
+
+        // dolphin-ng: some styles (Breeze) draw a thin line between a frameless view and its scrollbar; cover it
+        if (ngTwoLineList()) {
+            if (!m_ngScrollBarCover) {
+                m_ngScrollBarCover = new QWidget(this);
+                m_ngScrollBarCover->setAttribute(Qt::WA_TransparentForMouseEvents);
+                m_ngScrollBarCover->setAutoFillBackground(true);
+            }
+            QPalette coverPalette = m_ngScrollBarCover->palette();
+            coverPalette.setColor(QPalette::Window, palette().color(QPalette::Base));
+            m_ngScrollBarCover->setPalette(coverPalette);
+            const QScrollBar *bar = verticalScrollBar();
+            if (bar->isVisible()) {
+                m_ngScrollBarCover->setGeometry(bar->geometry().left() - 1, bar->geometry().top(), 2, bar->geometry().height());
+                m_ngScrollBarCover->show();
+                m_ngScrollBarCover->raise();
+            } else {
+                m_ngScrollBarCover->hide();
+            }
+        }
 
         updateScrollOffsetScrollBar();
         updateItemOffsetScrollBar();

@@ -118,7 +118,7 @@ int ngSettingInt(const char *name, int fallback)
     return ok ? value : fallback;
 }
 
-void setNeoSetting(const char *name, const QString &value)
+void setNgSetting(const char *name, const QString &value)
 {
     KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG"));
     if (value.isEmpty()) {
@@ -162,7 +162,7 @@ NgRowStyle ngRowStyle()
     return ngRowStyleRef();
 }
 
-void setNeoRowStyle(NgRowStyle style)
+void setNgRowStyle(NgRowStyle style)
 {
     ngRowStyleRef() = style;
     static const char *const names[] = {"stripe", "card", "line", "none", "open"};
@@ -275,10 +275,7 @@ void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
         painter->drawLine(QPointF(card.left() + 5, card.top() + 0.5), QPointF(card.right() - 5, card.top() + 0.5));
         painter->restore();
     } else if (m_alternateBackground && ngRowStyle() == NgRowStyle::Open) {
-        // open rows: no card, only a hairline under each row
-        QColor lineColor = m_styleOption.palette.color(QPalette::Text);
-        lineColor.setAlphaF(0.07);
-        painter->fillRect(QRectF(0, size().height() - 1, size().width(), 1), lineColor);
+        // open rows: no card and no separator; the row is told apart by its colour wash alone
     } else if (m_alternateBackground && ngRowStyle() == NgRowStyle::Line) {
         // a hairline under the row that fades out towards both ends
         QColor lineColor = m_styleOption.palette.color(QPalette::Text);
