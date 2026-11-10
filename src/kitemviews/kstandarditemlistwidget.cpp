@@ -1100,6 +1100,9 @@ QRectF KStandardItemListWidget::expansionToggleRect() const
 QRectF KStandardItemListWidget::selectionToggleRect() const
 {
     const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
+    if (m_layout == CardsLayout) {
+        return QRectF(); // dolphin-ng: no "+" toggle over the cards; Ctrl+click selects
+    }
 
     const int widgetIconSize = styleOption().iconSize;
     int toggleSize = KIconLoader::SizeSmall;
