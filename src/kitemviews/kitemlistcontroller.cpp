@@ -979,6 +979,17 @@ bool KItemListController::hoverMoveEvent(QGraphicsSceneHoverEvent *event, const 
     };
 
     const QPointF pos = transform.map(event->pos());
+    {
+        // dolphin-ng: which inline action (open / menu / preview) is under the pointer
+        const std::optional<int> at = m_view->itemAt(pos);
+        const int index = at.value_or(-1);
+        const int action = index >= 0 ? m_view->ngActionAt(index, pos) : 0;
+        if (action != m_ngActionHovered || index != m_ngActionHoveredIndex) {
+            m_ngActionHovered = action;
+            m_ngActionHoveredIndex = index;
+            Q_EMIT ngActionHovered(index, action);
+        }
+    }
     if (KItemListWidget *newHoveredWidget = widgetForPos(pos); newHoveredWidget) {
         // something got hovered, work out which part and set hover for the appropriate widget
         const auto mappedPos = newHoveredWidget->mapFromItem(m_view, pos);

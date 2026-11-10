@@ -153,7 +153,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_folderSizes->setToolTip(QStringLiteral("Misura il contenuto delle cartelle (impostazione di Dolphin «Dimensione delle cartelle: dimensione del contenuto», con il suo limite di profondità). Altrimenti solo il numero di elementi."));
     form->addRow(QString(), m_folderSizes);
 
-    m_hoverPreview = new QCheckBox(QStringLiteral("Apri l'anteprima quando il mouse si ferma su una riga"), this);
+    m_hoverPreview = new QCheckBox(QStringLiteral("Apri l'anteprima quando il mouse si ferma sull'occhio della riga"), this);
     form->addRow(QString(), m_hoverPreview);
     m_hoverDelay = new QSpinBox(this);
     m_hoverDelay->setRange(100, 5000);

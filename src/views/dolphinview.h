@@ -1053,6 +1053,7 @@ private:
     QTimer *m_ngHoverTimer = nullptr; // dolphin-ng: preview on hover
     int m_ngHoverIndex = -1;
     bool m_ngHoverSuppressed = false; // after a scroll, until the mouse moves again
+    bool m_ngOnPreviewButton = false; // the pointer rests on the eye of the row
     void ngArmHoverPreview();
 
     QTimer *m_selectionChangedTimer;

@@ -136,6 +136,8 @@ Q_SIGNALS:
 
     /** dolphin-ng: the inline preview button of the item was clicked; \a rowRect is its row in global coordinates. */
     void ngPreviewRequested(int index, const QRect &rowRect);
+    /** dolphin-ng: the inline row action under the pointer changed (0: none; 1 open, 2 menu, 3 preview). */
+    void ngActionHovered(int index, int action);
 
     /**
      * Emitted if a context-menu is requested for the KItemListView.
@@ -347,6 +349,8 @@ private:
     bool m_selectionMode;
     bool m_selectionTogglePressed;
     int m_ngActionPressed = 0; // dolphin-ng: inline row action under the last press (1 open, 2 menu)
+    int m_ngActionHovered = 0; // dolphin-ng: inline row action under the pointer
+    int m_ngActionHoveredIndex = -1;
     bool m_clearSelectionIfItemsAreNotDragged;
     bool m_isSwipeGesture;
     bool m_dragActionOrRightClick;

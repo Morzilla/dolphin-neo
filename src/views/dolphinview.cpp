@@ -212,6 +212,15 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
     connect(controller, &KItemListController::mouseButtonPressed, this, &DolphinView::slotMouseButtonPressed);
     connect(controller, &KItemListController::itemHovered, this, &DolphinView::slotItemHovered);
     connect(controller, &KItemListController::itemUnhovered, this, &DolphinView::slotItemUnhovered);
+    connect(controller, &KItemListController::ngActionHovered, this, [this](int index, int action) {
+        m_ngOnPreviewButton = action == 3;
+        if (m_ngOnPreviewButton) {
+            m_ngHoverIndex = index;
+            ngArmHoverPreview();
+        } else if (m_ngHoverTimer) {
+            m_ngHoverTimer->stop(); // left the eye before the delay: nothing opens
+        }
+    });
     connect(m_view, &KItemListView::scrollOffsetChanged, this, [this] {
         m_ngHoverSuppressed = true; // dolphin-ng: see the wheel case of eventFilter()
         if (m_ngHoverTimer) {
@@ -1493,11 +1502,7 @@ void DolphinView::slotItemHovered(int index)
 {
     const KFileItem item = m_model->fileItem(index);
 
-    // dolphin-ng: PREVIEW_HOVER = milliseconds the mouse has to rest on a row before its preview opens (0/empty: never)
-    m_ngHoverIndex = index;
-    if (!m_ngHoverSuppressed) { // while the list scrolls under a still mouse the rows passing by must not open it
-        ngArmHoverPreview();
-    }
+    m_ngHoverIndex = index; // dolphin-ng: the hover preview arms itself when the pointer rests on the row's eye (ngActionHovered)
 
     if (GeneralSettings::showToolTips() && !m_dragging) {
         QRectF itemRect = m_container->controller()->view()->itemContextRect(index);
@@ -1517,8 +1522,9 @@ void DolphinView::slotItemHovered(int index)
 
 void DolphinView::ngArmHoverPreview()
 {
+    // PREVIEW_HOVER = milliseconds the pointer has to rest on the eye of a row before its preview opens (0/empty: never)
     const int hoverDelay = ngSettingInt("PREVIEW_HOVER", 0);
-    if (hoverDelay <= 0 || m_dragging || m_ngHoverIndex < 0) {
+    if (hoverDelay <= 0 || m_dragging || m_ngHoverIndex < 0 || !m_ngOnPreviewButton || m_ngHoverSuppressed) {
         return;
     }
     if (!m_ngHoverTimer) {
