@@ -15,6 +15,26 @@ it installs into your home directory next to it.
 |---|---|
 | ![preview card](ng/screenshots/preview-card.png) | ![icons view](ng/screenshots/icons-tiles.png) |
 
+## Cards view
+
+A fourth view mode (Ctrl+4, or the "Card" button in the sort bar): every item is a card of a fixed size with its
+details, in a grid that re-flows with the window. Three looks, quick actions by kind of file (resize, extract,
+convert, open with), a lightbox for pictures, and the type either as an icon or as the background of the card.
+
+![Cards, the Scheda look](ng/screenshots/cards-scheda.png)
+
+| Tessera | Dossier |
+|---|---|
+| ![Tessera](ng/screenshots/cards-tessera.png) | ![Dossier](ng/screenshots/cards-dossier.png) |
+
+## Part of the NG desktop
+
+- [Breeze NG](https://github.com/Morzilla/breeze-ng) – the widget style and window decoration it was designed with ([KDE Store](https://store.kde.org/p/2381557/))
+- [NeoLine](https://github.com/Morzilla/neoline-icons) – the outline icon theme in the screenshots ([KDE Store](https://store.kde.org/p/2381562/))
+- Dolphin NG on the KDE Store: https://store.kde.org/p/2381561/
+
+One installer sets up all three: `bash <(curl -fsSL https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/install-desktop.sh)`
+
 ## What is different
 
 **Details view**
