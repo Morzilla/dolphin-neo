@@ -27,6 +27,13 @@ convert, open with), a lightbox for pictures, and the type either as an icon or 
 |---|---|
 | ![Tessera](ng/screenshots/cards-tessera.png) | ![Dossier](ng/screenshots/cards-dossier.png) |
 
+## Glass sidebar
+
+The places panel is a sheet of glass. Its backdrop is a setting: a blurred copy of the wallpaper, an animated
+gradient, or the real blur of the desktop behind the window, done by the compositor (below).
+
+![The sidebar with the compositor's blur of the desktop behind it](ng/screenshots/sidebar-live-blur.png)
+
 ## Part of the NG desktop
 
 - [Breeze NG](https://github.com/Morzilla/breeze-ng) – the widget style and window decoration it was designed with ([KDE Store](https://store.kde.org/p/2381557/))
