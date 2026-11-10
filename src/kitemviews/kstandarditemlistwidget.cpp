@@ -24,6 +24,7 @@
 #include <klocalizedstring.h>
 
 #include <QApplication>
+#include <QDateTime>
 #include <QSet>
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
@@ -841,6 +842,13 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         }
         const TextInfo *textInfo = m_textInfo.value(m_sortedVisibleRoles[i]);
         painter->drawStaticText(textInfo->pos, textInfo->staticText);
+    }
+    if (ngRow && !ngActionsShown && !m_ngAgo.isEmpty()) {
+        QColor dim = m_additionalInfoTextColor;
+        dim.setAlpha(qRound(dim.alpha() * 0.6));
+        painter->setPen(dim);
+        painter->drawText(m_ngAgoPos, m_ngAgo);
+        painter->setPen(m_additionalInfoTextColor);
     }
 
     if (!m_rating.isNull()) {
@@ -2013,12 +2021,36 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
 
         // right edge: the date (replaced by the actions while the row is hovered)
         qreal dateWidth = 0;
+        m_ngAgo.clear();
         if (!dateRole.isEmpty() && roomForDate) {
             const QString text = roleText(dateRole, values);
             dateWidth = m_customizedFontMetrics.horizontalAdvance(text);
             TextInfo *textInfo = m_textInfo.value(dateRole);
             textInfo->staticText.setText(text);
-            textInfo->pos = QPointF(right - dateWidth, standardY);
+            // the days gone by since that date go on the second line (DATE_AGO=hide turns them off)
+            static const bool showAgo = ngSetting("DATE_AGO").toLower() != QLatin1String("hide");
+            // the model keeps the raw epoch seconds (see KFileItemModel), other roles a QDateTime
+            const QVariant raw = values.value(dateRole);
+            const QDateTime when = raw.typeId() == QMetaType::QDateTime ? raw.toDateTime() : (raw.toLongLong() > 0 ? QDateTime::fromSecsSinceEpoch(raw.toLongLong()) : QDateTime());
+            if (showAgo && when.isValid()) {
+                const qint64 days = when.date().daysTo(QDate::currentDate());
+                if (days <= 1 && ContentDisplaySettings::useShortRelativeDates()) {
+                    // the date text already reads "Oggi"/"Ieri"/"... minuti fa"
+                } else if (days <= 0) {
+                    m_ngAgo = QStringLiteral("oggi");
+                } else if (days == 1) {
+                    m_ngAgo = QStringLiteral("ieri");
+                } else if (days < 365) {
+                    m_ngAgo = QStringLiteral("%1 giorni fa").arg(days);
+                } else {
+                    const qint64 years = days / 365;
+                    m_ngAgo = years == 1 ? QStringLiteral("1 anno fa") : QStringLiteral("%1 anni fa").arg(years);
+                }
+                textInfo->pos = QPointF(right - dateWidth, firstY);
+                m_ngAgoPos = QPointF(right - m_customizedFontMetrics.horizontalAdvance(m_ngAgo), secondY + m_customizedFontMetrics.ascent());
+            } else {
+                textInfo->pos = QPointF(right - dateWidth, standardY);
+            }
         }
         qreal blockLeft = right;
         m_ngActionsRect = QRectF();

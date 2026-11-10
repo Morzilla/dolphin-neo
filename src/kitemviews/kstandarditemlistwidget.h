@@ -293,6 +293,8 @@ private:
     bool m_ngIconFaded = false;
     QColor m_ngTint; // colour of the file's category
     QByteArray m_ngDateRole; // the date role shown at the right edge, if any
+    QString m_ngAgo; // "3 giorni fa", under the date
+    QPointF m_ngAgoPos;
     QRectF m_ngBarRect; // size bar
     qreal m_ngBarFraction = -1;
     QRectF m_ngActionsRect; // where the hover actions go

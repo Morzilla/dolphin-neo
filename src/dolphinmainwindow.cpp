@@ -2522,6 +2522,7 @@ void DolphinMainWindow::setupDockWidgets()
 
     addDockWidget(Qt::LeftDockWidgetArea, placesDock);
     connect(m_placesPanel, &PlacesPanel::placeActivated, this, &DolphinMainWindow::slotPlaceActivated);
+    connect(placesDock, &DolphinDockWidget::ngDiskRootRequested, this, &DolphinMainWindow::slotPlaceActivated); // dolphin-ng: disk usage box
     connect(m_placesPanel, &PlacesPanel::tabRequested, this, &DolphinMainWindow::openNewTab);
     connect(m_placesPanel, &PlacesPanel::activeTabRequested, this, &DolphinMainWindow::openNewTabAndActivate);
     connect(m_placesPanel, &PlacesPanel::newWindowRequested, this, [this](const QUrl &url) {

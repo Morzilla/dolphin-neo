@@ -41,8 +41,10 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_backdrop->addItem(QStringLiteral("Gradiente animato (molto lento)"), QStringLiteral("lava"));
     m_backdrop->addItem(QStringLiteral("Blur vero del desktop *"), QStringLiteral("live"));
     form->addRow(QStringLiteral("Sfondo del pannello:"), m_backdrop);
-    m_motion = new QCheckBox(QStringLiteral("L'immagine si muove lentamente (zoom e scorrimento)"), this);
+    m_motion = new QCheckBox(QStringLiteral("L'immagine si muove (zoom e scorrimento, alla velocità qui sotto)"), this);
     form->addRow(QString(), m_motion);
+    m_rim = new QCheckBox(QStringLiteral("Bordo luminoso attorno al pannello *"), this);
+    form->addRow(QString(), m_rim);
 
     m_lavaStyle = new QComboBox(this);
     m_lavaStyle->addItem(QStringLiteral("Gradiente che scorre"), QString());
@@ -50,7 +52,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     form->addRow(QStringLiteral("Tipo di animazione:"), m_lavaStyle);
     m_lavaSpeed = new QSlider(Qt::Horizontal, this);
     m_lavaSpeed->setRange(5, 100);
-    form->addRow(QStringLiteral("Velocità dell'animazione:"), m_lavaSpeed);
+    form->addRow(QStringLiteral("Velocità dell'animazione (gradiente e immagine):"), m_lavaSpeed);
     m_lavaSize = new QSlider(Qt::Horizontal, this);
     m_lavaSize->setRange(10, 100);
     form->addRow(QStringLiteral("Ampiezza delle zone di colore:"), m_lavaSize);
@@ -117,6 +119,8 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
 
     m_icons = new QCheckBox(QStringLiteral("Mostra le icone nell'elenco al posto della sigla *"), this);
     form->addRow(QString(), m_icons);
+    m_ago = new QCheckBox(QStringLiteral("Sotto la data, i giorni trascorsi *"), this);
+    form->addRow(QString(), m_ago);
 
     heading(QStringLiteral("Vista a icone"));
     m_tiles = new QCheckBox(QStringLiteral("Tessere scure con anteprime arrotondate *"), this);
@@ -137,11 +141,13 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_sigla->setEnabled(!ngSettingFromEnvironment("SIGLA"));
     m_mark->setEnabled(!ngSettingFromEnvironment("MARK"));
     m_icons->setEnabled(!ngSettingFromEnvironment("ICONS"));
+    m_ago->setEnabled(!ngSettingFromEnvironment("DATE_AGO"));
     m_tiles->setEnabled(!ngSettingFromEnvironment("TILES"));
     m_twoLines->setEnabled(!ngSettingFromEnvironment("LIST"));
     m_glassPanel->setEnabled(!ngSettingFromEnvironment("SIDEBAR"));
     m_backdrop->setEnabled(!ngSettingFromEnvironment("GLASS_MODE"));
     m_motion->setEnabled(!ngSettingFromEnvironment("GLASS_MOTION"));
+    m_rim->setEnabled(!ngSettingFromEnvironment("GLASS_RIM"));
     m_lavaSpeed->setEnabled(!ngSettingFromEnvironment("LAVA_SPEED"));
     m_devices->setEnabled(!ngSettingFromEnvironment("DEVICES"));
 
@@ -152,11 +158,13 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     connect(m_sigla, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     connect(m_mark, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     connect(m_icons, &QCheckBox::toggled, this, &NgSettingsPage::changed);
+    connect(m_ago, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_tiles, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_twoLines, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_glassPanel, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_backdrop, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     connect(m_motion, &QCheckBox::toggled, this, &NgSettingsPage::changed);
+    connect(m_rim, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_lavaSpeed, &QSlider::valueChanged, this, &NgSettingsPage::changed);
     connect(m_lavaSize, &QSlider::valueChanged, this, &NgSettingsPage::changed);
     connect(m_lavaStyle, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
@@ -181,6 +189,7 @@ void NgSettingsPage::loadSettings()
     m_glassPanel->setChecked(ngSetting("SIDEBAR").toLower() != QLatin1String("plain"));
     m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(ngSetting("GLASS_MODE").toLower())));
     m_motion->setChecked(ngSetting("GLASS_MOTION").toLower() == QLatin1String("drift"));
+    m_rim->setChecked(ngSetting("GLASS_RIM").toLower() == QLatin1String("show"));
     m_lavaSpeed->setValue(qBound(5, ngSettingInt("LAVA_SPEED", 30), 100));
     m_lavaSize->setValue(qBound(10, ngSettingInt("LAVA_SIZE", 55), 100));
     m_lavaStyle->setCurrentIndex(ngSetting("LAVA_STYLE").toLower() == QLatin1String("blobs") ? 1 : 0);
@@ -198,6 +207,7 @@ void NgSettingsPage::loadSettings()
     m_sigla->setCurrentIndex(qMax(0, m_sigla->findData(ngSetting("SIGLA", QStringLiteral("fill")).toLower())));
     m_mark->setCurrentIndex(qMax(0, m_mark->findData(ngSetting("MARK").toLower())));
     m_icons->setChecked(ngSetting("ICONS").toLower() == QLatin1String("show"));
+    m_ago->setChecked(ngSetting("DATE_AGO").toLower() != QLatin1String("hide"));
     m_tiles->setChecked(ngSetting("TILES").toLower() != QLatin1String("off"));
 }
 
@@ -209,11 +219,13 @@ void NgSettingsPage::applySettings()
     setNgSetting("SIGLA", m_sigla->currentData().toString());
     setNgSetting("MARK", m_mark->currentData().toString());
     setNgSetting("ICONS", m_icons->isChecked() ? QStringLiteral("show") : QString());
+    setNgSetting("DATE_AGO", m_ago->isChecked() ? QString() : QStringLiteral("hide"));
     setNgSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
     setNgSetting("LIST", m_twoLines->isChecked() ? QString() : QStringLiteral("columns"));
     setNgSetting("SIDEBAR", m_glassPanel->isChecked() ? QString() : QStringLiteral("plain"));
     setNgSetting("GLASS_MODE", m_backdrop->currentData().toString());
     setNgSetting("GLASS_MOTION", m_motion->isChecked() ? QStringLiteral("drift") : QString());
+    setNgSetting("GLASS_RIM", m_rim->isChecked() ? QStringLiteral("show") : QString());
     setNgSetting("LAVA_SPEED", QString::number(m_lavaSpeed->value()));
     setNgSetting("LAVA_SIZE", QString::number(m_lavaSize->value()));
     setNgSetting("LAVA_STYLE", m_lavaStyle->currentData().toString());
@@ -247,11 +259,13 @@ void NgSettingsPage::restoreDefaults()
     m_sigla->setCurrentIndex(0);
     m_mark->setCurrentIndex(0);
     m_icons->setChecked(false);
+    m_ago->setChecked(true);
     m_tiles->setChecked(true);
     m_twoLines->setChecked(true);
     m_glassPanel->setChecked(true);
     m_backdrop->setCurrentIndex(0);
     m_motion->setChecked(false);
+    m_rim->setChecked(false);
     m_lavaSpeed->setValue(30);
     m_lavaSize->setValue(55);
     m_lavaStyle->setCurrentIndex(0);

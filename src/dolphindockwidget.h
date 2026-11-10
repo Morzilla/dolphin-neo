@@ -8,6 +8,7 @@
 #define DOLPHIN_DOCK_WIDGET_H
 
 #include <QDockWidget>
+#include <QUrl>
 
 class QTimer;
 
@@ -35,8 +36,17 @@ public:
      * case it cannot be used to wipe something drawn on top of the card.
      */
     bool paintNgGlass(QPainter &painter);
+    /** dolphin-ng: the disk usage box, in this widget's coordinates (empty when none is drawn), and the mount point it shows. */
+    QRectF ngDiskBox() const { return m_ngDiskBox; }
+    QString ngDiskRoot() const { return m_ngDiskRoot; }
+
+Q_SIGNALS:
+    /** dolphin-ng: the disk usage box was clicked; \a url is the root of that file system. */
+    void ngDiskRootRequested(const QUrl &url);
 
 protected:
+    void mousePressEvent(QMouseEvent *event) override; // dolphin-ng: disk usage box
+    void mouseReleaseEvent(QMouseEvent *event) override;
     /**
      * Make sure we do not emit QDockWidget::visibilityChanged() signals whenever Dolphin's window is minimized or restored.
      */
@@ -55,6 +65,11 @@ private:
     QWidget *m_dockTitleBar;
     QTimer *m_glassTimer = nullptr;
     QTimer *m_lavaTimer = nullptr; // dolphin-ng: drives the animated ("lava lamp") backdrop
+    bool ngDiskBoxEvent(QEvent *event);
+    QRectF m_ngDiskBox;
+    QString m_ngDiskRoot;
+    bool m_ngDiskPressed = false;
+    bool m_ngDiskHover = false;
     qreal m_glass = 75; // share (0-100) of the window tint removed under the card
 };
 

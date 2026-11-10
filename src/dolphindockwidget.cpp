@@ -21,6 +21,7 @@
 #include <QtMath>
 #include <QEvent>
 #include <QGuiApplication>
+#include <QMouseEvent>
 #include <QHash>
 #include <QImageReader>
 #include <QPainter>
@@ -533,7 +534,7 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
                 m_lavaTimer = new QTimer(this);
                 m_lavaTimer->setInterval(80);
                 connect(m_lavaTimer, &QTimer::timeout, this, [this] {
-                    if (isVisible() && window()->isActiveWindow()) {
+                    if (isVisible() && !window()->isMinimized()) {
                         update();
                     }
                 });
@@ -545,9 +546,10 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
             if (!motionClock.isValid()) {
                 motionClock.start();
             }
-            const qreal seconds = motionClock.elapsed() / 1000.0 * (qBound(0, ngSettingInt("LAVA_SPEED", 30), 100) / 30.0);
-            const qreal zoom = 1.10 + 0.08 * qSin(2 * M_PI * seconds / 140.0); // between 1.02 and 1.18
-            const QPointF drift(backdrop.width() * 0.025 * qSin(2 * M_PI * seconds / 190.0), backdrop.height() * 0.025 * qCos(2 * M_PI * seconds / 230.0));
+            // LAVA_SPEED (the "animation speed" of the settings) scales the clock: at 30 a full breath takes about a minute
+            const qreal seconds = motionClock.elapsed() / 1000.0 * (qBound(5, ngSettingInt("LAVA_SPEED", 30), 100) / 30.0);
+            const qreal zoom = 1.10 + 0.08 * qSin(2 * M_PI * seconds / 60.0); // between 1.02 and 1.18
+            const QPointF drift(backdrop.width() * 0.04 * qSin(2 * M_PI * seconds / 83.0), backdrop.height() * 0.04 * qCos(2 * M_PI * seconds / 101.0));
             const QPointF centre = source.center() + drift;
             source = QRectF(QPointF(), source.size() / zoom);
             source.moveCenter(centre);
@@ -579,9 +581,12 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
     painter.setBrush(veil);
     painter.drawRoundedRect(card, radius, radius);
 
-    // rim: bright towards the top-left, fading along the diagonal, a faint return at the bottom-right
+    // rim: bright towards the top-left, fading along the diagonal, a faint return at the bottom-right (GLASS_RIM=show)
+    static const bool showRim = ngSetting("GLASS_RIM").toLower() == QLatin1String("show");
     QLinearGradient rim(card.topLeft(), card.bottomRight());
-    if (ngIsDark(palette())) {
+    if (!showRim) {
+        rim.setColorAt(0.0, Qt::transparent);
+    } else if (ngIsDark(palette())) {
         rim.setColorAt(0.0, QColor(255, 255, 255, 105));
         rim.setColorAt(0.45, QColor(255, 255, 255, 22));
         rim.setColorAt(1.0, QColor(255, 255, 255, 55));
@@ -596,6 +601,7 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
     painter.drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
 
     // disk usage of the home file system, at the bottom of the Places card (PlacesPanel leaves the room for it)
+    m_ngDiskBox = QRectF();
     if (objectName() == QLatin1String("placesDock")) {
         static QStorageInfo storage;
         static QElapsedTimer age;
@@ -605,6 +611,8 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
         }
         if (storage.isValid() && storage.bytesTotal() > 0 && card.height() > 200) {
             const QRectF box(card.left() + 8, card.bottom() - 8 - 54, card.width() - 16, 54);
+            m_ngDiskBox = box;
+            m_ngDiskRoot = storage.rootPath();
             painter.setPen(Qt::NoPen);
             painter.setBrush(ngIsDark(palette()) ? QColor(0, 0, 0, 62) : QColor(255, 255, 255, 130));
             painter.drawRoundedRect(box, 10, 10);
@@ -643,7 +651,57 @@ bool DolphinDockWidget::eventFilter(QObject *watched, QEvent *event)
     if (watched == window() && (event->type() == QEvent::Move || event->type() == QEvent::Resize)) {
         update();
     }
+    if (watched == widget() && ngDiskBoxEvent(event)) {
+        return true;
+    }
     return QDockWidget::eventFilter(watched, event);
+}
+
+bool DolphinDockWidget::ngDiskBoxEvent(QEvent *event)
+{
+    // a click on the disk usage box opens the root of that file system; the hand cursor announces it
+    if (event->type() != QEvent::MouseButtonPress && event->type() != QEvent::MouseButtonRelease && event->type() != QEvent::MouseMove) {
+        return false;
+    }
+    auto *mouse = static_cast<QMouseEvent *>(event);
+    const bool inside = !m_ngDiskBox.isEmpty() && m_ngDiskBox.contains(mapFromGlobal(mouse->globalPosition().toPoint()));
+    if (event->type() == QEvent::MouseMove) {
+        if (inside != m_ngDiskHover) {
+            m_ngDiskHover = inside;
+            if (inside) {
+                widget()->setCursor(Qt::PointingHandCursor);
+            } else {
+                widget()->unsetCursor();
+            }
+        }
+        return false;
+    }
+    if (event->type() == QEvent::MouseButtonPress) {
+        m_ngDiskPressed = inside && mouse->button() == Qt::LeftButton;
+        return m_ngDiskPressed;
+    }
+    if (m_ngDiskPressed) {
+        m_ngDiskPressed = false;
+        if (inside && !m_ngDiskRoot.isEmpty()) {
+            Q_EMIT ngDiskRootRequested(QUrl::fromLocalFile(m_ngDiskRoot));
+        }
+        return true;
+    }
+    return false;
+}
+
+void DolphinDockWidget::mousePressEvent(QMouseEvent *event)
+{
+    if (!ngDiskBoxEvent(event)) {
+        QDockWidget::mousePressEvent(event);
+    }
+}
+
+void DolphinDockWidget::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (!ngDiskBoxEvent(event)) {
+        QDockWidget::mouseReleaseEvent(event);
+    }
 }
 
 bool DolphinDockWidget::event(QEvent *event)
@@ -651,6 +709,11 @@ bool DolphinDockWidget::event(QEvent *event)
     if ((event->type() == QEvent::Show || event->type() == QEvent::ParentChange) && !ngGlassPlain() && window() != this) {
         window()->removeEventFilter(this);
         window()->installEventFilter(this);
+        if (widget()) {
+            widget()->removeEventFilter(this);
+            widget()->installEventFilter(this);
+            widget()->setMouseTracking(true);
+        }
     }
     switch (event->type()) {
     case QEvent::Show:

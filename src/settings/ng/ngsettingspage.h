@@ -38,11 +38,13 @@ private:
     QComboBox *m_sigla;
     QComboBox *m_mark;
     QCheckBox *m_icons;
+    QCheckBox *m_ago;
     QCheckBox *m_tiles;
     QCheckBox *m_twoLines;
     QCheckBox *m_glassPanel;
     QComboBox *m_backdrop;
     QCheckBox *m_motion;
+    QCheckBox *m_rim;
     QSlider *m_lavaSpeed;
     QSlider *m_lavaSize;
     QComboBox *m_lavaColours;
