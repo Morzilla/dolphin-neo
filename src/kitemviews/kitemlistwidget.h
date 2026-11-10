@@ -97,6 +97,8 @@ struct NgQuickAction {
     QString label;
     QString program;
     QStringList arguments; // used when there are no choices
+    QString icon; // theme icon name (for "@app": the icon of the application)
+    bool main = false; // the typical action of this kind of file: shown first, with its label
     QList<std::pair<QString, QStringList>> choices; // a menu: label and arguments, all run with the program
 };
 /** dolphin-ng: the quick actions of a local file, from its path and MIME type; empty for folders and unknown kinds. */

@@ -1068,6 +1068,7 @@ private:
     int m_ngHoverIndex = -1;
     QTimer *m_ngQuickTimer = nullptr; // dolphin-ng: quick view of a card's picture
     int m_ngQuickIndex = -1;
+    bool m_ngActionTip = false; // a tool tip of a quick action is showing
     bool m_ngHoverSuppressed = false; // after a scroll, until the mouse moves again
     bool m_ngOnPreviewButton = false; // the pointer rests on the eye of the row
     void ngArmHoverPreview();

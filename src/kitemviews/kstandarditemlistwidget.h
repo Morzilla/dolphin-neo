@@ -335,6 +335,9 @@ private:
     bool m_ngCardWatermark = false; // the type is drawn as the background instead of the icon
     QRectF m_ngCardEye; // hover actions: preview and menu
     QRectF m_ngCardMenu;
+    QList<QPixmap> m_ngCardActionIcons; // one per entry of m_ngCardActions
+    QList<qreal> m_ngCardActionSeps; // x of the hairlines between the groups
+    QRectF m_ngCardActionsPill;
     QList<NgChip> m_ngCardActions; // quick actions of the file's kind, see ngQuickActionsFor(); clicked through ngActionAt() (10 + n)
 
     QList<QByteArray> m_sortedVisibleRoles;

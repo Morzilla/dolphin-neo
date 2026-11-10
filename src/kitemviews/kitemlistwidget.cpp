@@ -20,6 +20,8 @@
 #include <QApplication>
 #include <QSet>
 #include <QLinearGradient>
+#include <KApplicationTrader>
+#include <KService>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <tuple>
@@ -236,7 +238,7 @@ QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &
     };
     if (isImage) {
         NgQuickAction resize;
-        resize.label = QStringLiteral("Ridimensiona…");
+        resize.label = QStringLiteral("Ridimensiona");
         resize.program = QStringLiteral("magick");
         for (const auto &[label, spec, tag] : {std::make_tuple(QStringLiteral("75 %"), QStringLiteral("75%"), QStringLiteral("75")),
                                                std::make_tuple(QStringLiteral("50 %"), QStringLiteral("50%"), QStringLiteral("50")),
@@ -247,21 +249,19 @@ QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &
             resize.choices.append({label, {localPath, QStringLiteral("-resize"), spec, QStringLiteral("%1-%2.%3").arg(base, tag, suffix)}});
         }
         actions.append(resize);
-        // "open with": the runner (DolphinView) fills the menu with the applications for this type
-        simple(QStringLiteral("Apri con…"), QStringLiteral("@openwith"), {});
         if (mime == QLatin1String("image/gif")) {
             simple(QStringLiteral("In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-movflags"), QStringLiteral("faststart"), QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"), QStringLiteral("-vf"), QStringLiteral("scale=trunc(iw/2)*2:trunc(ih/2)*2"), QStringLiteral("%1.mp4").arg(base)});
         }
     } else if (archives.contains(mime)) {
         static const bool hasArk = !QStandardPaths::findExecutable(QStringLiteral("ark")).isEmpty();
         if (hasArk) {
-            simple(QStringLiteral("Estrai"), QStringLiteral("ark"), {QStringLiteral("--batch"), QStringLiteral("--autosubfolder"), localPath});
+            simple(QStringLiteral("Estrai qui"), QStringLiteral("ark"), {QStringLiteral("--batch"), QStringLiteral("--autosubfolder"), localPath});
         } else {
-            simple(QStringLiteral("Estrai"), QStringLiteral("bsdtar"), {QStringLiteral("-xf"), localPath, QStringLiteral("--one-top-level=%1").arg(base)});
+            simple(QStringLiteral("Estrai qui"), QStringLiteral("bsdtar"), {QStringLiteral("-xf"), localPath, QStringLiteral("--one-top-level=%1").arg(base)});
         }
     } else if (mime == QLatin1String("application/pdf")) {
-        simple(QStringLiteral("Testo"), QStringLiteral("pdftotext"), {QStringLiteral("-layout"), localPath, QStringLiteral("%1.txt").arg(base)});
-        simple(QStringLiteral("Pagine PNG"), QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), localPath, base});
+        simple(QStringLiteral("In PNG"), QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), localPath, base});
+        simple(QStringLiteral("Estrai il testo"), QStringLiteral("pdftotext"), {QStringLiteral("-layout"), localPath, QStringLiteral("%1.txt").arg(base)});
     } else if (mime.startsWith(QLatin1String("audio/"))) {
         if (lowerSuffix != QLatin1String("mp3")) {
             simple(QStringLiteral("In MP3"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
@@ -271,8 +271,58 @@ QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &
         }
     } else if (mime.startsWith(QLatin1String("video/"))) {
         simple(QStringLiteral("In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
-        simple(QStringLiteral("Audio MP3"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
-        simple(QStringLiteral("Fotogramma"), QStringLiteral("ffmpeg"), {QStringLiteral("-ss"), QStringLiteral("1"), QStringLiteral("-i"), localPath, QStringLiteral("-frames:v"), QStringLiteral("1"), QStringLiteral("%1-1s.png").arg(base)});
+        simple(QStringLiteral("Estrai l'audio (MP3)"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+        simple(QStringLiteral("Fotogramma in PNG"), QStringLiteral("ffmpeg"), {QStringLiteral("-ss"), QStringLiteral("1"), QStringLiteral("-i"), localPath, QStringLiteral("-frames:v"), QStringLiteral("1"), QStringLiteral("%1-1s.png").arg(base)});
+    }
+    // icons; the first action of the kind is the main one
+    static const QHash<QString, QString> icons{{QStringLiteral("Ridimensiona"), QStringLiteral("view-fullscreen")},
+                                               {QStringLiteral("In MP4"), QStringLiteral("video-x-generic")},
+                                               {QStringLiteral("Estrai qui"), QStringLiteral("folder-download")},
+                                               {QStringLiteral("In PNG"), QStringLiteral("image-x-generic")},
+                                               {QStringLiteral("Estrai il testo"), QStringLiteral("text-plain")},
+                                               {QStringLiteral("In MP3"), QStringLiteral("audio-x-generic")},
+                                               {QStringLiteral("In FLAC"), QStringLiteral("audio-x-generic")},
+                                               {QStringLiteral("Estrai l'audio (MP3)"), QStringLiteral("audio-x-generic")},
+                                               {QStringLiteral("Fotogramma in PNG"), QStringLiteral("camera-photo")}};
+    for (NgQuickAction &action : actions) {
+        action.icon = icons.value(action.label, QStringLiteral("system-run"));
+    }
+    if (!actions.isEmpty()) {
+        actions[0].main = true;
+    }
+    // then the two applications that open this type besides the default one, and "open with" (the runner,
+    // DolphinView, launches them: "@app" + storage id, "@openwith" = the whole menu). Asked once per type.
+    static QHash<QString, QList<NgQuickAction>> appsForMime;
+    auto apps = appsForMime.constFind(mime);
+    if (apps == appsForMime.constEnd()) {
+        QList<NgQuickAction> list;
+        const KService::List services = KApplicationTrader::queryByMimeType(mime);
+        QSet<QString> seenIcons; // two launchers of the same program (same icon) would read as a duplicate
+        if (!services.isEmpty()) {
+            seenIcons.insert(services.constFirst()->icon());
+        }
+        for (int n = 1; n < services.count() && list.count() < 2; ++n) {
+            if (seenIcons.contains(services.at(n)->icon())) {
+                continue;
+            }
+            seenIcons.insert(services.at(n)->icon());
+            NgQuickAction action;
+            action.label = QStringLiteral("Apri con %1").arg(services.at(n)->name());
+            action.program = QStringLiteral("@app");
+            action.arguments = {services.at(n)->storageId()};
+            action.icon = services.at(n)->icon();
+            list.append(action);
+        }
+        NgQuickAction openWith;
+        openWith.label = QStringLiteral("Apri con…");
+        openWith.program = QStringLiteral("@openwith");
+        openWith.icon = QStringLiteral("overflow-menu");
+        list.append(openWith);
+        apps = appsForMime.insert(mime, list);
+    }
+    int at = actions.isEmpty() ? 0 : 1;
+    for (const NgQuickAction &action : *apps) {
+        actions.insert(at++, action);
     }
     return actions;
 }

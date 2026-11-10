@@ -248,6 +248,18 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
             m_ngQuickTimer->stop();
             Q_EMIT ngQuickViewEnded();
         }
+        // a quick action of a card: say what it does (they are icons)
+        if (action >= 10) {
+            const KFileItem item = m_model->fileItem(index);
+            const QList<NgQuickAction> actions = item.isNull() ? QList<NgQuickAction>() : ngQuickActionsFor(item.localPath(), item.mimetype());
+            if (action - 10 < actions.count()) {
+                QToolTip::showText(QCursor::pos() + QPoint(0, 18), actions.at(action - 10).label, this);
+                m_ngActionTip = true;
+            }
+        } else if (m_ngActionTip) {
+            QToolTip::hideText();
+            m_ngActionTip = false;
+        }
         m_ngOnPreviewButton = action == 3;
         if (m_ngOnPreviewButton) {
             m_ngHoverIndex = index;
@@ -2670,6 +2682,16 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
         job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
         job->start();
     };
+    if (action.program == QLatin1String("@app")) {
+        const KService::Ptr service = KService::serviceByStorageId(action.arguments.value(0));
+        if (service) {
+            auto *job = new KIO::ApplicationLauncherJob(service);
+            job->setUrls({item.url()});
+            job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
+            job->start();
+        }
+        return;
+    }
     if (action.program == QLatin1String("@openwith")) {
         // the applications registered for this type, then the system's "open with" dialog
         QMenu menu(this);
