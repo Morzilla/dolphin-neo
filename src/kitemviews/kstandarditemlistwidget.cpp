@@ -2208,7 +2208,12 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
         if (sizeColumn && roomForSize) {
             const qreal columnWidth = qMax(qreal(fontHeight * 6.5), qreal(130));
             const qreal sizeRight = blockLeft - gap;
-            const QString text = roleText("size", values);
+            QString text = roleText("size", values);
+            // a folder whose content is not measured (or empty) says how many items it holds, not "0 B"
+            const bool unmeasured = isDir && bytes <= 0 && values.contains("count");
+            if (unmeasured) {
+                text = i18ncp("@item:intable", "%1 item", "%1 items", values.value("count").toInt());
+            }
             const qreal width = m_customizedFontMetrics.horizontalAdvance(text);
             TextInfo *textInfo = m_textInfo.value("size");
             textInfo->staticText.setText(text);
@@ -2218,7 +2223,7 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
                 const qreal barWidth = columnWidth - 10;
                 m_ngBarRect = QRectF(sizeRight - barWidth, secondY + fontHeight / 2.0 - 2, barWidth, 4);
             }
-            if (measured) {
+            if (measured && !unmeasured) {
                 m_ngCount = i18ncp("@item:intable", "%1 item", "%1 items", values.value("count").toInt());
                 m_ngCountPos = QPointF(sizeRight - m_customizedFontMetrics.horizontalAdvance(m_ngCount), secondY + m_customizedFontMetrics.ascent());
             }

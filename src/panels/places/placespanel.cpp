@@ -182,6 +182,10 @@ void PlacesPanel::ngPaintPills()
         painter.save();
         painter.setClipRect(rect);
         // 1. the glass backdrop, exactly what lies behind the row
+        // (with the live blur the glass is translucent: clear first, or the veil piles up over what was painted)
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.fillRect(rect, Qt::transparent);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
         painter.save();
         painter.translate(-offset);
         dock->paintNgGlass(painter);
@@ -312,6 +316,10 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
         const QPoint offset = viewport()->mapTo(dock, QPoint(0, 0));
         painter.save();
         painter.setClipRegion(headers);
+        // with the live blur the glass is translucent: clear the title areas first, or the old text shows through
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.fillRect(headers.boundingRect(), Qt::transparent);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
         painter.translate(-offset);
         dock->paintNgGlass(painter);
         painter.restore();
