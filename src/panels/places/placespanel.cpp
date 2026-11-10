@@ -32,6 +32,7 @@
 #include <QMimeData>
 #include <QPainter>
 #include <QPainterPath>
+#include <QStyleOptionViewItem>
 #include <QCursor>
 #include <QShowEvent>
 #include <QTimer>
@@ -126,36 +127,61 @@ PlacesPanel::PlacesPanel(QWidget *parent)
 PlacesPanel::~PlacesPanel() = default;
 
 // dolphin-ng: the selected entry sits on a glass pill like the section titles; the hovered entry gets a fainter one.
-// Painted under the delegate, which draws no highlight of its own.
+// The widget style frames and fills those rows in its own way whatever the palette says, so each such row is
+// painted again from scratch: the panel's backdrop, the pill, then icon and text by the delegate without the
+// selected/hovered state (it draws only the contents then).
 void PlacesPanel::ngPaintPills()
 {
-    QPainter painter(viewport());
-    painter.setRenderHint(QPainter::Antialiasing);
+    auto *dock = qobject_cast<DolphinDockWidget *>(parentWidget());
+    if (!dock) {
+        return;
+    }
+    const QModelIndexList selected = selectionModel() ? selectionModel()->selectedIndexes() : QModelIndexList();
+    QList<std::pair<QModelIndex, qreal>> rows;
+    for (const QModelIndex &index : selected) {
+        rows.append({index, 1.0});
+    }
+    if (viewport()->underMouse()) {
+        const QModelIndex hovered = indexAt(viewport()->mapFromGlobal(QCursor::pos()));
+        if (hovered.isValid() && !selected.contains(hovered)) {
+            rows.append({hovered, 0.5});
+        }
+    }
+    if (rows.isEmpty()) {
+        return;
+    }
     const bool dark = ngIsDark(palette());
-    auto pill = [&](const QModelIndex &index, qreal strength) {
-        if (!index.isValid()) {
-            return;
+    const QPoint offset = viewport()->mapTo(dock, QPoint(0, 0));
+    QPainter painter(viewport());
+    for (const auto &[index, strength] : std::as_const(rows)) {
+        const QRect rect = visualRect(index);
+        if (!rect.isValid()) {
+            continue;
         }
-        // the same pill as the section titles: a faint white veil with a hairline edge, fully rounded ends
-        const QRectF rect = QRectF(visualRect(index)).adjusted(2.5, 2.5, -2.5, -2.5);
-        if (rect.isEmpty()) {
-            return;
-        }
-        const qreal radius = rect.height() / 2.0;
+        painter.save();
+        painter.setClipRect(rect);
+        // 1. the glass backdrop, exactly what lies behind the row
+        painter.save();
+        painter.translate(-offset);
+        dock->paintNgGlass(painter);
+        painter.restore();
+        // 2. the pill, the same as the section titles: a faint white veil with a hairline edge, round ends
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QRectF pill = QRectF(rect).adjusted(2.5, 2.5, -2.5, -2.5);
+        const qreal radius = pill.height() / 2.0;
         painter.setPen(QPen(dark ? QColor(255, 255, 255, qRound(46 * strength)) : QColor(0, 0, 0, qRound(30 * strength)), 1));
         painter.setBrush(dark ? QColor(255, 255, 255, qRound(30 * strength)) : QColor(255, 255, 255, qRound(150 * strength)));
-        painter.drawRoundedRect(rect, radius, radius);
-    };
-    const QModelIndexList selected = selectionModel() ? selectionModel()->selectedIndexes() : QModelIndexList();
-    QModelIndex hovered;
-    if (viewport()->underMouse()) {
-        hovered = indexAt(viewport()->mapFromGlobal(QCursor::pos()));
-    }
-    for (const QModelIndex &index : selected) {
-        pill(index, 1.0);
-    }
-    if (hovered.isValid() && !selected.contains(hovered)) {
-        pill(hovered, 0.5);
+        painter.drawRoundedRect(pill, radius, radius);
+        // 3. icon and text, by the delegate, as a plain row
+        QStyleOptionViewItem option;
+        initViewItemOption(&option);
+        option.rect = rect;
+        option.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver | QStyle::State_HasFocus);
+        option.showDecorationSelected = false;
+        if (QAbstractItemDelegate *delegate = itemDelegateForIndex(index)) {
+            delegate->paint(&painter, option, index);
+        }
+        painter.restore();
     }
 }
 
@@ -196,10 +222,10 @@ void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
 void PlacesPanel::paintEvent(QPaintEvent *event)
 {
     const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
+    KFilePlacesView::paintEvent(event);
     if (!plain) {
         ngPaintPills();
     }
-    KFilePlacesView::paintEvent(event);
     const auto *placesModel = qobject_cast<KFilePlacesModel *>(model());
     if (plain || !placesModel) {
         return;
