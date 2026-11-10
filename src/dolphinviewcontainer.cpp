@@ -210,6 +210,7 @@ public:
         : QWidget(parent)
         , m_view(view)
     {
+        applyChipStyle();
         auto *row = new QHBoxLayout(this);
         row->setContentsMargins(14, 4, 14, 6);
         row->setSpacing(10);
@@ -221,7 +222,7 @@ public:
         m_filter = new QLineEdit(this);
         m_filter->setPlaceholderText(QStringLiteral("Cerca nella cartella"));
         m_filter->setClearButtonEnabled(true);
-        m_filter->setFixedWidth(230);
+        m_filter->setFixedWidth(210);
         m_filter->setToolTip(QStringLiteral("Mostra solo gli elementi il cui nome contiene il testo. Esc svuota il campo."));
         row->addWidget(m_filter, 0, Qt::AlignTop);
         connect(m_filter, &QLineEdit::textChanged, this, [this](const QString &text) {
@@ -261,9 +262,35 @@ public:
         count();
     }
 
+protected:
+    void changeEvent(QEvent *event) override
+    {
+        QWidget::changeEvent(event);
+        if (event->type() == QEvent::PaletteChange) {
+            applyChipStyle();
+        }
+    }
+
 private:
     // what the filter shows: everything, files only (no folders), or one NgKind::Category
     enum { All = -1, FilesOnly = NgKind::CategoryCount };
+
+    // The chips and the search box draw themselves, the same under every widget style: a translucent
+    // pill for the checked one, a fainter one on hover, no outlines that depend on the style's hover tracking.
+    void applyChipStyle()
+    {
+        const QString ink = ngIsDark(palette()) ? QStringLiteral("255, 255, 255") : QStringLiteral("0, 0, 0");
+        setStyleSheet(QStringLiteral("QToolButton { border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; background: transparent; color: palette(window-text); }"
+                                     "QToolButton:hover { background: rgba(%1, 0.08); }"
+                                     "QToolButton:pressed { background: rgba(%1, 0.14); }"
+                                     "QToolButton:checked { background: rgba(%1, 0.16); border-color: rgba(%1, 0.20); }"
+                                     "QToolButton:checked:hover { background: rgba(%1, 0.20); }"
+                                     "QToolButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: right center; left: -3px; }"
+                                     "QLineEdit { border: 1px solid rgba(%1, 0.14); border-radius: 6px; padding: 3px 8px; background: rgba(%1, 0.06); color: palette(window-text); }"
+                                     "QLineEdit:hover { border-color: rgba(%1, 0.22); }"
+                                     "QLineEdit:focus { border-color: rgba(%1, 0.34); background: rgba(%1, 0.08); }")
+                          .arg(ink));
+    }
 
     QToolButton *chip(const QString &text, bool checked)
     {
