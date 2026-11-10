@@ -2174,9 +2174,6 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
                     }
                 }
             }
-            if (created.isValid() && modified.isValid() && qAbs(created.secsTo(modified)) <= 60) {
-                created = QDateTime(); // same moment: one line is enough
-            }
         }
 
         // ---- time column: "C  12/10/26 · 29 giorni fa" over "M  09/11/26 · ieri"; dropped on a narrow view (then chips)
