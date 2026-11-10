@@ -111,6 +111,8 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
 
     m_devices = new QCheckBox(QStringLiteral("Mostra la sezione «Dispositivi» (altrimenti c'è il riquadro del disco)"), this);
     form->addRow(QString(), m_devices);
+    m_sidebarFilters = new QCheckBox(QStringLiteral("Mostra la sezione «Filtri» in fondo al pannello"), this);
+    form->addRow(QString(), m_sidebarFilters);
 
     // ---- Elenco dei file --------------------------------------------------------------------------------
     group(QStringLiteral("Elenco dei file (vista dettagli)"), layout, &m_listForm);
@@ -210,12 +212,12 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
                  {m_motion, "GLASS_MOTION"}, {m_lavaStyle, "LAVA_STYLE"}, {m_lavaSize, "LAVA_SIZE"}, {m_lavaColours, "LAVA_COLORS"}, {m_lavaSpeed, "LAVA_SPEED"},
                  {m_rim, "GLASS_RIM"},      {m_devices, "DEVICES"},     {m_twoLines, "LIST"},        {m_rows, "ROWS"},        {m_icons, "ICONS"},
                  {m_mark, "MARK"},          {m_sigla, "SIGLA"},         {m_ago, "DATE_AGO"},         {m_tiles, "TILES"},          {m_rowDates, "ROW_DATES"},
-                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}, {m_cardsInfo, "CARDS_INFO"}, {m_cardsMark, "CARDS_MARK"}};
+                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}, {m_cardsInfo, "CARDS_INFO"}, {m_cardsMark, "CARDS_MARK"}, {m_sidebarFilters, "SIDEBAR_FILTERS"}};
     for (const auto &entry : bound) {
         entry.widget->setEnabled(!ngSettingFromEnvironment(entry.name));
     }
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float}) {
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
@@ -289,6 +291,7 @@ void NgSettingsPage::loadSettings()
         m_rim->setCurrentIndex(qMax(0, m_rim->findData(rim == QLatin1String("show") ? QStringLiteral("diagonal") : rim)));
     }
     m_devices->setChecked(ngSetting("DEVICES").toLower() == QLatin1String("show"));
+    m_sidebarFilters->setChecked(ngSetting("SIDEBAR_FILTERS").toLower() != QLatin1String("hide"));
 
     m_twoLines->setChecked(ngSetting("LIST").toLower() != QLatin1String("columns"));
     static const NgRowStyle order[] = {NgRowStyle::Card, NgRowStyle::Open, NgRowStyle::Line, NgRowStyle::Stripe, NgRowStyle::None};
@@ -334,6 +337,7 @@ void NgSettingsPage::applySettings()
                                 : QStringLiteral("%1,%2,%3").arg(m_lavaColour[0]->color().name(), m_lavaColour[1]->color().name(), m_lavaColour[2]->color().name()));
     setNgSetting("GLASS_RIM", m_rim->currentData().toString());
     setNgSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
+    setNgSetting("SIDEBAR_FILTERS", m_sidebarFilters->isChecked() ? QString() : QStringLiteral("hide"));
 
     setNgSetting("LIST", m_twoLines->isChecked() ? QString() : QStringLiteral("columns"));
     if (m_rows->isEnabled()) {

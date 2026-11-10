@@ -41,6 +41,7 @@ private:
     QComboBox *m_backdrop;
     QComboBox *m_rim;
     QCheckBox *m_devices;
+    QCheckBox *m_sidebarFilters;
     QFormLayout *m_sidebarForm;
     // sidebar: picture
     KUrlRequester *m_image;

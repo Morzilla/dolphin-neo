@@ -364,6 +364,7 @@ public:
         int count;
         int id;
         bool active;
+        QString icon;
     };
     QList<FilterEntry> filters() const
     {
@@ -372,14 +373,15 @@ public:
             return entries;
         }
         static const char *const labels[NgKind::CategoryCount] = {"Cartelle", "Immagini", "Documenti", "Fogli", "Archivi", "Audio e video", "Codice e dati", "Pacchetti", "Altro"};
-        entries.append({QStringLiteral("Tutti"), m_total, All, m_active == All});
+        static const char *const icons[NgKind::CategoryCount] = {"folder", "image-x-generic", "x-office-document", "x-office-spreadsheet", "application-zip", "video-x-generic", "application-json", "application-x-rpm", "unknown"};
+        entries.append({QStringLiteral("Tutti"), m_total, All, m_active == All, QStringLiteral("view-grid")});
         const int folders = m_counts[NgKind::Folder];
         if (folders > 0 && folders < m_total) {
-            entries.append({QStringLiteral("File"), m_total - folders, FilesOnly, m_active == FilesOnly});
+            entries.append({QStringLiteral("File"), m_total - folders, FilesOnly, m_active == FilesOnly, QStringLiteral("text-plain")});
         }
         for (int i = 0; i < NgKind::CategoryCount; ++i) {
             if (m_counts[i] > 0) {
-                entries.append({QString::fromUtf8(labels[i]), m_counts[i], i, m_active == i});
+                entries.append({QString::fromUtf8(labels[i]), m_counts[i], i, m_active == i, QString::fromLatin1(icons[i])});
             }
         }
         return entries;
@@ -532,7 +534,6 @@ private:
         m_flow->addWidget(gap);
 
         // one button that opens a menu with the filters; its label says which one is active
-        static const char *const labels[NgKind::CategoryCount] = {"Cartelle", "Immagini", "Documenti", "Fogli", "Archivi", "Audio e video", "Codice e dati", "Pacchetti", "Altro"};
         auto *button = new QToolButton(this);
         button->setAutoRaise(true);
         button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -555,16 +556,12 @@ private:
                 setActive(what);
             });
         };
-        entry(QStringLiteral("Tutti"), m_total, All);
-        const int folders = m_counts[NgKind::Folder];
-        if (folders > 0 && folders < m_total) {
-            entry(QStringLiteral("File"), m_total - folders, FilesOnly);
-        }
-        menu->addSeparator();
-        for (int i = 0; i < NgKind::CategoryCount; ++i) {
-            if (m_counts[i] > 0) {
-                entry(QString::fromUtf8(labels[i]), m_counts[i], i);
+        for (const FilterEntry &filter : filters()) {
+            if (filter.id == NgKind::Folder) {
+                menu->addSeparator(); // after "Tutti" and "File" come the kinds
             }
+            entry(filter.label, filter.count, filter.id);
+            menu->actions().constLast()->setIcon(QIcon::fromTheme(filter.icon));
         }
         button->setMenu(menu);
         menuButton(button);
@@ -2871,13 +2868,17 @@ public:
         bar->onFiltersChanged = [this] {
             refresh();
         };
+        connect(NgSettings::instance(), &NgSettings::changed, this, [this] {
+            refresh(); // SIDEBAR_FILTERS=hide switches the section off
+        });
         refresh();
     }
 
     void refresh()
     {
         m_entries = m_bar ? m_bar->filters() : QList<NgSortBar::FilterEntry>();
-        const int wanted = m_entries.count() < 2 ? 0 : titleHeight() + 6 + m_entries.count() * rowHeight() + 6;
+        const bool off = ngSetting("SIDEBAR_FILTERS").toLower() == QLatin1String("hide");
+        const int wanted = (off || m_entries.count() < 2) ? 0 : titleHeight() + 6 + m_entries.count() * rowHeight() + 6;
         if (wanted == 0) {
             hide();
         } else {
@@ -2943,8 +2944,10 @@ protected:
                 painter.setBrush(fill);
                 painter.drawRoundedRect(row.adjusted(0.5, 1.5, -0.5, -1.5), (row.height() - 3) / 2.0, (row.height() - 3) / 2.0);
             }
+            const int side = qMin(16, int(row.height()) - 6);
+            QIcon::fromTheme(entry.icon).paint(&painter, QRect(int(row.left()) + 12, int(row.center().y() - side / 2.0) + 1, side, side));
             painter.setPen(text);
-            painter.drawText(row.adjusted(14, 0, -14, 0), Qt::AlignLeft | Qt::AlignVCenter, entry.label);
+            painter.drawText(row.adjusted(12 + side + 8, 0, -14, 0), Qt::AlignLeft | Qt::AlignVCenter, entry.label);
             painter.setPen(dim);
             painter.drawText(row.adjusted(14, 0, -14, 0), Qt::AlignRight | Qt::AlignVCenter, QString::number(entry.count));
         }
