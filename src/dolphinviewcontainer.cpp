@@ -885,13 +885,19 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
     connect(undoManager, &KIO::FileUndoManager::jobRecordingFinished, this, &DolphinViewContainer::delayedStatusBarUpdate);
 
     m_topLayout->addWidget(m_messageWidget, positionFor.messageWidget, 0);
-    if (ngTwoLineList()) {
-        m_topLayout->addWidget(new NgSortBar(m_view, this), positionFor.sortBar, 0); // dolphin-ng
+    {
+        // dolphin-ng: the sort/filter bar and the preview card belong to the two-line list
+        auto *sortBar = new NgSortBar(m_view, this);
+        m_topLayout->addWidget(sortBar, positionFor.sortBar, 0);
+        sortBar->setVisible(ngTwoLineList());
         auto *previewCard = new NgPreviewCard(m_view, this);
         connect(m_view, &DolphinView::ngPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
             previewCard->showFor(item, rowRect);
         });
         connect(m_view, &DolphinView::urlChanged, previewCard, &QWidget::hide);
+        connect(NgSettings::instance(), &NgSettings::changed, sortBar, [sortBar] {
+            sortBar->setVisible(ngTwoLineList());
+        });
     }
     m_topLayout->addWidget(m_view, positionFor.view, 0);
     m_topLayout->addWidget(m_filterBar, positionFor.filterBar, 0);

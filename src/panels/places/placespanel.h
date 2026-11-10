@@ -12,6 +12,9 @@
 #include "panels/panel.h"
 
 #include <KFilePlacesView>
+#include <QPalette>
+
+class KFilePlacesModel;
 #include <QUrl>
 
 #include <Solid/SolidNamespace> // Solid::ErrorType
@@ -68,6 +71,9 @@ private Q_SLOTS:
     void slotRowsAboutToBeRemoved(const QModelIndex &parent, int first, int last);
 
 private:
+    void ngApplyPalette(); // dolphin-ng: glass highlight
+    void ngApplyDevices(KFilePlacesModel *placesModel); // dolphin-ng: hide the Devices section unless asked
+    QPalette m_ngPalette;
     void connectDeviceSignals(const QModelIndex &idx);
 
     QList<QAction *> m_customContextMenuActions;

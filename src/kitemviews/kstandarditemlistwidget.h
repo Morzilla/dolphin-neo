@@ -112,6 +112,7 @@ public:
     QRectF expansionToggleRect() const override;
     QRectF selectionToggleRect() const override;
     int ngActionAt(const QPointF &pos) const override;
+    void ngSettingsChanged() override;
     QPixmap createDragPixmap(const QStyleOptionGraphicsItem *option, QWidget *widget = nullptr) override;
     /** @see KItemListWidget::startActivateSoonAnimation() */
     void startActivateSoonAnimation(int timeUntilActivation) override;

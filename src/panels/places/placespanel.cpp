@@ -39,16 +39,8 @@
 PlacesPanel::PlacesPanel(QWidget *parent)
     : KFilePlacesView(parent)
 {
-    if (ngSetting("SIDEBAR").toLower() != QLatin1String("plain")) {
-        // dolphin-ng: the style highlights the selected and hovered entries with the palette's highlight colour;
-        // a translucent white (black on light schemes) turns that into a glass pill over the backdrop
-        QPalette glass = palette();
-        const int base = ngIsDark(glass) ? 255 : 0;
-        glass.setColor(QPalette::Highlight, QColor(base, base, base, 46));
-        glass.setColor(QPalette::HighlightedText, glass.color(QPalette::WindowText));
-        setPalette(glass);
-        viewport()->setPalette(glass);
-    }
+    m_ngPalette = palette(); // the stock palette, restored when the glass panel is turned off
+    ngApplyPalette();
     setViewportMargins(10, 12, 10, 12 + 62); // dolphin-ng: keep the entries inside the glass card drawn by the dock, above its disk usage box
     // dolphin-ng: never fill the list background, whatever the style's base colour is, so the glass card shows through
     viewport()->setAutoFillBackground(false);
@@ -98,25 +90,25 @@ PlacesPanel::PlacesPanel(QWidget *parent)
 
     // dolphin-ng: the disk usage box at the bottom of the card replaces the "Devices" section (internal disks);
     // removable devices keep their own section. DOLPHIN_NG_DEVICES=show keeps the section.
-    if (ngSetting("DEVICES").toLower() != QLatin1String("show") && ngSetting("SIDEBAR").toLower() != QLatin1String("plain")) {
-        // KFilePlacesView decides row visibility itself on model changes, so hide the rows again right after it
-        auto hideDevices = [this, placesModel] {
-            QTimer::singleShot(0, this, [this, placesModel] {
-                for (int row = 0; row < placesModel->rowCount(); ++row) {
-                    if (placesModel->groupType(placesModel->index(row, 0)) == KFilePlacesModel::DevicesType && !isRowHidden(row)) {
-                        setRowHidden(row, true);
-                    }
-                }
-            });
-        };
-        connect(placesModel, &QAbstractItemModel::rowsInserted, this, hideDevices);
-        connect(placesModel, &QAbstractItemModel::rowsRemoved, this, hideDevices);
-        connect(placesModel, &QAbstractItemModel::dataChanged, this, hideDevices);
-        connect(placesModel, &QAbstractItemModel::modelReset, this, hideDevices);
-        connect(placesModel, &KFilePlacesModel::groupHiddenChanged, this, hideDevices);
-        connect(placesModel, &KFilePlacesModel::reloaded, this, hideDevices);
-        hideDevices();
-    }
+    // KFilePlacesView decides row visibility itself on model changes, so hide the rows again right after it
+    auto applyDevices = [this, placesModel] {
+        QTimer::singleShot(0, this, [this, placesModel] {
+            ngApplyDevices(placesModel);
+        });
+    };
+    connect(placesModel, &QAbstractItemModel::rowsInserted, this, applyDevices);
+    connect(placesModel, &QAbstractItemModel::rowsRemoved, this, applyDevices);
+    connect(placesModel, &QAbstractItemModel::dataChanged, this, applyDevices);
+    connect(placesModel, &QAbstractItemModel::modelReset, this, applyDevices);
+    connect(placesModel, &KFilePlacesModel::groupHiddenChanged, this, applyDevices);
+    connect(placesModel, &KFilePlacesModel::reloaded, this, applyDevices);
+    applyDevices();
+    connect(NgSettings::instance(), &NgSettings::changed, this, [this, placesModel] {
+        ngApplyPalette();
+        ngApplyDevices(placesModel);
+        viewport()->update();
+        update();
+    });
 
     connect(placesModel, &KFilePlacesModel::errorMessage, this, &PlacesPanel::errorMessage);
     connect(placesModel, &KFilePlacesModel::teardownDone, this, &PlacesPanel::slotTearDownDone);
@@ -131,12 +123,44 @@ PlacesPanel::PlacesPanel(QWidget *parent)
 
 PlacesPanel::~PlacesPanel() = default;
 
+void PlacesPanel::ngApplyPalette()
+{
+    QPalette glass = m_ngPalette;
+    if (ngSetting("SIDEBAR").toLower() != QLatin1String("plain")) {
+        // the style highlights the selected and hovered entries with the palette's highlight colour;
+        // a translucent white (black on light schemes) turns that into a glass pill over the backdrop
+        const int base = ngIsDark(glass) ? 255 : 0;
+        glass.setColor(QPalette::Highlight, QColor(base, base, base, 46));
+        glass.setColor(QPalette::HighlightedText, glass.color(QPalette::WindowText));
+    }
+    setPalette(glass);
+    viewport()->setPalette(glass);
+}
+
+void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
+{
+    const bool hide = ngSetting("DEVICES").toLower() != QLatin1String("show") && ngSetting("SIDEBAR").toLower() != QLatin1String("plain");
+    for (int row = 0; row < placesModel->rowCount(); ++row) {
+        const QModelIndex index = placesModel->index(row, 0);
+        if (placesModel->groupType(index) != KFilePlacesModel::DevicesType) {
+            continue;
+        }
+        if (hide) {
+            if (!isRowHidden(row)) {
+                setRowHidden(row, true);
+            }
+        } else if (isRowHidden(row) && !placesModel->isHidden(index) && !placesModel->isGroupHidden(KFilePlacesModel::DevicesType)) {
+            setRowHidden(row, false);
+        }
+    }
+}
+
 // dolphin-ng: over the glass card the section titles ("Places", "Remote"...) are too faint to read:
 // draw each one again as a small dark pill with light text, on top of the original.
 void PlacesPanel::paintEvent(QPaintEvent *event)
 {
     KFilePlacesView::paintEvent(event);
-    static const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
+    const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
     const auto *placesModel = qobject_cast<KFilePlacesModel *>(model());
     if (plain || !placesModel) {
         return;

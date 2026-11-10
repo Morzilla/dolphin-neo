@@ -363,6 +363,8 @@ Q_SIGNALS:
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
     void setItemSize(const QSizeF &size);
+    /** dolphin-ng: re-layout every visible item after the NG settings changed. */
+    void ngRefresh();
     void setStyleOption(const KItemListStyleOption &option);
 
     /**

@@ -919,6 +919,22 @@ void KItemListView::setItemSize(const QSizeF &size)
     onItemSizeChanged(size, previousSize);
 }
 
+void KItemListView::ngRefresh()
+{
+    QHashIterator<int, KItemListWidget *> it(m_visibleItems);
+    while (it.hasNext()) {
+        it.next();
+        it.value()->ngSettingsChanged();
+    }
+    m_sizeHintResolver->clearCache();
+    m_layouter->markAsDirty();
+    doLayout(NoAnimation);
+    if (m_headerWidget) {
+        m_headerWidget->update();
+    }
+    update();
+}
+
 void KItemListView::setStyleOption(const KItemListStyleOption &option)
 {
     if (m_styleOption == option) {

@@ -25,6 +25,22 @@ class KItemListSelectionToggle;
  * dolphin-ng settings. A value comes from the environment variable DOLPHIN_NG_<NAME> if it is set,
  * else from dolphinrc, group DolphinNG, key <NAME> (written by the settings page), else it is the fallback.
  */
+/**
+ * dolphin-ng: emits changed() after the NG settings page applied new values (ngSettingsInvalidate()).
+ * Everything that reads a setting at construction or caches it listens here and re-applies it.
+ */
+class DOLPHIN_EXPORT NgSettings : public QObject
+{
+    Q_OBJECT
+public:
+    static NgSettings *instance();
+Q_SIGNALS:
+    void changed();
+};
+/** dolphin-ng: forget the cached values, re-read dolphinrc and tell every listener. */
+DOLPHIN_EXPORT void ngSettingsInvalidate();
+/** dolphin-ng: grows with every ngSettingsInvalidate(), for callers that keep a derived value. */
+DOLPHIN_EXPORT int ngSettingsGeneration();
 DOLPHIN_EXPORT QString ngSetting(const char *name, const QString &fallback = QString());
 DOLPHIN_EXPORT int ngSettingInt(const char *name, int fallback);
 /** Store a value in dolphinrc; an empty value removes it. */
@@ -240,6 +256,8 @@ public:
      * 0 none, 1 open, 2 menu. The controller handles the click, like for the selection toggle.
      */
     virtual int ngActionAt(const QPointF &pos) const;
+    /** dolphin-ng: the NG settings changed; drop whatever layout was derived from them. */
+    virtual void ngSettingsChanged();
 
     /**
      * @return Rectangle for the expansion-toggle that is used to open a sub-tree of the model.

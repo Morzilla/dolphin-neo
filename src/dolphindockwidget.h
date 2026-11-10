@@ -63,6 +63,8 @@ private:
     qreal backdropLuminance() const;
     /** dolphin-ng: adapt the glass transparency to the backdrop. */
     void updateGlass();
+    /** dolphin-ng: (re)start the timers the current settings need and repaint. */
+    void ngApplySettings();
 
     bool m_locked;
     QWidget *m_dockTitleBar;

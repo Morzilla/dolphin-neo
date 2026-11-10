@@ -42,19 +42,22 @@
 
 namespace
 {
-// dolphin-ng: how the file type is marked at the start of a row (setting MARK, read at start-up).
+// dolphin-ng: how the file type is marked at the start of a row (setting MARK).
 // Watermark is the faint icon and large abbreviation; the others pair a small line glyph with the abbreviation.
 enum class NgMark { Watermark, Tile, Pill, Signs, Header };
 NgMark ngMark()
 {
-    static const NgMark mark = [] {
+    static NgMark mark = NgMark::Watermark;
+    static int generation = -1;
+    if (generation != ngSettingsGeneration()) {
+        generation = ngSettingsGeneration();
         const QString name = ngSetting("MARK").toLower();
-        return name == QLatin1String("tile") ? NgMark::Tile
+        mark = name == QLatin1String("tile") ? NgMark::Tile
             : name == QLatin1String("pill")  ? NgMark::Pill
             : name == QLatin1String("signs") ? NgMark::Signs
             : name == QLatin1String("header") ? NgMark::Header
                                               : NgMark::Watermark;
-    }();
+    }
     return mark;
 }
 
@@ -293,7 +296,7 @@ qreal KStandardItemListWidgetInformant::preferredRoleColumnWidth(const QByteArra
     qreal width = KStandardItemListWidget::columnPadding(option);
     if (role != "text") {
         // dolphin-ng: extra room between the columns of the details view (DOLPHIN_NG_COLGAP, pixels)
-        static const int gap = ngSettingInt("COLGAP", 28);
+        const int gap = ngSettingInt("COLGAP", 28);
         width += gap;
     }
 
@@ -681,7 +684,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
             //   fill (default)     large solid letters in the row colour, faint
             //   outline            hollow letters: a thin outline that thins out to the right, barely filled
             //   label              small, widely spaced capitals in the full row colour
-            static const QByteArray siglaStyle = ngSetting("SIGLA").toLower().toLatin1();
+            const QByteArray siglaStyle = ngSetting("SIGLA").toLower().toLatin1();
             const qreal rowHeight = size().height();
             if (siglaStyle == "label") {
                 QFont labelFont(m_customizedFont);
@@ -1082,6 +1085,14 @@ bool KStandardItemListWidget::isIconControlledByActivateSoonAnimation() const
 KItemListWidgetInformant *KStandardItemListWidget::createInformant()
 {
     return new KStandardItemListWidgetInformant();
+}
+
+void KStandardItemListWidget::ngSettingsChanged()
+{
+    m_ngIconFaded = false; // the icon may be needed un-faded again (tile mark / icons shown)
+    m_ngIcon = QPixmap();
+    invalidateCache();
+    update();
 }
 
 void KStandardItemListWidget::invalidateCache()
@@ -2028,7 +2039,7 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             TextInfo *textInfo = m_textInfo.value(dateRole);
             textInfo->staticText.setText(text);
             // the days gone by since that date go on the second line (DATE_AGO=hide turns them off)
-            static const bool showAgo = ngSetting("DATE_AGO").toLower() != QLatin1String("hide");
+            const bool showAgo = ngSetting("DATE_AGO").toLower() != QLatin1String("hide");
             // the model keeps the raw epoch seconds (see KFileItemModel), other roles a QDateTime
             const QVariant raw = values.value(dateRole);
             const QDateTime when = raw.typeId() == QMetaType::QDateTime ? raw.toDateTime() : (raw.toLongLong() > 0 ? QDateTime::fromSecsSinceEpoch(raw.toLongLong()) : QDateTime());

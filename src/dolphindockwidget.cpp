@@ -311,21 +311,39 @@ DolphinDockWidget::DolphinDockWidget(const QString &title, QWidget *parent, Qt::
 {
     setFeatures(DefaultDockWidgetFeatures);
 
-    // dolphin-ng: follow the backdrop unless a fixed transparency was requested
-    if (!ngGlassPlain()) {
-        startTimer(30000); // disk usage box
-    }
+    startTimer(30000); // disk usage box
+    ngApplySettings();
+    connect(NgSettings::instance(), &NgSettings::changed, this, &DolphinDockWidget::ngApplySettings);
+}
+
+void DolphinDockWidget::ngApplySettings()
+{
+    // dolphin-ng: in live mode the transparency follows the backdrop, unless a fixed one was requested
+    const bool pollBackdrop = !ngGlassPlain() && !ngGlassImageMode() && !qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS") && KWindowSystem::isPlatformX11();
     if (ngGlassImageMode()) {
         m_glass = ngEnvInt("DOLPHIN_NG_GLASS", 55); // how much of the image shows through the window tint
     } else if (qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS")) {
         m_glass = ngEnvInt("DOLPHIN_NG_GLASS", 75);
-    } else if (!ngGlassPlain() && KWindowSystem::isPlatformX11()) {
+    } else {
+        m_glass = 75;
+    }
+    if (pollBackdrop && !m_glassTimer) {
         m_glassTimer = new QTimer(this);
         // DOLPHIN_NG_GLASS_MS: polling interval of the backdrop, milliseconds (default 150)
         m_glassTimer->setInterval(qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS_MS") ? qMax(50, qEnvironmentVariableIntValue("DOLPHIN_NG_GLASS_MS")) : 150);
         connect(m_glassTimer, &QTimer::timeout, this, &DolphinDockWidget::updateGlass);
-        m_glassTimer->start();
     }
+    if (m_glassTimer) {
+        if (pollBackdrop) {
+            m_glassTimer->start();
+        } else {
+            m_glassTimer->stop();
+        }
+    }
+    if (m_lavaTimer) {
+        m_lavaTimer->stop(); // paintNgGlass() restarts it when the backdrop still animates
+    }
+    update();
 }
 
 qreal DolphinDockWidget::backdropLuminance() const
@@ -427,13 +445,13 @@ DolphinDockWidget::~DolphinDockWidget() = default;
 
 bool DolphinDockWidget::ngGlassPlain()
 {
-    static const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
+    const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
     return plain;
 }
 
 bool DolphinDockWidget::ngGlassImageMode()
 {
-    static const bool live = ngSetting("GLASS_MODE").toLower() == QLatin1String("live");
+    const bool live = ngSetting("GLASS_MODE").toLower() == QLatin1String("live");
     return !live;
 }
 
@@ -592,7 +610,7 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
     painter.drawRoundedRect(card, radius, radius);
 
     // rim around the card. GLASS_RIM: none (default) | diagonal | soft | bevel | glow | top
-    static const QString rimStyle = ngSetting("GLASS_RIM").toLower() == QLatin1String("show") ? QStringLiteral("diagonal") : ngSetting("GLASS_RIM").toLower();
+    const QString rimStyle = ngSetting("GLASS_RIM").toLower() == QLatin1String("show") ? QStringLiteral("diagonal") : ngSetting("GLASS_RIM").toLower();
     const bool dark = ngIsDark(palette());
     const QRectF edge = card.adjusted(0.5, 0.5, -0.5, -0.5);
     painter.setBrush(Qt::NoBrush);

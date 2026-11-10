@@ -188,10 +188,19 @@ DolphinMainWindow::DolphinMainWindow()
     connect(m_tabWidget, &DolphinTabWidget::tabCountChanged, this, &DolphinMainWindow::tabCountChanged);
     connect(m_tabWidget, &DolphinTabWidget::currentUrlChanged, this, &DolphinMainWindow::updateWindowTitle);
     setCentralWidget(m_tabWidget);
-    if (ngTwoLineList()) {
-        // dolphin-ng: the handle between the panels and the view stays usable but draws nothing
-        setStyleSheet(QStringLiteral("QMainWindow::separator { background: transparent; width: 4px; height: 4px; }"));
-    }
+    // dolphin-ng: the handle between the panels and the view stays usable but draws nothing
+    auto applyNgWindowSettings = [this] {
+        setStyleSheet(ngTwoLineList() ? QStringLiteral("QMainWindow::separator { background: transparent; width: 4px; height: 4px; }") : QString());
+        const bool translucent = !DolphinDockWidget::ngGlassPlain() && !DolphinDockWidget::ngGlassImageMode();
+        if (translucent != testAttribute(Qt::WA_TranslucentBackground)) {
+            setAttribute(Qt::WA_TranslucentBackground, translucent); // Qt re-creates the native window for this
+            if (windowHandle()) {
+                KWindowEffects::enableBlurBehind(windowHandle(), translucent);
+            }
+        }
+    };
+    applyNgWindowSettings();
+    connect(NgSettings::instance(), &NgSettings::changed, this, applyNgWindowSettings);
 
     m_actionTextHelper = new SelectionMode::ActionTextHelper(this);
     setupActions();

@@ -14,6 +14,8 @@
 #include <KConfigGroup>
 #include <KSharedConfig>
 
+#include <QHash>
+
 #include <QApplication>
 #include <QSet>
 #include <QLinearGradient>
@@ -102,13 +104,57 @@ QVariant KItemListWidget::value(const QByteArray &key) const
     return m_data.value(key);
 }
 
+namespace
+{
+struct NgCached {
+    bool present = false;
+    QString value;
+};
+QHash<QByteArray, NgCached> &ngCache()
+{
+    static QHash<QByteArray, NgCached> cache;
+    return cache;
+}
+int ngGeneration = 0;
+}
+
+NgSettings *NgSettings::instance()
+{
+    static NgSettings settings;
+    return &settings;
+}
+
+void ngSettingsInvalidate()
+{
+    ngCache().clear();
+    ++ngGeneration;
+    Q_EMIT NgSettings::instance()->changed();
+}
+
+int ngSettingsGeneration()
+{
+    return ngGeneration;
+}
+
+// Values are cached: the row painting asks for them many times per frame. ngSettingsInvalidate() clears the cache.
 QString ngSetting(const char *name, const QString &fallback)
 {
-    const QByteArray variable = QByteArray("DOLPHIN_NG_") + name;
-    if (qEnvironmentVariableIsSet(variable.constData())) {
-        return qEnvironmentVariable(variable.constData());
+    const QByteArray key(name);
+    auto it = ngCache().constFind(key);
+    if (it == ngCache().constEnd()) {
+        NgCached entry;
+        const QByteArray variable = QByteArray("DOLPHIN_NG_") + name;
+        if (qEnvironmentVariableIsSet(variable.constData())) {
+            entry.present = true;
+            entry.value = qEnvironmentVariable(variable.constData());
+        } else {
+            const KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG"));
+            entry.present = group.hasKey(name);
+            entry.value = group.readEntry(name, QString());
+        }
+        it = ngCache().insert(key, entry);
     }
-    return KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG")).readEntry(name, fallback);
+    return it->present ? it->value : fallback;
 }
 
 int ngSettingInt(const char *name, int fallback)
@@ -127,6 +173,7 @@ void setNgSetting(const char *name, const QString &value)
         group.writeEntry(name, value);
     }
     group.sync();
+    ngCache().remove(QByteArray(name));
 }
 
 bool ngSettingFromEnvironment(const char *name)
@@ -149,10 +196,13 @@ NgRowStyle ngRowStyleFromName(const QByteArray &name, NgRowStyle fallback)
 // the current style: DOLPHIN_NG_ROWS if set, else what was last chosen in the window, else cards
 NgRowStyle &ngRowStyleRef()
 {
-    static NgRowStyle style = [] {
+    static NgRowStyle style = NgRowStyle::Card;
+    static int generation = -1;
+    if (generation != ngSettingsGeneration()) {
+        generation = ngSettingsGeneration();
         const QByteArray saved = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG")).readEntry("RowStyle", QByteArray("card")).toLower();
-        return ngRowStyleFromName(qgetenv("DOLPHIN_NG_ROWS").toLower(), ngRowStyleFromName(saved, NgRowStyle::Card));
-    }();
+        style = ngRowStyleFromName(qgetenv("DOLPHIN_NG_ROWS").toLower(), ngRowStyleFromName(saved, NgRowStyle::Card));
+    }
     return style;
 }
 }
@@ -173,7 +223,7 @@ void setNgRowStyle(NgRowStyle style)
 
 bool ngTwoLineList()
 {
-    static const bool columns = ngSetting("LIST").toLower() == QLatin1String("columns");
+    const bool columns = ngSetting("LIST").toLower() == QLatin1String("columns");
     return !columns && QGuiApplication::layoutDirection() == Qt::LeftToRight;
 }
 
@@ -225,6 +275,11 @@ NgKind ngKindFor(const QString &name, bool isDir)
     return kind(ext.toUpper(), category);
 }
 
+void KItemListWidget::ngSettingsChanged()
+{
+    update();
+}
+
 int KItemListWidget::ngActionAt(const QPointF &pos) const
 {
     Q_UNUSED(pos)
@@ -233,7 +288,7 @@ int KItemListWidget::ngActionAt(const QPointF &pos) const
 
 bool ngTiles()
 {
-    static const bool off = ngSetting("TILES").toLower() == QLatin1String("off");
+    const bool off = ngSetting("TILES").toLower() == QLatin1String("off");
     return !off;
 }
 
@@ -251,7 +306,7 @@ QColor ngAccent(const QColor &colour, bool dark)
 
 bool ngNoIcons()
 {
-    static const bool show = ngSetting("ICONS").toLower() == QLatin1String("show");
+    const bool show = ngSetting("ICONS").toLower() == QLatin1String("show");
     return !show && ngTwoLineList();
 }
 

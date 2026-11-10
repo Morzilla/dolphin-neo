@@ -23,6 +23,13 @@ DolphinItemListView::DolphinItemListView(QGraphicsWidget *parent)
     : KFileItemListView(parent)
     , m_zoomLevel(0)
 {
+    // dolphin-ng: the NG settings apply without a restart
+    connect(NgSettings::instance(), &NgSettings::changed, this, [this] {
+        setHeaderVisible(itemLayout() == DetailsLayout && !ngTwoLineList());
+        updateFont();
+        updateGridSize();
+        ngRefresh();
+    });
     DolphinItemListView::updateFont();
     updateGridSize();
 }
