@@ -2772,8 +2772,10 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         }
         return y + chipHeight;
     };
+    // the eye and menu buttons of the rows are not shown on cards: they would cover the quick actions
+    // (the preview and the menu stay on the right click and the keyboard)
     auto actionsAt = [this, hovered, actionSide](qreal right, qreal top) {
-        if (hovered) {
+        if (hovered && ngSetting("CARDS_HOVER_BUTTONS") == QLatin1String("1")) {
             m_ngCardMenu = QRectF(right - actionSide, top, actionSide, actionSide);
             m_ngCardEye = QRectF(right - 2 * actionSide - 4, top, actionSide, actionSide);
         }
