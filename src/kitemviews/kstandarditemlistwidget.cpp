@@ -2887,7 +2887,15 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         if (modified.isValid()) {
             when << QStringLiteral("Modificato %1").arg(dateLine(modified));
         }
-        putText(smallFm.elidedText(joined(when), Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
+        if (actionLabels.isEmpty() && !fullInfo) {
+            // nothing in the foot (folders, files without quick actions): each date gets its own line
+            for (const QString &line : std::as_const(when)) {
+                putText(smallFm.elidedText(line, Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
+                y += smallFm.height() + 2;
+            }
+        } else {
+            putText(smallFm.elidedText(joined(when), Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
+        }
         actionsAt(right, footTop + (chipHeight - actionSide) / 2.0);
         const qreal footRight = hovered ? m_ngCardEye.left() - 6 : right;
         if (!actionLabels.isEmpty()) {
