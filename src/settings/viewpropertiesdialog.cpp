@@ -71,6 +71,7 @@ ViewPropertiesDialog::ViewPropertiesDialog(DolphinView *dolphinView)
     m_viewMode->addItem(QIcon::fromTheme(QStringLiteral("view-list-icons")), i18nc("@item:inlistbox", "Icons"), DolphinView::IconsView);
     m_viewMode->addItem(QIcon::fromTheme(QStringLiteral("view-list-details")), i18nc("@item:inlistbox", "Compact"), DolphinView::CompactView);
     m_viewMode->addItem(QIcon::fromTheme(QStringLiteral("view-list-tree")), i18nc("@item:inlistbox", "Details"), DolphinView::DetailsView);
+    m_viewMode->addItem(QIcon::fromTheme(QStringLiteral("view-grid"), QIcon::fromTheme(QStringLiteral("view-list-icons"))), QStringLiteral("Card"), DolphinView::CardsView);
 
     m_sortOrder = new QComboBox();
     m_sortOrder->addItem(i18nc("@item:inlistbox Sort", "Ascending"));
@@ -397,6 +398,9 @@ void ViewPropertiesDialog::loadSettings()
         break;
     case DolphinView::DetailsView:
         m_viewMode->setCurrentIndex(2);
+        break;
+    case DolphinView::CardsView:
+        m_viewMode->setCurrentIndex(3);
         break;
     default:
         break;

@@ -169,6 +169,23 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_tiles = new QCheckBox(QStringLiteral("Tessere scure con anteprime arrotondate"), this);
     iconsForm->addRow(QString(), m_tiles);
 
+    // ---- Vista a card -----------------------------------------------------------------------------------
+    QFormLayout *cardsForm = nullptr;
+    group(QStringLiteral("Vista a card"), layout, &cardsForm);
+    m_cards = new QComboBox(this);
+    m_cards->addItem(QStringLiteral("A · Tessera: anteprima in alto, scheda sotto"), QStringLiteral("a"));
+    m_cards->addItem(QStringLiteral("B · Scheda: icona a sinistra, tutto in tre righe"), QStringLiteral("b"));
+    m_cards->addItem(QStringLiteral("C · Dossier: la riga ripiegata, giorni trascorsi a destra"), QStringLiteral("c"));
+    cardsForm->addRow(QStringLiteral("Tipo di card:"), m_cards);
+    m_cardsFit = new QComboBox(this);
+    m_cardsFit->addItem(QStringLiteral("Card di misura fissa, spazio distribuito fra le colonne"), QString());
+    m_cardsFit->addItem(QStringLiteral("Le card si allargano fino a riempire la riga"), QStringLiteral("stretch"));
+    cardsForm->addRow(QStringLiteral("Griglia:"), m_cardsFit);
+    auto *cardsNote = new QLabel(QStringLiteral("La vista si attiva dal menu Visualizza (Card, Ctrl+4) o dal pulsante «Card» nella barra dei filtri; lo zoom cambia la misura delle card."), this);
+    cardsNote->setWordWrap(true);
+    cardsNote->setEnabled(false);
+    cardsForm->addRow(QString(), cardsNote);
+
     auto *note = new QLabel(QStringLiteral("Le modifiche valgono appena applicate. Una variabile DOLPHIN_NG_… impostata all'avvio ha la precedenza: la voce corrispondente è disattivata."), this);
     note->setWordWrap(true);
     note->setEnabled(false);
@@ -185,7 +202,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
                  {m_motion, "GLASS_MOTION"}, {m_lavaStyle, "LAVA_STYLE"}, {m_lavaSize, "LAVA_SIZE"}, {m_lavaColours, "LAVA_COLORS"}, {m_lavaSpeed, "LAVA_SPEED"},
                  {m_rim, "GLASS_RIM"},      {m_devices, "DEVICES"},     {m_twoLines, "LIST"},        {m_rows, "ROWS"},        {m_icons, "ICONS"},
                  {m_mark, "MARK"},          {m_sigla, "SIGLA"},         {m_ago, "DATE_AGO"},         {m_tiles, "TILES"},          {m_rowDates, "ROW_DATES"},
-                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}};
+                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}};
     for (const auto &entry : bound) {
         entry.widget->setEnabled(!ngSettingFromEnvironment(entry.name));
     }
@@ -194,7 +211,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
-    for (QComboBox *combo : {m_backdrop, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla}) {
+    for (QComboBox *combo : {m_backdrop, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla, m_cards, m_cardsFit}) {
         connect(combo, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     }
     for (QSlider *slider : {m_glass, m_blur, m_lavaSize, m_lavaSpeed}) {
@@ -283,6 +300,10 @@ void NgSettingsPage::loadSettings()
     m_hoverDelay->setValue(hover > 0 ? qBound(100, hover, 5000) : 700);
     m_float->setChecked(ngSetting("PREVIEW_FLOAT") == QLatin1String("1"));
     m_tiles->setChecked(ngSetting("TILES").toLower() != QLatin1String("off"));
+    static const char *const looks[] = {"a", "b", "c"};
+    m_cards->setCurrentIndex(int(ngCardStyle()));
+    Q_UNUSED(looks)
+    m_cardsFit->setCurrentIndex(ngCardsStretch() ? 1 : 0);
 }
 
 void NgSettingsPage::applySettings()
@@ -322,6 +343,8 @@ void NgSettingsPage::applySettings()
     setNgSetting("PREVIEW_FLOAT", m_float->isChecked() ? QStringLiteral("1") : QString());
     setNgSetting("PREVIEW_HOVER", m_hoverPreview->isChecked() ? QString::number(m_hoverDelay->value()) : QString());
     setNgSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
+    setNgSetting("CARDS", m_cards->currentData().toString());
+    setNgSetting("CARDS_FIT", m_cardsFit->currentData().toString());
 
     ngSettingsInvalidate(); // everything that depends on these re-reads them now
 }

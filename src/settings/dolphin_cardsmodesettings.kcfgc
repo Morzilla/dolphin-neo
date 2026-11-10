@@ -1,0 +1,6 @@
+File=dolphin_cardsmodesettings.kcfg
+ClassName=CardsModeSettings
+Singleton=yes
+Mutators=true
+IncludeFiles=dolphin_export.h
+Visibility=DOLPHIN_EXPORT

@@ -285,6 +285,9 @@ private:
      */
     KToggleAction *detailsModeAction();
 
+    /** dolphin-ng: the cards view */
+    KToggleAction *cardsModeAction();
+
     void updateGroupByActions();
 
     KActionCollection *m_actionCollection;

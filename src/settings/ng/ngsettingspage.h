@@ -70,6 +70,9 @@ private:
     QFormLayout *m_listForm;
     // icons view
     QCheckBox *m_tiles;
+    // cards view
+    QComboBox *m_cards;
+    QComboBox *m_cardsFit;
 };
 
 #endif

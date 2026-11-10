@@ -205,6 +205,7 @@ kconfig_add_kcfg_files(dolphinprivate
     settings/dolphin_directoryviewpropertysettings.kcfgc
     settings/dolphin_detailsmodesettings.kcfgc
     settings/dolphin_iconsmodesettings.kcfgc
+    settings/dolphin_cardsmodesettings.kcfgc
     settings/dolphin_contentdisplaysettings.kcfgc
     settings/dolphin_generalsettings.kcfgc
     settings/dolphin_contextmenusettings.kcfgc
@@ -636,6 +637,7 @@ install( FILES settings/dolphin_directoryviewpropertysettings.kcfg
                settings/dolphin_contextmenusettings.kcfg
                settings/dolphin_compactmodesettings.kcfg
                settings/dolphin_iconsmodesettings.kcfg
+               settings/dolphin_cardsmodesettings.kcfg
                settings/dolphin_detailsmodesettings.kcfg
                settings/dolphin_versioncontrolsettings.kcfg
          DESTINATION ${KDE_INSTALL_KCFGDIR} )

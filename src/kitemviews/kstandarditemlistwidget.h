@@ -76,6 +76,7 @@ protected:
     void calculateIconsLayoutItemSizeHints(QVector<std::pair<qreal, bool>> &logicalHeightHints, qreal &logicalWidthHint, const KItemListView *view) const;
     void calculateCompactLayoutItemSizeHints(QVector<std::pair<qreal, bool>> &logicalHeightHints, qreal &logicalWidthHint, const KItemListView *view) const;
     void calculateDetailsLayoutItemSizeHints(QVector<std::pair<qreal, bool>> &logicalHeightHints, qreal &logicalWidthHint, const KItemListView *view) const;
+    void calculateCardsLayoutItemSizeHints(QVector<std::pair<qreal, bool>> &logicalHeightHints, qreal &logicalWidthHint, const KItemListView *view) const; // dolphin-ng
 
     friend class KStandardItemListWidget; // Accesses roleText()
 };
@@ -90,7 +91,7 @@ class DOLPHIN_EXPORT KStandardItemListWidget : public KItemListWidget
     Q_OBJECT
 
 public:
-    enum Layout { IconsLayout, CompactLayout, DetailsLayout };
+    enum Layout { IconsLayout, CompactLayout, DetailsLayout, CardsLayout /* dolphin-ng */ };
 
     KStandardItemListWidget(KItemListWidgetInformant *informant, QGraphicsItem *parent);
     ~KStandardItemListWidget() override;
@@ -216,6 +217,11 @@ private:
     void updateIconsLayoutTextCache();
     void updateCompactLayoutTextCache();
     void updateDetailsLayoutTextCache();
+    // dolphin-ng: the cards view
+    void updateCardsLayoutTextCache();
+    void ngPlaceCardPixmap();
+    void paintNgCardSheet(QPainter *painter);
+    void paintNgCard(QPainter *painter, QWidget *widget);
 
     /** Draw the icon overlays at a fixed size in the corners of the on-screen
      *  icon. Must be called after the icon itself has been drawn. */
@@ -315,6 +321,19 @@ private:
     qreal m_ngBarFraction = -1;
     QRectF m_ngActionsRect; // where the hover actions go
     QGraphicsWidget *m_ngActions = nullptr;
+    // dolphin-ng: the cards view
+    struct NgCardText {
+        QString text;
+        QPointF pos; // baseline origin
+        QFont font;
+        int tone = 0; // 0 additional-info colour, 1 text colour, 2 dimmer
+    };
+    QList<NgCardText> m_ngCardTexts;
+    QRectF m_ngCardThumb; // the thumbnail band (Tessera) or the icon area
+    qreal m_ngCardIconSide = 0; // side of the icon when the pixmap is not a preview
+    bool m_ngCardPreview = false; // the pixmap is a preview, not the icon of the type
+    QRectF m_ngCardEye; // hover actions: preview and menu
+    QRectF m_ngCardMenu;
 
     QList<QByteArray> m_sortedVisibleRoles;
 

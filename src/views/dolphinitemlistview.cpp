@@ -6,6 +6,7 @@
 
 #include "dolphinitemlistview.h"
 
+#include "dolphin_cardsmodesettings.h"
 #include "dolphin_compactmodesettings.h"
 #include "dolphin_contentdisplaysettings.h"
 #include "dolphin_detailsmodesettings.h"
@@ -17,6 +18,7 @@
 #include "zoomlevelinfo.h"
 
 #include <KIO/PreviewJob>
+#include <QGraphicsSceneResizeEvent>
 #include <QtMath>
 
 DolphinItemListView::DolphinItemListView(QGraphicsWidget *parent)
@@ -112,6 +114,7 @@ void DolphinItemListView::readSettings()
     IconsModeSettings::self()->load();
     CompactModeSettings::self()->load();
     DetailsModeSettings::self()->load();
+    CardsModeSettings::self()->load();
 
     ContentDisplaySettings::self()->load();
 
@@ -134,6 +137,15 @@ void DolphinItemListView::writeSettings()
     IconsModeSettings::self()->save();
     CompactModeSettings::self()->save();
     DetailsModeSettings::self()->save();
+    CardsModeSettings::self()->save();
+}
+
+void DolphinItemListView::resizeEvent(QGraphicsSceneResizeEvent *event)
+{
+    KFileItemListView::resizeEvent(event);
+    if (itemLayout() == CardsLayout && ngCardsStretch() && event->newSize().width() != event->oldSize().width()) {
+        updateGridSize();
+    }
 }
 
 KItemListWidgetCreatorBase *DolphinItemListView::defaultWidgetCreator() const
@@ -256,6 +268,27 @@ void DolphinItemListView::updateGridSize()
         if (ngNoIcons()) {
             // dolphin-ng: the icon-less row is two lines of text plus its own padding, whatever the icon size
             itemHeight = padding * 2 + 2 * option.fontMetrics.height() + 4 + 24;
+        }
+        break;
+    }
+    case KFileItemListView::CardsLayout: {
+        // dolphin-ng: a card of a fixed size per look, scaled with the zoom and the font. The zoom is read
+        // against the default size of the mode (48 px icons, 128 px previews) so that the default level is 1:1.
+        static const QSizeF base[] = {{236, 262}, {300, 118}, {320, 150}}; // Tessera, Scheda, Dossier
+        const int look = qBound(0, int(ngCardStyle()), 2);
+        const qreal zoom = qBound(0.7, 0.6 + 0.4 * (iconSize / (previewsShown() ? 128.0 : 48.0)), 1.6);
+        const qreal scale = zoom * qBound(0.8, option.fontMetrics.height() / 19.0, 2.0); // 19 px: a 10 pt Noto Sans line
+        itemWidth = qRound(base[look].width() * scale);
+        itemHeight = qRound(base[look].height() * scale);
+        horizontalMargin = 10;
+        verticalMargin = 10;
+        if (ngCardsStretch()) {
+            // as many cards of at least that width as fit, then widened so that the row is full
+            const qreal available = size().width() - horizontalMargin;
+            if (available > itemWidth + horizontalMargin) {
+                const int columns = qMax(1, int(available / (itemWidth + horizontalMargin)));
+                itemWidth = int(available / columns) - horizontalMargin - 1;
+            }
         }
         break;
     }

@@ -2630,6 +2630,9 @@ void DolphinView::applyModeToView()
     case DetailsView:
         m_view->setItemLayout(KFileItemListView::DetailsLayout);
         break;
+    case CardsView:
+        m_view->setItemLayout(KFileItemListView::CardsLayout);
+        break;
     default:
         Q_ASSERT(false);
         break;

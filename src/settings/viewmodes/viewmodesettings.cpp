@@ -9,6 +9,7 @@
 
 #include "dolphin_compactmodesettings.h"
 #include "dolphin_detailsmodesettings.h"
+#include "dolphin_cardsmodesettings.h"
 #include "dolphin_iconsmodesettings.h"
 
 #include "dolphin_generalsettings.h"
@@ -60,6 +61,9 @@ ViewModeSettings::ViewModeSettings(DolphinView::Mode mode)
     case DolphinView::DetailsView:
         m_viewModeSettingsVariant = DetailsModeSettings::self();
         return;
+    case DolphinView::CardsView:
+        m_viewModeSettingsVariant = CardsModeSettings::self();
+        return;
     default:
         Q_UNREACHABLE();
     }
@@ -95,6 +99,9 @@ ViewModeSettings::ViewModeSettings(KStandardItemListView::ItemLayout itemLayout)
         return;
     case KStandardItemListView::DetailsLayout:
         m_viewModeSettingsVariant = DetailsModeSettings::self();
+        return;
+    case KStandardItemListView::CardsLayout:
+        m_viewModeSettingsVariant = CardsModeSettings::self();
         return;
     default:
         Q_UNREACHABLE();

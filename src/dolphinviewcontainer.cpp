@@ -365,6 +365,66 @@ private:
             });
         }
 
+        // ---- the cards view: the button switches it on and off, its menu picks the look
+        {
+            auto *spacer = new QWidget(this);
+            spacer->setFixedWidth(22);
+            m_flow->addWidget(spacer);
+            const bool cardsOn = m_view->viewMode() == DolphinView::CardsView;
+            static const char *const looks[] = {"Tessera", "Scheda", "Dossier"};
+            auto *cards = new QToolButton(this);
+            cards->setAutoRaise(true);
+            cards->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+            cards->setIcon(QIcon::fromTheme(QStringLiteral("view-grid"), QIcon::fromTheme(QStringLiteral("view-list-icons"))));
+            cards->setCheckable(true);
+            cards->setChecked(cardsOn);
+            cards->setPopupMode(QToolButton::MenuButtonPopup);
+            cards->setText(cardsOn ? QStringLiteral("Card: %1").arg(QLatin1String(looks[int(ngCardStyle())])) : QStringLiteral("Card"));
+            cards->setToolTip(QStringLiteral("Vista a card: ogni elemento è una scheda con tutti i dettagli. La freccia sceglie il tipo di card."));
+            auto *menu = new QMenu(cards);
+            auto *group = new QActionGroup(menu);
+            for (int i = 0; i < 3; ++i) {
+                QAction *action = menu->addAction(QStringLiteral("%1 · %2").arg(QChar(QLatin1Char('A' + i)), QLatin1String(looks[i])));
+                action->setCheckable(true);
+                action->setChecked(int(ngCardStyle()) == i);
+                group->addAction(action);
+                connect(action, &QAction::triggered, this, [this, i] {
+                    static const char *const keys[] = {"a", "b", "c"};
+                    setNgSetting("CARDS", QLatin1String(keys[i]));
+                    ngSettingsInvalidate();
+                    if (m_view->viewMode() != DolphinView::CardsView) {
+                        m_modeBeforeCards = m_view->viewMode();
+                        m_view->setViewMode(DolphinView::CardsView);
+                    } else {
+                        rebuild();
+                    }
+                });
+            }
+            menu->addSeparator();
+            auto *fit = new QActionGroup(menu);
+            const char *const fits[] = {"Card di misura fissa", "Riempi la riga"};
+            for (int i = 0; i < 2; ++i) {
+                QAction *action = menu->addAction(QLatin1String(fits[i]));
+                action->setCheckable(true);
+                action->setChecked(ngCardsStretch() == (i == 1));
+                fit->addAction(action);
+                connect(action, &QAction::triggered, this, [i] {
+                    setNgSetting("CARDS_FIT", i == 1 ? QStringLiteral("stretch") : QString());
+                    ngSettingsInvalidate();
+                });
+            }
+            cards->setMenu(menu);
+            connect(cards, &QToolButton::clicked, this, [this, cardsOn] {
+                if (cardsOn) {
+                    m_view->setViewMode(m_modeBeforeCards == DolphinView::CardsView ? DolphinView::DetailsView : m_modeBeforeCards);
+                } else {
+                    m_modeBeforeCards = m_view->viewMode();
+                    m_view->setViewMode(DolphinView::CardsView);
+                }
+            });
+            m_flow->addWidget(cards);
+        }
+
         // ---- filters
         if (m_total == 0 || m_total > 4000) {
             m_flow->invalidate();
@@ -481,6 +541,7 @@ private:
 
     DolphinView *m_view;
     NgFlowLayout *m_flow;
+    DolphinView::Mode m_modeBeforeCards = DolphinView::DetailsView; // the cards button goes back to this
     QLineEdit *m_filter;
     int m_active = All;
     int m_total = 0;

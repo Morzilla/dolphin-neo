@@ -31,7 +31,7 @@ class DOLPHIN_EXPORT KStandardItemListView : public KItemListView
     Q_OBJECT
 
 public:
-    enum ItemLayout { IconsLayout, CompactLayout, DetailsLayout };
+    enum ItemLayout { IconsLayout, CompactLayout, DetailsLayout, CardsLayout /* dolphin-ng: fixed-size cards in a grid */ };
 
     explicit KStandardItemListView(QGraphicsWidget *parent = nullptr);
     ~KStandardItemListView() override;

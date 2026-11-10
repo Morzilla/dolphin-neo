@@ -81,6 +81,17 @@ DOLPHIN_EXPORT QColor ngAccent(const QColor &colour, bool dark);
 /** dolphin-ng: in the icons view every item is a dark rounded tile and previews have rounded corners. DOLPHIN_NG_TILES=off disables. */
 DOLPHIN_EXPORT bool ngTiles();
 
+/**
+ * dolphin-ng: the look of the cards view (DOLPHIN_NG_CARDS = a | b | c):
+ *   Tessera  a thumbnail band on top, then the name, chips and a label/value list
+ *   Scheda   the icon in a column on the left, three lines of text on the right
+ *   Dossier  the list row folded: icon and name, chips, the dates on the left, the big "ago" on the right
+ */
+enum class NgCardStyle { Tessera, Scheda, Dossier };
+DOLPHIN_EXPORT NgCardStyle ngCardStyle();
+/** dolphin-ng: cards grow to fill the row (DOLPHIN_NG_CARDS_FIT=stretch) instead of keeping their size. */
+DOLPHIN_EXPORT bool ngCardsStretch();
+
 /** dolphin-ng: what replaces the icon — a short type abbreviation, the colour and the category of the file. */
 struct NgKind {
     enum Category { Folder, Image, Document, Sheet, Archive, Media, Data, Package, Other, CategoryCount };

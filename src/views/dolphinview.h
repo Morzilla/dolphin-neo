@@ -79,7 +79,13 @@ public:
          * The items are shown as icons with the name-label aligned
          * to the right side.
          */
-        CompactView
+        CompactView,
+
+        /**
+         * dolphin-ng: every item is a card of a fixed size that holds all its
+         * details, laid out in a grid that re-flows with the width of the view.
+         */
+        CardsView
     };
 
     /**

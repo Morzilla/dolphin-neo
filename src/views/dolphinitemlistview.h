@@ -52,6 +52,7 @@ protected:
     void onVisibleRolesChanged(const QList<QByteArray> &current, const QList<QByteArray> &previous) override;
 
     void updateFont() override;
+    void resizeEvent(QGraphicsSceneResizeEvent *event) override; // dolphin-ng: cards that fill the row follow the width
 
 private:
     void updateGridSize();

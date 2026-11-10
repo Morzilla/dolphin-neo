@@ -209,6 +209,7 @@ void DolphinViewActionHandler::createActions(SelectionMode::ActionTextHelper *ac
     KToggleAction *iconsAction = iconsModeAction();
     KToggleAction *compactAction = compactModeAction();
     KToggleAction *detailsAction = detailsModeAction();
+    KToggleAction *cardsAction = cardsModeAction();
 
     iconsAction->setWhatsThis(xi18nc("@info:whatsthis Icons view mode",
                                      "<para>This switches to a view mode that focuses on the folder "
@@ -237,10 +238,11 @@ void DolphinViewActionHandler::createActions(SelectionMode::ActionTextHelper *ac
     viewModeActions->addAction(iconsAction);
     viewModeActions->addAction(compactAction);
     viewModeActions->addAction(detailsAction);
+    viewModeActions->addAction(cardsAction);
     viewModeActions->setToolBarMode(KSelectAction::MenuMode);
     viewModeActions->setToolButtonPopupMode(QToolButton::ToolButtonPopupMode::MenuButtonPopup);
     connect(viewModeActions, &KSelectAction::actionTriggered, this, &DolphinViewActionHandler::slotViewModeActionTriggered);
-    connect(viewModeActions, &KSelectAction::triggered, this, [this, viewModeActions, iconsAction, compactAction, detailsAction]() {
+    connect(viewModeActions, &KSelectAction::triggered, this, [this, viewModeActions, iconsAction, compactAction, detailsAction, cardsAction]() {
         // Loop through the actions when button is clicked
         const auto currentAction = viewModeActions->currentAction();
         if (currentAction == iconsAction) {
@@ -248,6 +250,8 @@ void DolphinViewActionHandler::createActions(SelectionMode::ActionTextHelper *ac
         } else if (currentAction == compactAction) {
             slotViewModeActionTriggered(detailsAction);
         } else if (currentAction == detailsAction) {
+            slotViewModeActionTriggered(cardsAction);
+        } else if (currentAction == cardsAction) {
             slotViewModeActionTriggered(iconsAction);
         }
     });
@@ -579,6 +583,8 @@ QString DolphinViewActionHandler::currentViewModeActionName() const
         return QStringLiteral("details");
     case DolphinView::CompactView:
         return QStringLiteral("compact");
+    case DolphinView::CardsView:
+        return QStringLiteral("cards");
     default:
         Q_ASSERT(false);
         break;
@@ -806,6 +812,18 @@ KToggleAction *DolphinViewActionHandler::detailsModeAction()
     detailsView->setIcon(QIcon::fromTheme(QStringLiteral("view-list-tree")));
     detailsView->setData(QVariant::fromValue(DolphinView::DetailsView));
     return detailsView;
+}
+
+KToggleAction *DolphinViewActionHandler::cardsModeAction()
+{
+    // dolphin-ng: every item is a card with all its details, in a grid
+    KToggleAction *cardsView = m_actionCollection->add<KToggleAction>(QStringLiteral("cards"));
+    cardsView->setText(QStringLiteral("Card"));
+    cardsView->setToolTip(QStringLiteral("Vista a card: ogni elemento è una scheda con tutti i dettagli"));
+    m_actionCollection->setDefaultShortcut(cardsView, Qt::CTRL | Qt::Key_4);
+    cardsView->setIcon(QIcon::fromTheme(QStringLiteral("view-grid"), QIcon::fromTheme(QStringLiteral("view-list-icons"))));
+    cardsView->setData(QVariant::fromValue(DolphinView::CardsView));
+    return cardsView;
 }
 
 void DolphinViewActionHandler::slotSortRoleChanged(const QByteArray &role)

@@ -16,6 +16,7 @@
 class CompactModeSettings;
 class DetailsModeSettings;
 class IconsModeSettings;
+class CardsModeSettings;
 
 /**
  * @short Helper class for accessing similar properties of IconsModeSettings,
@@ -48,7 +49,7 @@ public:
 private:
     explicit ViewModeSettings();
 
-    std::variant<IconsModeSettings *, CompactModeSettings *, DetailsModeSettings *> m_viewModeSettingsVariant;
+    std::variant<IconsModeSettings *, CompactModeSettings *, DetailsModeSettings *, CardsModeSettings *> m_viewModeSettingsVariant;
 };
 
 #endif

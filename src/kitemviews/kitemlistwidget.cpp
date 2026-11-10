@@ -183,6 +183,23 @@ bool ngSettingFromEnvironment(const char *name)
     return qEnvironmentVariableIsSet(variable.constData());
 }
 
+NgCardStyle ngCardStyle()
+{
+    const QString look = ngSetting("CARDS").toLower();
+    if (look == QLatin1String("b") || look == QLatin1String("scheda")) {
+        return NgCardStyle::Scheda;
+    }
+    if (look == QLatin1String("c") || look == QLatin1String("dossier")) {
+        return NgCardStyle::Dossier;
+    }
+    return NgCardStyle::Tessera;
+}
+
+bool ngCardsStretch()
+{
+    return ngSetting("CARDS_FIT").toLower() == QLatin1String("stretch");
+}
+
 namespace
 {
 NgRowStyle ngRowStyleFromName(const QByteArray &name, NgRowStyle fallback)

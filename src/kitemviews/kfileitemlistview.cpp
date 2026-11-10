@@ -228,6 +228,9 @@ void KFileItemListView::onPreviewsShownChanged(bool shown)
 void KFileItemListView::onItemLayoutChanged(ItemLayout current, ItemLayout previous)
 {
     KStandardItemListView::onItemLayoutChanged(current, previous);
+    if (current == CardsLayout || previous == CardsLayout) {
+        applyRolesToModel(); // dolphin-ng: the cards show roles the folder does not list as columns
+    }
     triggerVisibleIndexRangeUpdate();
 }
 
@@ -445,6 +448,12 @@ void KFileItemListView::applyRolesToModel()
         roles.insert("isExpanded");
         roles.insert("isExpandable");
         roles.insert("expandedParentsCount");
+    }
+    if (itemLayout() == CardsLayout) {
+        // dolphin-ng: every card shows these, whatever the visible roles are
+        for (const char *role : {"size", "type", "modificationtime", "creationtime", "permissions", "owner"}) {
+            roles.insert(QByteArray(role));
+        }
     }
 
     // Assure that the role that is used for sorting will be determined

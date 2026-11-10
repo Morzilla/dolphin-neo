@@ -75,6 +75,9 @@ void KStandardItemListView::initializeItemListWidget(KItemListWidget *item)
     case DetailsLayout:
         standardItemListWidget->setLayout(KStandardItemListWidget::DetailsLayout);
         break;
+    case CardsLayout:
+        standardItemListWidget->setLayout(KStandardItemListWidget::CardsLayout);
+        break;
     default:
         Q_ASSERT(false);
         break;
@@ -152,6 +155,9 @@ void KStandardItemListView::polishEvent()
         break;
     case DetailsLayout:
         applyDefaultStyleOption(style()->pixelMetric(QStyle::PM_SmallIconSize), 2, 0, 0);
+        break;
+    case CardsLayout:
+        applyDefaultStyleOption(style()->pixelMetric(QStyle::PM_LargeIconSize), 2, 10, 10);
         break;
     default:
         Q_ASSERT(false);
