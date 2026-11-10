@@ -318,17 +318,20 @@ private:
         // the sheet of a menu, as Breeze paints it: the window colour mixed with 30 % of the base colour
         const QColor window = palette().color(QPalette::Window), base = palette().color(QPalette::Base);
         const QColor menuSheet(qRound(window.red() * 0.7 + base.red() * 0.3), qRound(window.green() * 0.7 + base.green() * 0.3), qRound(window.blue() * 0.7 + base.blue() * 0.3));
+        // the outline of a menu in Breeze NG: 10 % of ink (Soft), 16 % (Glass); the open button continues it
+        const bool glass = KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("org.kde.kdecoration2")).readEntry("theme", QString()).contains(QLatin1String("Glass"));
+        const QString menuEdge = glass ? QStringLiteral("0.16") : QStringLiteral("0.10");
         setStyleSheet(QStringLiteral("QToolButton { border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; background: transparent; color: palette(window-text); }"
                                      "QToolButton:hover { background: rgba(%1, 0.08); }"
                                      "QToolButton:pressed { background: rgba(%1, 0.14); }"
                                      "QToolButton:checked { background: rgba(%1, 0.16); border-color: rgba(%1, 0.20); }"
                                      "QToolButton:checked:hover { background: rgba(%1, 0.20); }"
                                      "QToolButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: right center; left: -3px; }"
-                                     "QToolButton[menuOpen=\"true\"], QToolButton[menuOpen=\"true\"]:hover, QToolButton[menuOpen=\"true\"]:checked, QToolButton[menuOpen=\"true\"]:pressed { background: %2; border-color: transparent; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }"
+                                     "QToolButton[menuOpen=\"true\"], QToolButton[menuOpen=\"true\"]:hover, QToolButton[menuOpen=\"true\"]:checked, QToolButton[menuOpen=\"true\"]:pressed { background: %2; border-color: rgba(%1, %3); border-bottom-color: %2; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }"
                                      "QLineEdit { border: 1px solid rgba(%1, 0.14); border-radius: 6px; padding: 3px 8px; background: rgba(%1, 0.06); color: palette(window-text); }"
                                      "QLineEdit:hover { border-color: rgba(%1, 0.22); }"
                                      "QLineEdit:focus { border-color: rgba(%1, 0.34); background: rgba(%1, 0.08); }")
-                          .arg(ink, menuSheet.name()));
+                          .arg(ink, menuSheet.name(), menuEdge));
     }
 
     QToolButton *chip(const QString &text, bool checked)
