@@ -53,6 +53,9 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QActionGroup>
+#include <functional>
+#include <QPointer>
+#include <QMouseEvent>
 #include <QMenu>
 #include <QToolButton>
 #include <QClipboard>
@@ -354,6 +357,40 @@ private:
         m_flow->addWidget(label);
     }
 
+public:
+    // The filters as the sidebar section shows them: what can be chosen now, with how many items each
+    struct FilterEntry {
+        QString label;
+        int count;
+        int id;
+        bool active;
+    };
+    QList<FilterEntry> filters() const
+    {
+        QList<FilterEntry> entries;
+        if (!m_view || m_total == 0 || m_total > 4000) {
+            return entries;
+        }
+        static const char *const labels[NgKind::CategoryCount] = {"Cartelle", "Immagini", "Documenti", "Fogli", "Archivi", "Audio e video", "Codice e dati", "Pacchetti", "Altro"};
+        entries.append({QStringLiteral("Tutti"), m_total, All, m_active == All});
+        const int folders = m_counts[NgKind::Folder];
+        if (folders > 0 && folders < m_total) {
+            entries.append({QStringLiteral("File"), m_total - folders, FilesOnly, m_active == FilesOnly});
+        }
+        for (int i = 0; i < NgKind::CategoryCount; ++i) {
+            if (m_counts[i] > 0) {
+                entries.append({QString::fromUtf8(labels[i]), m_counts[i], i, m_active == i});
+            }
+        }
+        return entries;
+    }
+    void setFilter(int id)
+    {
+        setActive(id);
+    }
+    std::function<void()> onFiltersChanged;
+
+private:
     // A button that opens a menu: while the menu is open the button loses its own highlight and takes the colour
     // of the menu, so that the two read as one piece (the style joins them, see Breeze NG).
     void menuButton(QToolButton *button)
@@ -384,6 +421,9 @@ private:
                 item->widget()->deleteLater(); // a button may be in the middle of its own click
             }
             delete item;
+        }
+        if (onFiltersChanged) {
+            onFiltersChanged(); // the sidebar section mirrors the filters
         }
         if (!m_view) {
             m_flow->invalidate();
@@ -2815,6 +2855,132 @@ QRect DolphinViewContainer::preferredSmallStatusBarGeometry()
 }
 
 #include "moc_dolphinviewcontainer.cpp"
+
+// dolphin-ng: the filters of the sort bar again, as a section at the bottom of the sidebar: a title pill and one
+// row per kind of file with its count; the active one sits on a pill, a click chooses it.
+class NgFilterPanel : public QWidget
+{
+public:
+    NgFilterPanel(NgSortBar *bar, QWidget *parent)
+        : QWidget(parent)
+        , m_bar(bar)
+    {
+        setAttribute(Qt::WA_NoSystemBackground);
+        setMouseTracking(true);
+        setCursor(Qt::PointingHandCursor);
+        bar->onFiltersChanged = [this] {
+            refresh();
+        };
+        refresh();
+    }
+
+    void refresh()
+    {
+        m_entries = m_bar ? m_bar->filters() : QList<NgSortBar::FilterEntry>();
+        const int wanted = m_entries.count() < 2 ? 0 : titleHeight() + 6 + m_entries.count() * rowHeight() + 6;
+        if (wanted == 0) {
+            hide();
+        } else {
+            setFixedHeight(wanted);
+            show();
+        }
+        update();
+    }
+
+protected:
+    int rowHeight() const
+    {
+        return fontMetrics().height() + 8;
+    }
+    int titleHeight() const
+    {
+        return fontMetrics().height() + 4;
+    }
+    int rowAt(const QPoint &pos) const
+    {
+        const int top = titleHeight() + 6;
+        if (pos.y() < top) {
+            return -1;
+        }
+        const int row = (pos.y() - top) / rowHeight();
+        return row < m_entries.count() ? row : -1;
+    }
+
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const bool dark = ngIsDark(palette());
+        const QColor text = palette().color(QPalette::WindowText);
+        const QColor veil = dark ? QColor(255, 255, 255, 30) : QColor(0, 0, 0, 22);
+        const QColor edge = dark ? QColor(255, 255, 255, 40) : QColor(0, 0, 0, 30);
+
+        // the title, a small pill like the section titles of the places
+        QFont titleFont = font();
+        titleFont.setPointSizeF(titleFont.pointSizeF() * 0.86);
+        titleFont.setBold(true);
+        const QString title = QStringLiteral("Filtri");
+        const QFontMetrics titleMetrics(titleFont);
+        const QRectF pill(0, 0, titleMetrics.horizontalAdvance(title) + 20, titleHeight());
+        painter.setPen(QPen(edge, 1));
+        painter.setBrush(veil);
+        painter.drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), pill.height() / 2.0, pill.height() / 2.0);
+        painter.setFont(titleFont);
+        painter.setPen(text);
+        painter.drawText(pill, Qt::AlignCenter, title);
+
+        painter.setFont(font());
+        QColor dim = text;
+        dim.setAlphaF(0.6);
+        const int top = titleHeight() + 6;
+        for (int i = 0; i < m_entries.count(); ++i) {
+            const QRectF row(0, top + i * rowHeight(), width(), rowHeight());
+            const auto &entry = m_entries.at(i);
+            if (entry.active || i == m_hover) {
+                QColor fill = veil;
+                fill.setAlpha(entry.active ? veil.alpha() : veil.alpha() / 2);
+                painter.setPen(entry.active ? QPen(edge, 1) : QPen(Qt::NoPen));
+                painter.setBrush(fill);
+                painter.drawRoundedRect(row.adjusted(0.5, 1.5, -0.5, -1.5), (row.height() - 3) / 2.0, (row.height() - 3) / 2.0);
+            }
+            painter.setPen(text);
+            painter.drawText(row.adjusted(14, 0, -14, 0), Qt::AlignLeft | Qt::AlignVCenter, entry.label);
+            painter.setPen(dim);
+            painter.drawText(row.adjusted(14, 0, -14, 0), Qt::AlignRight | Qt::AlignVCenter, QString::number(entry.count));
+        }
+    }
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        const int row = rowAt(event->pos());
+        if (row != m_hover) {
+            m_hover = row;
+            update();
+        }
+    }
+    void leaveEvent(QEvent *) override
+    {
+        m_hover = -1;
+        update();
+    }
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        const int row = rowAt(event->pos());
+        if (event->button() == Qt::LeftButton && row >= 0 && m_bar) {
+            m_bar->setFilter(m_entries.at(row).id);
+        }
+    }
+
+private:
+    QPointer<NgSortBar> m_bar;
+    QList<NgSortBar::FilterEntry> m_entries;
+    int m_hover = -1;
+};
+
+QWidget *ngCreateFilterPanel(QWidget *sortBar, QWidget *parent)
+{
+    auto *bar = dynamic_cast<NgSortBar *>(sortBar);
+    return bar ? new NgFilterPanel(bar, parent) : nullptr;
+}
 
 // dolphin-ng: the sort/filter bar of the window (see NgSortBar); it follows the active view
 QWidget *ngCreateSortBar(QWidget *parent)

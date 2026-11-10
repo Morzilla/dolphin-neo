@@ -519,3 +519,43 @@ void PlacesPanel::connectDeviceSignals(const QModelIndex &index)
 }
 
 #include "moc_placespanel.cpp"
+
+// dolphin-ng: the filters section sits at the bottom of the panel, above the disk usage box; the entries end above it
+void PlacesPanel::ngSetBottomWidget(QWidget *widget)
+{
+    m_ngBottom = widget;
+    if (widget) {
+        widget->setParent(this);
+        widget->installEventFilter(this);
+        widget->raise();
+    }
+    ngLayoutBottom();
+}
+
+void PlacesPanel::ngLayoutBottom()
+{
+    const bool shown = m_ngBottom && !m_ngBottom->isHidden();
+    const int extra = shown ? m_ngBottom->height() + 8 : 0;
+    setViewportMargins(10, 12, 10, 12 + 62 + extra);
+    if (shown) {
+        m_ngBottom->setGeometry(14, height() - 12 - 62 - m_ngBottom->height(), width() - 28, m_ngBottom->height());
+    }
+}
+
+bool PlacesPanel::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_ngBottom && (event->type() == QEvent::Resize || event->type() == QEvent::Show || event->type() == QEvent::Hide)) {
+        if (!m_ngLayouting) {
+            m_ngLayouting = true;
+            ngLayoutBottom();
+            m_ngLayouting = false;
+        }
+    }
+    return KFilePlacesView::eventFilter(watched, event);
+}
+
+void PlacesPanel::resizeEvent(QResizeEvent *event)
+{
+    KFilePlacesView::resizeEvent(event);
+    ngLayoutBottom();
+}

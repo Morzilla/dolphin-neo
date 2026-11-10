@@ -30,6 +30,19 @@ class StorageAccess;
  */
 class PlacesPanel : public KFilePlacesView
 {
+public:
+    /** dolphin-ng: a widget kept at the bottom of the panel, above the disk usage box (the filters section). */
+    void ngSetBottomWidget(QWidget *widget);
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
+
+private:
+    void ngLayoutBottom();
+    QWidget *m_ngBottom = nullptr;
+    bool m_ngLayouting = false;
+
     Q_OBJECT
 
 public:
