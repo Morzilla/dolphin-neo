@@ -247,16 +247,8 @@ QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &
             resize.choices.append({label, {localPath, QStringLiteral("-resize"), spec, QStringLiteral("%1-%2.%3").arg(base, tag, suffix)}});
         }
         actions.append(resize);
-        NgQuickAction convert;
-        convert.label = QStringLiteral("Converti…");
-        convert.program = QStringLiteral("magick");
-        for (const char *format : {"png", "jpg", "webp", "avif", "tiff", "bmp"}) {
-            const QString target = QString::fromLatin1(format);
-            if (target != lowerSuffix && !(lowerSuffix == QLatin1String("jpeg") && target == QLatin1String("jpg"))) {
-                convert.choices.append({target.toUpper(), {localPath, QStringLiteral("%1.%2").arg(base, target)}});
-            }
-        }
-        actions.append(convert);
+        // "open with": the runner (DolphinView) fills the menu with the applications for this type
+        simple(QStringLiteral("Apri con…"), QStringLiteral("@openwith"), {});
         if (mime == QLatin1String("image/gif")) {
             simple(QStringLiteral("In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-movflags"), QStringLiteral("faststart"), QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"), QStringLiteral("-vf"), QStringLiteral("scale=trunc(iw/2)*2:trunc(ih/2)*2"), QStringLiteral("%1.mp4").arg(base)});
         }

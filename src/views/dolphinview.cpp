@@ -71,6 +71,9 @@
 #include <KIO/CommandLauncherJob>
 #include <QStandardPaths>
 #include <QCursor>
+#include <KApplicationTrader>
+#include <KIO/ApplicationLauncherJob>
+#include <KService>
 #include <QMenu>
 #include <QMimeDatabase>
 #include <QPixmapCache>
@@ -2637,6 +2640,31 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
         job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
         job->start();
     };
+    if (action.program == QLatin1String("@openwith")) {
+        // the applications registered for this type, then the system's "open with" dialog
+        QMenu menu(this);
+        const QUrl url = item.url();
+        auto launch = [this, url](const KService::Ptr &service) {
+            auto *job = service ? new KIO::ApplicationLauncherJob(service) : new KIO::ApplicationLauncherJob();
+            job->setUrls({url});
+            job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
+            job->start();
+        };
+        const KService::List services = KApplicationTrader::queryByMimeType(item.mimetype());
+        for (const KService::Ptr &service : services) {
+            menu.addAction(QIcon::fromTheme(service->icon()), service->name(), this, [launch, service] {
+                launch(service);
+            });
+        }
+        if (!services.isEmpty()) {
+            menu.addSeparator();
+        }
+        menu.addAction(QStringLiteral("Altra applicazione…"), this, [launch] {
+            launch(KService::Ptr());
+        });
+        menu.exec(QCursor::pos());
+        return;
+    }
     if (action.choices.isEmpty()) {
         run(action.program, action.arguments);
         return;

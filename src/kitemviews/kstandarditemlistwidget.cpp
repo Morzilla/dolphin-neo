@@ -2713,7 +2713,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     m_ngCardWatermark = markType && !m_ngCardPreview;
     QStringList actionLabels;
     for (const NgQuickAction &action : std::as_const(quickActions)) {
-        actionLabels << (action.choices.isEmpty() ? action.label : action.label + QStringLiteral(" ▾"));
+        actionLabels << ((action.choices.isEmpty() && !action.program.startsWith(QLatin1Char('@'))) ? action.label : action.label + QStringLiteral(" ▾"));
     }
     auto dateLine = [&locale](const QDateTime &when) {
         return QStringLiteral("%1 · %2").arg(locale.toString(when.date(), QStringLiteral("dd/MM/yy")), ngAgoText(when));
