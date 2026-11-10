@@ -2775,14 +2775,12 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         }
         return y + chipHeight;
     };
-    // the eye and menu buttons of the rows are not shown on cards: they would cover the quick actions
-    // (the preview and the menu stay on the right click and the keyboard)
-    auto actionsAt = [this, hovered, actionSide](qreal right, qreal top) {
-        if (hovered && ngSetting("CARDS_HOVER_BUTTONS") == QLatin1String("1")) {
-            m_ngCardMenu = QRectF(right - actionSide, top, actionSide, actionSide);
-            m_ngCardEye = QRectF(right - 2 * actionSide - 4, top, actionSide, actionSide);
-        }
-    };
+    // while hovered the card shows the preview eye in its top left corner (the popup opens on a click or, with the
+    // hover preview on, when the pointer rests on it); the menu stays on the right click
+    auto actionsAt = [](qreal, qreal) {};
+    if (hovered) {
+        m_ngCardEye = QRectF(card.left() + 6, card.top() + 6, actionSide + 2, actionSide + 2);
+    }
     auto setName = [this, nameInfo, &nameFm, &name](qreal x, qreal top, qreal width) {
         nameInfo->staticText.setText(nameFm.elidedText(name, Qt::ElideMiddle, qMax(10.0, width)));
         nameInfo->pos = QPointF(x, top);
@@ -2815,7 +2813,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         const qreal right = card.right() - pad;
         qreal y = m_ngCardThumb.bottom() + pad * 0.8;
         actionsAt(right, y - 2);
-        setName(x0, y, (!m_ngCardEye.isEmpty() ? m_ngCardEye.left() - 8 : right) - x0);
+        setName(x0, y, right - x0);
         y += nameFm.height() + 6;
         y = chipRow(x0, y, right, {m_ngSigla, sizeText, countText}, 1) + 8;
 
@@ -2900,7 +2898,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             putText(smallFm.elidedText(joined(when), Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
         }
         actionsAt(right, footTop + (chipHeight - actionSide) / 2.0);
-        const qreal footRight = !m_ngCardEye.isEmpty() ? m_ngCardEye.left() - 6 : right;
+        const qreal footRight = right;
         if (!actionLabels.isEmpty()) {
             chipRow(x1, footTop, footRight, actionLabels, 0, &m_ngCardActions);
         } else if (fullInfo) {
@@ -2936,7 +2934,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         setName(nameX, y + (lineHeightC - nameFm.height()) / 2.0, nameRight - nameX);
         y += lineHeightC + 8;
         actionsAt(right, y - 1);
-        y = chipRow(x0, y, !m_ngCardEye.isEmpty() ? m_ngCardEye.left() - 6 : right, {m_ngSigla, sizeText, countText, fullInfo ? permissions : QString()}, 1) + 4;
+        y = chipRow(x0, y, right, {m_ngSigla, sizeText, countText, fullInfo ? permissions : QString()}, 1) + 4;
         if (!actionLabels.isEmpty()) {
             y = chipRow(x0, y, right, actionLabels, 0, &m_ngCardActions) + 4;
         }
@@ -3207,27 +3205,22 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
         }
     }
 
-    // ---- hover actions: preview (an eye) and menu (three dots)
+    // ---- the preview eye, on a dark disc so that it reads over a picture too
     if (isHovered() && !m_ngCardEye.isEmpty()) {
-        QColor fill = text;
-        fill.setAlphaF(0.14);
         painter->setPen(Qt::NoPen);
-        painter->setBrush(fill);
+        painter->setBrush(QColor(0, 0, 0, 130));
         painter->drawRoundedRect(m_ngCardEye, 7, 7);
-        painter->drawRoundedRect(m_ngCardMenu, 7, 7);
-        painter->setBrush(text);
-        for (int i = -1; i <= 1; ++i) {
-            painter->drawEllipse(m_ngCardMenu.center() + QPointF(i * 5.0, 0), 1.5, 1.5);
-        }
+        const QColor glyph(255, 255, 255, 235);
         const QPointF c = m_ngCardEye.center();
         const qreal r = m_ngCardEye.width() * 0.32;
+        painter->setBrush(glyph);
         painter->drawEllipse(c, r * 0.32, r * 0.32);
         QPainterPath eye;
         eye.moveTo(c + QPointF(-r, 0));
         eye.quadTo(c + QPointF(0, -r), c + QPointF(r, 0));
         eye.quadTo(c + QPointF(0, r), c + QPointF(-r, 0));
         painter->setBrush(Qt::NoBrush);
-        painter->setPen(QPen(text, 1.4));
+        painter->setPen(QPen(glyph, 1.4));
         painter->drawPath(eye);
     }
 
