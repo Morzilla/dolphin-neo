@@ -40,6 +40,8 @@ protected:
 
 private:
     void ngLayoutBottom();
+    void ngUpdateFade();
+    bool m_ngFadeWatched = false;
     QWidget *m_ngBottom = nullptr;
     bool m_ngLayouting = false;
     bool m_ngBarWatched = false;

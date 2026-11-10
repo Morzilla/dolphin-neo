@@ -11,6 +11,8 @@
 
 #include "placespanel.h"
 
+#include <QGraphicsOpacityEffect>
+#include <QLinearGradient>
 #include <QScrollBar>
 
 #include "dolphindockwidget.h"
@@ -534,9 +536,48 @@ void PlacesPanel::ngSetBottomWidget(QWidget *widget)
     ngLayoutBottom();
 }
 
+// dolphin-ng: when there are more places below (or above) than fit, the list fades out at that edge instead of
+// ending on a row cut in half
+void PlacesPanel::ngUpdateFade()
+{
+    QScrollBar *bar = verticalScrollBar();
+    const bool below = bar->value() < bar->maximum();
+    const bool above = bar->value() > bar->minimum();
+    if (!below && !above) {
+        if (viewport()->graphicsEffect()) {
+            viewport()->setGraphicsEffect(nullptr);
+        }
+        return;
+    }
+    auto *effect = qobject_cast<QGraphicsOpacityEffect *>(viewport()->graphicsEffect());
+    if (!effect) {
+        effect = new QGraphicsOpacityEffect(viewport());
+        effect->setOpacity(1.0);
+        viewport()->setGraphicsEffect(effect);
+    }
+    const qreal height = qMax(1, viewport()->height());
+    const qreal fade = qMin(36.0, height / 3.0) / height;
+    QLinearGradient mask(0, 0, 0, height);
+    mask.setColorAt(0.0, above ? Qt::transparent : Qt::black);
+    mask.setColorAt(above ? fade : 0.0, Qt::black);
+    mask.setColorAt(below ? 1.0 - fade : 1.0, Qt::black);
+    mask.setColorAt(1.0, below ? Qt::transparent : Qt::black);
+    effect->setOpacityMask(mask);
+}
+
 void PlacesPanel::ngLayoutBottom()
 {
-    const bool shown = m_ngBottom && !m_ngBottom->isHidden();
+    if (!m_ngFadeWatched) {
+        m_ngFadeWatched = true;
+        connect(verticalScrollBar(), &QScrollBar::valueChanged, this, &PlacesPanel::ngUpdateFade);
+        connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, &PlacesPanel::ngUpdateFade);
+    }
+    bool shown = m_ngBottom && !m_ngBottom->isHidden();
+    if (shown && height() - 12 - 62 - 12 - (m_ngBottom->height() + 8) < 190) {
+        // a short window: the places come first, the section steps aside (it is parked below the panel)
+        m_ngBottom->move(14, height() + 20);
+        shown = false;
+    }
     const int extra = shown ? m_ngBottom->height() + 8 : 0;
     setViewportMargins(10, 12, 10, 12 + 62 + extra);
     if (shown) {
@@ -569,4 +610,5 @@ void PlacesPanel::resizeEvent(QResizeEvent *event)
 {
     KFilePlacesView::resizeEvent(event);
     ngLayoutBottom();
+    ngUpdateFade();
 }
