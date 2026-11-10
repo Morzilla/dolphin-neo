@@ -72,6 +72,7 @@
 #include <QKeyEvent>
 #include <QMimeDatabase>
 #include <QScreen>
+#include <QCursor>
 #include <QVideoSink>
 #include <QVideoFrame>
 #include <QAudioOutput>
@@ -814,7 +815,8 @@ public:
         }
         hide();
         if (floating) {
-            setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+            // a window that never takes the focus: the keyboard stays on the list, the window manager leaves Dolphin active
+            setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint | Qt::WindowDoesNotAcceptFocus);
             setAttribute(Qt::WA_TranslucentBackground, true);
             setAttribute(Qt::WA_ShowWithoutActivating, true);
         } else {
@@ -839,6 +841,12 @@ public:
         return isWindow() ? globalPos : parentWidget()->mapFromGlobal(globalPos);
     }
 
+    // is the pointer on the card? (a window of its own may not have had its enter event yet: ask the pointer)
+    bool pointerOnCard() const
+    {
+        return isWindow() ? QRect(pos(), size()).contains(QCursor::pos()) : underMouse();
+    }
+
     // Opened by hovering a row (PREVIEW_HOVER): the card goes away when the mouse leaves both the row and the card.
     void showForHover(const KFileItem &item, const QRect &rowRect)
     {
@@ -859,7 +867,7 @@ public:
         }
         // give the mouse a moment to reach the card
         QTimer::singleShot(260, this, [this] {
-            if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
+            if (m_hover && isVisible() && !pointerOnCard() && !QApplication::activePopupWidget()) {
                 hide();
             }
         });
@@ -989,7 +997,7 @@ protected:
         if (m_hover && isVisible()) {
             // left the card: if the mouse is not back on a row, close; a row re-opens it after its delay
             QTimer::singleShot(120, this, [this] {
-                if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
+                if (m_hover && isVisible() && !pointerOnCard() && !QApplication::activePopupWidget()) {
                     hide(); // (a menu of the card holds the mouse: not a leave)
                 }
             });
@@ -1039,8 +1047,10 @@ protected:
             } else if (event->type() == QEvent::KeyPress && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) {
                 close();
                 return true;
-            } else if (isWindow() && watched == m_view->window() && (event->type() == QEvent::Move || event->type() == QEvent::Resize || event->type() == QEvent::WindowDeactivate || event->type() == QEvent::Hide)) {
+            } else if (isWindow() && watched == m_view->window() && (event->type() == QEvent::Move || event->type() == QEvent::Resize || event->type() == QEvent::Hide)) {
                 hide(); // the floating card is tied to the row's place on screen
+            } else if (isWindow() && event->type() == QEvent::ApplicationDeactivate) {
+                hide(); // another application took over
             }
         }
         return QWidget::eventFilter(watched, event);
@@ -1234,7 +1244,7 @@ private:
         connect(menu, &QMenu::aboutToHide, this, [this] {
             // menu closed without a choice while the card was opened by hovering: close it unless the mouse is back on it
             QTimer::singleShot(300, this, [this] {
-                if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
+                if (m_hover && isVisible() && !pointerOnCard() && !QApplication::activePopupWidget()) {
                     hide();
                 }
             });
