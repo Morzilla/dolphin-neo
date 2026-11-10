@@ -25,6 +25,7 @@
 #include <klocalizedstring.h>
 
 #include <QApplication>
+#include <QFontDatabase>
 #include <QDateTime>
 #include <QSet>
 #include <QGraphicsScene>
@@ -869,8 +870,50 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         }
         painter->setPen(m_additionalInfoTextColor);
     }
-    if (ngRow && !m_ngDates.isEmpty()) {
-        painter->drawText(m_ngDatesPos, m_ngDates);
+    if (ngRow && !m_ngChips.isEmpty()) {
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        QFont chipFont = m_customizedFont;
+        chipFont.setPointSizeF(chipFont.pointSizeF() * 0.88);
+        painter->setFont(chipFont);
+        const bool dark = ngIsDark(styleOption().palette);
+        const int ink = dark ? 255 : 0;
+        for (const NgChip &chip : std::as_const(m_ngChips)) {
+            QColor fill = chip.tinted ? m_ngTint : QColor(ink, ink, ink);
+            fill.setAlpha(chip.tinted ? (dark ? 34 : 40) : (dark ? 18 : 16));
+            QColor edge = chip.tinted ? m_ngTint : QColor(ink, ink, ink);
+            edge.setAlpha(chip.tinted ? 110 : 26);
+            painter->setPen(QPen(edge, 1));
+            painter->setBrush(fill);
+            const qreal radius = chip.rect.height() / 2.0;
+            painter->drawRoundedRect(chip.rect.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+            QColor text = chip.tinted ? m_ngTint : m_additionalInfoTextColor;
+            if (chip.tinted && !dark) {
+                text = text.darker(135);
+            }
+            painter->setPen(text);
+            painter->drawText(chip.rect, Qt::AlignCenter, chip.text);
+        }
+        painter->restore();
+    }
+    if (ngRow && !m_ngTime.isEmpty()) {
+        painter->save();
+        QFont small = m_customizedFont;
+        small.setPointSizeF(small.pointSizeF() * 0.9);
+        QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        mono.setPointSizeF(m_customizedFont.pointSizeF() * 0.8);
+        mono.setBold(true);
+        QColor dim = m_additionalInfoTextColor;
+        dim.setAlpha(qRound(dim.alpha() * 0.55));
+        for (const NgTimeLine &line : std::as_const(m_ngTime)) {
+            painter->setFont(mono);
+            painter->setPen(dim);
+            painter->drawText(line.letterPos, line.letter);
+            painter->setFont(small);
+            painter->setPen(m_additionalInfoTextColor);
+            painter->drawText(line.textPos, line.text);
+        }
+        painter->restore();
     }
 
     if (!m_rating.isNull()) {
@@ -2049,32 +2092,28 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             m_textInfo.value(dateRole)->staticText.setText(QString());
         }
 
-        // right edge: the date (replaced by the actions while the row is hovered)
+        // ---- right column: how long ago (big), the date and time under it (small); DATE_AGO=hide keeps the plain date
         qreal dateWidth = 0;
         m_ngAgo.clear();
+        const bool showAgo = ngSetting("DATE_AGO").toLower() != QLatin1String("hide");
+        const QLocale locale;
         if (!dateRole.isEmpty() && roomForDate) {
-            const QString text = roleText(dateRole, values);
-            dateWidth = m_customizedFontMetrics.horizontalAdvance(text);
             TextInfo *textInfo = m_textInfo.value(dateRole);
-            textInfo->staticText.setText(text);
-            // the days gone by since that date go on the second line (DATE_AGO=hide turns them off)
-            const bool showAgo = ngSetting("DATE_AGO").toLower() != QLatin1String("hide");
             const QDateTime when = ngDateTimeOf(values.value(dateRole));
+            QString text = roleText(dateRole, values);
             if (showAgo && when.isValid()) {
-                const qint64 days = when.date().daysTo(QDate::currentDate());
-                if (!(days <= 1 && ContentDisplaySettings::useShortRelativeDates())) { // else the date text already reads "Oggi"/"Ieri"/"... minuti fa"
-                    m_ngAgo = ngAgoText(when);
-                }
-                textInfo->pos = QPointF(right - dateWidth, firstY);
+                text = ngAgoText(when);
+                m_ngAgo = QStringLiteral("%1 · %2").arg(locale.toString(when.date(), QStringLiteral("dd/MM")), locale.toString(when.time(), QLocale::ShortFormat));
                 m_ngAgoPos = QPointF(right - m_customizedFontMetrics.horizontalAdvance(m_ngAgo), secondY + m_customizedFontMetrics.ascent());
-            } else {
-                textInfo->pos = QPointF(right - dateWidth, standardY);
             }
+            dateWidth = m_customizedFontMetrics.horizontalAdvance(text);
+            textInfo->staticText.setText(text);
+            textInfo->pos = QPointF(right - dateWidth, m_ngAgo.isEmpty() ? standardY : firstY);
         }
         qreal blockLeft = right;
         m_ngActionsRect = QRectF();
         if (noIcons) {
-            const qreal dateColumn = roomForDate ? qMax(qreal(fontHeight * 9), qreal(176)) : qreal(fontHeight * 8.2); // fixed, so that the sizes line up
+            const qreal dateColumn = roomForDate ? qMax(qreal(fontHeight * 8), qreal(150)) : qreal(fontHeight * 8.2); // fixed, so that the sizes line up
             const qreal actionsWidth = qMin(dateColumn, qreal(fontHeight * 8.2));
             const qreal actionsHeight = qMin(widgetHeight - 12, qreal(fontHeight * 1.7));
             m_ngActionsRect = QRectF(right - actionsWidth, (widgetHeight - actionsHeight) / 2.0, actionsWidth, actionsHeight);
@@ -2086,11 +2125,14 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             m_ngActions->setGeometry(m_ngActionsRect);
         }
 
-        // icon-less: the size sits in its own column, with a bar on a logarithmic scale (1 KiB ... 10 GiB)
+        // ---- size column, with a bar on a logarithmic scale (1 KiB ... 10 GiB); folders: size above, item count below
         m_ngBarFraction = -1;
         m_ngBarRect = QRectF();
         m_ngCount.clear();
         const bool sizeColumn = noIcons && m_sortedVisibleRoles.contains("size");
+        const bool isDir = values.value("isDir").toBool();
+        const qlonglong bytes = values.value("size").toLongLong();
+        const bool measured = isDir && bytes >= 0 && values.contains("count") && ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentSize;
         if (sizeColumn && !roomForSize) {
             m_textInfo.value("size")->staticText.setText(QString());
         }
@@ -2102,25 +2144,79 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             TextInfo *textInfo = m_textInfo.value("size");
             textInfo->staticText.setText(text);
             textInfo->pos = QPointF(sizeRight - width, firstY);
-            const qlonglong bytes = values.value("size").toLongLong();
-            const bool isDir = values.value("isDir").toBool();
             if (!isDir && bytes > 0) {
                 m_ngBarFraction = qBound(0.03, (std::log10(double(bytes)) - 3.0) / 7.0, 1.0);
                 const qreal barWidth = columnWidth - 10;
                 m_ngBarRect = QRectF(sizeRight - barWidth, secondY + fontHeight / 2.0 - 2, barWidth, 4);
             }
-            // a folder whose contents were measured (ContentSize mode) shows the size above and the item count below
-            m_ngCount.clear();
-            if (isDir && bytes >= 0 && values.contains("count") && ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentSize) {
+            if (measured) {
                 m_ngCount = i18ncp("@item:intable", "%1 item", "%1 items", values.value("count").toInt());
                 m_ngCountPos = QPointF(sizeRight - m_customizedFontMetrics.horizontalAdvance(m_ngCount), secondY + m_customizedFontMetrics.ascent());
             }
             blockLeft = sizeRight - columnWidth;
         }
+
+        // ---- the dates of the item (the creation time is not a requested role: read it from the item itself)
+        QDateTime created;
+        QDateTime modified = ngDateTimeOf(values.value("modificationtime"));
+        const bool wantDates = noIcons && ngSetting("ROW_DATES").toLower() != QLatin1String("hide");
+        if (wantDates) {
+            if (values.contains("creationtime")) {
+                created = ngDateTimeOf(values.value("creationtime"));
+            } else if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
+                if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
+                    const KFileItem fileItem = fileModel->fileItem(index());
+                    if (!fileItem.isNull()) {
+                        created = fileItem.time(KFileItem::CreationTime);
+                        if (!modified.isValid()) {
+                            modified = fileItem.time(KFileItem::ModificationTime);
+                        }
+                    }
+                }
+            }
+            if (created.isValid() && modified.isValid() && qAbs(created.secsTo(modified)) <= 60) {
+                created = QDateTime(); // same moment: one line is enough
+            }
+        }
+
+        // ---- time column: "C  12/10/26 · 29 giorni fa" over "M  09/11/26 · ieri"; dropped on a narrow view (then chips)
+        m_ngTime.clear();
+        const bool roomForTime = size().width() >= fontHeight * 42;
+        QFont monoFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        monoFont.setPointSizeF(m_customizedFont.pointSizeF() * 0.8);
+        monoFont.setBold(true);
+        const QFontMetricsF monoMetrics(monoFont);
+        if (wantDates && roomForTime && modified.isValid()) {
+            const qreal timeWidth = qMax(qreal(fontHeight * 12.5), qreal(205));
+            const qreal timeRight = blockLeft - gap;
+            const qreal timeLeft = timeRight - timeWidth;
+            const qreal letterWidth = monoMetrics.horizontalAdvance(QStringLiteral("M")) + 8;
+            QFont small = m_customizedFont;
+            small.setPointSizeF(small.pointSizeF() * 0.9);
+            const QFontMetricsF smallMetrics(small);
+            auto line = [&](const QString &letter, const QDateTime &when, qreal y) {
+                NgTimeLine entry;
+                entry.letter = letter;
+                entry.text = QStringLiteral("%1 · %2").arg(locale.toString(when.date(), QLocale::ShortFormat), ngAgoText(when));
+                entry.text = smallMetrics.elidedText(entry.text, Qt::ElideRight, timeWidth - letterWidth);
+                entry.letterPos = QPointF(timeLeft, y + monoMetrics.ascent() + (smallMetrics.height() - monoMetrics.height()) / 2);
+                entry.textPos = QPointF(timeLeft + letterWidth, y + smallMetrics.ascent());
+                m_ngTime.append(entry);
+            };
+            const qreal rowsHeight = 2 * smallMetrics.height() + 1;
+            const qreal top = (widgetHeight - rowsHeight) / 2.0;
+            if (created.isValid()) {
+                line(QStringLiteral("C"), created, top);
+                line(QStringLiteral("M"), modified, top + smallMetrics.height() + 1);
+            } else {
+                line(QStringLiteral("M"), modified, top + (smallMetrics.height() + 1) / 2.0);
+            }
+            blockLeft = timeLeft;
+        }
         const qreal textRight = blockLeft - 2 * gap;
 
         if (noIcons) {
-            const NgKind kind = ngKindFor(values.value("text").toString(), values.value("isDir").toBool());
+            const NgKind kind = ngKindFor(values.value("text").toString(), isDir);
             m_ngSigla = kind.sigla;
             m_ngTint = kind.tint;
             m_ngCategory = int(kind.category);
@@ -2152,45 +2248,28 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             m_ngSigla.clear();
         }
 
-        qreal secondX = left;
-        // ROW_DATES (default on): the second line opens with "Creato <data> (<quanto fa>) · Modificato <data> (<quanto fa>)"
-        m_ngDates.clear();
-        if (ngSetting("ROW_DATES").toLower() != QLatin1String("hide")) {
-            QDateTime created;
-            QDateTime modified = ngDateTimeOf(values.value("modificationtime"));
-            if (values.contains("creationtime")) {
-                created = ngDateTimeOf(values.value("creationtime"));
-            } else if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
-                // the creation time is not a requested role: read it from the item itself
-                if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
-                    const KFileItem fileItem = fileModel->fileItem(index());
-                    if (!fileItem.isNull()) {
-                        created = fileItem.time(KFileItem::CreationTime);
-                        if (!modified.isValid()) {
-                            modified = fileItem.time(KFileItem::ModificationTime);
-                        }
-                    }
-                }
-            }
-            const QLocale locale;
-            QStringList parts;
-            if (created.isValid() && (!modified.isValid() || qAbs(created.secsTo(modified)) > 60)) {
-                parts << QStringLiteral("Creato %1 (%2)").arg(locale.toString(created.date(), QLocale::ShortFormat), ngAgoText(created));
-            }
-            if (modified.isValid()) {
-                parts << QStringLiteral("Modificato %1 (%2)").arg(locale.toString(modified.date(), QLocale::ShortFormat), ngAgoText(modified));
-            }
-            m_ngDates = parts.join(QStringLiteral("  \u00B7  "));
-            if (!m_ngDates.isEmpty()) {
-                const qreal available = textRight - left;
-                if (m_customizedFontMetrics.horizontalAdvance(m_ngDates) > available) {
-                    m_ngDates = m_customizedFontMetrics.elidedText(m_ngDates, Qt::ElideRight, qMax(qreal(0), available));
-                }
-                m_ngDatesPos = QPointF(left, secondY + m_customizedFontMetrics.ascent());
-                secondX += m_customizedFontMetrics.horizontalAdvance(m_ngDates) + gap;
-            }
-        }
+        // ---- first line: the name; second line: chips (type first, in the row's colour, then the other details)
+        m_ngChips.clear();
         static const QSet<QByteArray> allDateRoles{"modificationtime", "creationtime", "accesstime", "deletiontime"};
+        QFont chipFont = m_customizedFont;
+        chipFont.setPointSizeF(chipFont.pointSizeF() * 0.88);
+        const QFontMetricsF chipMetrics(chipFont);
+        const qreal chipHeight = qMin(qreal(fontHeight + 2), chipMetrics.height() + 5);
+        const qreal chipY = secondY + (fontHeight - chipHeight) / 2.0;
+        qreal chipX = left;
+        auto chip = [&](const QString &text, bool tinted) {
+            if (text.isEmpty()) {
+                return;
+            }
+            const qreal width = chipMetrics.horizontalAdvance(text) + 16;
+            if (chipX + width > textRight) {
+                return; // no room: the chips to the right fall off
+            }
+            m_ngChips.append({text, QRectF(chipX, chipY, width, chipHeight), tinted});
+            chipX += width + 5;
+        };
+        QString typeText;
+        QStringList plainChips;
         for (const QByteArray &role : std::as_const(m_sortedVisibleRoles)) {
             TextInfo *textInfo = m_textInfo.value(role);
             if (role == "text") {
@@ -2204,22 +2283,63 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
                 textInfo->staticText.setText(text);
                 textInfo->pos = QPointF(left, firstY);
                 m_textRect = QRectF(left - option.padding, 0, width + 2 * option.padding, widgetHeight);
-            } else if (role != dateRole && !(sizeColumn && role == "size")) {
-                QString text = (!m_ngDates.isEmpty() && allDateRoles.contains(role)) ? QString() : roleText(role, values); // the dates line already says it
-                if (!text.isEmpty() && secondX > left) {
-                    text.prepend(QStringLiteral("\u00B7  "));
+                continue;
+            }
+            if (!noIcons) {
+                // with icons the second line stays plain text
+                if (role != dateRole && !(sizeColumn && role == "size")) {
+                    QString text = roleText(role, values);
+                    if (!text.isEmpty() && chipX > left) {
+                        text.prepend(QStringLiteral("·  "));
+                    }
+                    qreal width = m_customizedFontMetrics.horizontalAdvance(text);
+                    const qreal available = textRight - chipX;
+                    if (width > available) {
+                        text = available > 3 * fontHeight ? m_customizedFontMetrics.elidedText(text, Qt::ElideRight, available) : QString();
+                        width = m_customizedFontMetrics.horizontalAdvance(text);
+                    }
+                    textInfo->staticText.setText(text);
+                    textInfo->pos = QPointF(chipX, secondY);
+                    if (!text.isEmpty()) {
+                        chipX += width + gap;
+                    }
                 }
-                qreal width = m_customizedFontMetrics.horizontalAdvance(text);
-                const qreal available = textRight - secondX;
-                if (width > available) {
-                    text = available > 3 * fontHeight ? m_customizedFontMetrics.elidedText(text, Qt::ElideRight, available) : QString();
-                    width = m_customizedFontMetrics.horizontalAdvance(text);
+                continue;
+            }
+            if (role == dateRole || (sizeColumn && role == "size")) {
+                continue; // laid out above, in their columns
+            }
+            textInfo->staticText.setText(QString()); // drawn as a chip instead (or not at all)
+            if (wantDates && allDateRoles.contains(role)) {
+                continue;
+            }
+            if (role == "type") {
+                typeText = roleText(role, values);
+            } else if (role == "size" && isDir && !sizeColumn) {
+                plainChips << roleText(role, values); // item count, when there is no size column
+            } else {
+                plainChips << roleText(role, values);
+            }
+        }
+        if (noIcons) {
+            if (typeText.isEmpty()) {
+                typeText = isDir ? i18nc("@item:intable", "Folder") : values.value("text").toString().section(QLatin1Char('.'), -1).toUpper();
+            }
+            chip(typeText, true);
+            if (wantDates && m_ngTime.isEmpty()) {
+                // no time column: the dates become chips
+                if (modified.isValid()) {
+                    chip(QStringLiteral("modificato %1").arg(ngAgoText(modified)), false);
                 }
-                textInfo->staticText.setText(text);
-                textInfo->pos = QPointF(secondX, secondY);
-                if (!text.isEmpty()) {
-                    secondX += width + gap;
+                if (created.isValid()) {
+                    chip(QStringLiteral("creato %1").arg(ngAgoText(created)), false);
                 }
+            }
+            if (measured && !roomForSize) {
+                chip(i18ncp("@item:intable", "%1 item", "%1 items", values.value("count").toInt()), false);
+            }
+            for (const QString &text : std::as_const(plainChips)) {
+                chip(text, false);
             }
         }
         return;

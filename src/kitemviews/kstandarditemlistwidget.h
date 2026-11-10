@@ -296,8 +296,19 @@ private:
     QByteArray m_ngDateRole; // the date role shown at the right edge, if any
     QString m_ngAgo; // "3 giorni fa", under the date
     QString m_ngCount; // folders: "20 elementi" under the size of the contents
-    QString m_ngDates; // second line: "Creato ... (7 giorni fa) · Modificato ... (ieri)"
-    QPointF m_ngDatesPos;
+    struct NgChip {
+        QString text;
+        QRectF rect;
+        bool tinted = false; // the type chip takes the colour of the row
+    };
+    QList<NgChip> m_ngChips; // second line under the name: type and other details as small pills
+    struct NgTimeLine {
+        QString letter; // "C" / "M"
+        QString text; // "12/10/26 · 29 giorni fa"
+        QPointF letterPos;
+        QPointF textPos;
+    };
+    QList<NgTimeLine> m_ngTime; // the time column: creation and modification
     QPointF m_ngCountPos;
     QPointF m_ngAgoPos;
     QRectF m_ngBarRect; // size bar

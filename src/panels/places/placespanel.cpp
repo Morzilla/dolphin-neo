@@ -152,11 +152,28 @@ void PlacesPanel::ngPaintPills()
     }
     const bool dark = ngIsDark(palette());
     const QPoint offset = viewport()->mapTo(dock, QPoint(0, 0));
+    // the first row of a group is taller: its rect holds the group title too. The plain row height is the
+    // smallest one around; the pill keeps to the bottom part of a tall rect.
+    int rowHeight = -1;
+    if (const QAbstractItemModel *placesModel = model()) {
+        for (int row = 0; row < placesModel->rowCount(); ++row) {
+            if (isRowHidden(row)) {
+                continue;
+            }
+            const int h = visualRect(placesModel->index(row, 0)).height();
+            if (h > 0 && (rowHeight < 0 || h < rowHeight)) {
+                rowHeight = h;
+            }
+        }
+    }
     QPainter painter(viewport());
     for (const auto &[index, strength] : std::as_const(rows)) {
-        const QRect rect = visualRect(index);
+        QRect rect = visualRect(index);
         if (!rect.isValid()) {
             continue;
+        }
+        if (rowHeight > 0 && rect.height() > rowHeight + 2) {
+            rect.setTop(rect.bottom() - rowHeight + 1);
         }
         painter.save();
         painter.setClipRect(rect);
@@ -175,7 +192,7 @@ void PlacesPanel::ngPaintPills()
         // 3. icon and text, by the delegate, as a plain row
         QStyleOptionViewItem option;
         initViewItemOption(&option);
-        option.rect = rect;
+        option.rect = visualRect(index); // the delegate lays the row out in its full rect (with the title space)
         option.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver | QStyle::State_HasFocus);
         option.showDecorationSelected = false;
         if (QAbstractItemDelegate *delegate = itemDelegateForIndex(index)) {
