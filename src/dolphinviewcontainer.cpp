@@ -550,13 +550,17 @@ public:
         side->addWidget(m_title);
         side->addWidget(m_meta);
         side->addStretch();
-        auto button = [this, side](const QString &text, std::function<void()> action) {
+        auto *buttons = new QGridLayout();
+        buttons->setSpacing(6);
+        int buttonIndex = 0;
+        auto button = [this, buttons, &buttonIndex](const QString &text, std::function<void()> action) {
             auto *b = new QPushButton(text, this);
             connect(b, &QPushButton::clicked, this, [this, action] {
                 hide();
                 action();
             });
-            side->addWidget(b);
+            buttons->addWidget(b, buttonIndex / 2, buttonIndex % 2); // two per row
+            ++buttonIndex;
             return b;
         };
         button(QStringLiteral("Apri"), [this] {
@@ -574,9 +578,10 @@ public:
         button(QStringLiteral("Copia percorso"), [this] {
             QGuiApplication::clipboard()->setText(m_item.isLocalFile() ? m_item.localPath() : m_item.url().toDisplayString());
         });
+        side->addLayout(buttons);
         auto *sideWidget = new QWidget(this);
         sideWidget->setLayout(side);
-        sideWidget->setFixedWidth(230);
+        sideWidget->setFixedWidth(270);
         layout->addWidget(sideWidget);
 
         qApp->installEventFilter(this);
@@ -591,13 +596,13 @@ public:
             return;
         }
         m_item = item;
-        m_title->setText(m_title->fontMetrics().elidedText(item.text(), Qt::ElideMiddle, 226));
+        m_title->setText(m_title->fontMetrics().elidedText(item.text(), Qt::ElideMiddle, 266));
         m_title->setToolTip(item.text());
         m_meta->setText(QStringLiteral("%1\n%2\n%3").arg(item.mimeComment(), item.isDir() ? QString() : KIO::convertSize(item.size()), QLocale().toString(item.time(KFileItem::ModificationTime), QLocale::ShortFormat)));
         fillPreview();
 
         QWidget *host = parentWidget();
-        const int height = 296;
+        const int height = 262;
         const QPoint below = host->mapFromGlobal(rowRect.bottomLeft());
         int y = below.y() + 2;
         if (y + height > host->height() - 6) {

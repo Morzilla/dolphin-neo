@@ -815,6 +815,38 @@ void KItemListWidget::setPressed(bool enabled)
 
 void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QStyle::State styleState)
 {
+    if (m_alternateBackground && ngTwoLineList()) {
+        // dolphin-ng: the rows draw their own hover and selection, so the look does not depend on the widget
+        // style (Breeze would fill the whole row with the highlight colour): a neutral veil, stronger on the left
+        const bool selected = styleState & QStyle::State_Selected;
+        const bool hovered = styleState & QStyle::State_MouseOver;
+        if (!selected && !hovered) {
+            return;
+        }
+        const bool dark = ngIsDark(widget ? widget->palette() : m_styleOption.palette);
+        const QRectF card = selectionRectFull().adjusted(3, 3, -3, -3);
+        const qreal strength = selected ? (hovered ? 1.0 : 0.85) : 0.35;
+        QLinearGradient veil(card.topLeft(), card.topRight());
+        const int base = dark ? 255 : 0;
+        veil.setColorAt(0.0, QColor(base, base, base, qRound((dark ? 72 : 40) * strength)));
+        veil.setColorAt(1.0, QColor(base, base, base, qRound((dark ? 18 : 10) * strength)));
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(veil);
+        painter->drawRoundedRect(card, 5, 5);
+        if (selected) {
+            // a thin edge in the highlight colour marks the selection without filling it
+            QColor edge = m_styleOption.palette.color(QPalette::Highlight);
+            edge.setAlphaF(0.55);
+            painter->setBrush(Qt::NoBrush);
+            painter->setPen(QPen(edge, 1));
+            painter->drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), 5, 5);
+        }
+        painter->restore();
+        return;
+    }
+
     painter->save();
     QStyleOptionViewItem viewItemOption;
     initStyleOption(&viewItemOption);
