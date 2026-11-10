@@ -14,6 +14,7 @@
 #include <QComboBox>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QScrollArea>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QSlider>
@@ -44,8 +45,20 @@ QGroupBox *group(const QString &title, QVBoxLayout *into, QFormLayout **form)
 NgSettingsPage::NgSettingsPage(QWidget *parent)
     : SettingsPageBase(parent)
 {
-    auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
+    // the page is long: it scrolls instead of squeezing its rows into the height of the dialog
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    auto *scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->viewport()->setAutoFillBackground(false);
+    auto *content = new QWidget(scroll);
+    content->setAutoFillBackground(false);
+    scroll->setWidget(content);
+    outer->addWidget(scroll);
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(0, 0, 8, 0);
 
     // ---- Barra laterale ---------------------------------------------------------------------------------
     group(QStringLiteral("Barra laterale"), layout, &m_sidebarForm);
