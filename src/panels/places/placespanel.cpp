@@ -247,6 +247,22 @@ void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
 void PlacesPanel::paintEvent(QPaintEvent *event)
 {
     const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
+    // KFilePlacesView shows rows again on its own (delayed updates when devices are found, when the URL changes...):
+    // whenever a device row that should be hidden is about to be painted, hide it again
+    if (!plain && ngSetting("DEVICES").toLower() != QLatin1String("show") && !m_ngDevicesPending) {
+        if (auto *devicesModel = qobject_cast<KFilePlacesModel *>(model())) {
+            for (int row = 0; row < devicesModel->rowCount(); ++row) {
+                if (!isRowHidden(row) && devicesModel->groupType(devicesModel->index(row, 0)) == KFilePlacesModel::DevicesType) {
+                    m_ngDevicesPending = true;
+                    QTimer::singleShot(0, this, [this, devicesModel] {
+                        ngApplyDevices(devicesModel);
+                        m_ngDevicesPending = false;
+                    });
+                    break;
+                }
+            }
+        }
+    }
     KFilePlacesView::paintEvent(event);
     if (!plain) {
         ngPaintPills();

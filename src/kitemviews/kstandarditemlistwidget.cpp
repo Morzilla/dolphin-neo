@@ -31,6 +31,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 #include <QPainterPath>
+#include <QRegularExpression>
 #include <QScopeGuard>
 #include <QGraphicsSceneResizeEvent>
 #include <QGraphicsView>
@@ -2731,7 +2732,8 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     const bool showPicture = !markType || m_ngCardPreview;
     m_ngCardWatermark = markType && !m_ngCardPreview;
     auto dateLine = [&locale](const QDateTime &when) {
-        return QStringLiteral("%1 · %2").arg(locale.toString(when.date(), QStringLiteral("dd/MM/yy")), ngAgoText(when));
+        // the "ago" part sits between two markers: putRich() draws it in bold
+        return QStringLiteral("%1 · \x01%2\x02").arg(locale.toString(when.date(), QStringLiteral("dd/MM/yy")), ngAgoText(when));
     };
 
     // ---- fonts and measures
@@ -2765,6 +2767,26 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         entry.tone = tone;
         m_ngCardTexts.append(entry);
     };
+    // a line of text where the parts between \x01 and \x02 are bold and in the text colour; elided at maxWidth
+    auto putRich = [&putText](const QString &text, qreal x, qreal baseline, qreal maxWidth, const QFont &font, int tone) {
+        QFont bold = font;
+        bold.setWeight(QFont::DemiBold);
+        const qreal right = x + maxWidth;
+        const QStringList parts = text.split(QRegularExpression(QStringLiteral("[\x01\x02]")));
+        for (int i = 0; i < parts.count() && x < right; ++i) {
+            if (parts.at(i).isEmpty()) {
+                continue;
+            }
+            const bool strong = i % 2 == 1;
+            const QFontMetricsF metrics(strong ? bold : font);
+            const QString shown = metrics.elidedText(parts.at(i), Qt::ElideRight, right - x);
+            putText(shown, QPointF(x, baseline), strong ? bold : font, strong ? 1 : tone);
+            if (shown != parts.at(i)) {
+                break;
+            }
+            x += metrics.horizontalAdvance(shown);
+        }
+    };
     // chips left to right from (x, y); those that do not fit are dropped. Returns the bottom edge.
     auto chipRow = [this, &chipFm, chipHeight](qreal x, qreal y, qreal right, const QStringList &texts, int tintedCount, QList<NgChip> *into = nullptr) {
         int i = 0;
@@ -2793,9 +2815,9 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     // The quick actions: one pill. First the typical action of the kind, with its label; then the two other
     // applications and "open with"; then the remaining actions of the kind. Groups are divided by a hairline.
     // Too narrow: the label goes first, then the actions at the end.
-    const qreal actionHeight = chipHeight + 8;
+    const qreal actionHeight = chipHeight + 12; // room for 22 px application icons
     auto actionRow = [&](qreal x, qreal y, qreal right) {
-        const qreal inner = 3, button = actionHeight + 2, divider = 7;
+        const qreal inner = 3, button = 30, divider = 7; // 22 px application icons with a little air
         struct Item {
             int index;
             qreal width;
@@ -2862,7 +2884,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             const QString cacheKey = action.icon + QLatin1Char('|') + QString::number(dpr) + QLatin1Char('|') + (isApp ? QString() : glyphColor.name());
             auto cached = iconCache.constFind(cacheKey);
             if (cached == iconCache.constEnd()) {
-                QPixmap pixmap = QIcon::fromTheme(action.icon, QIcon::fromTheme(QStringLiteral("application-x-executable"))).pixmap(QSize(18, 18), dpr);
+                QPixmap pixmap = QIcon::fromTheme(action.icon, QIcon::fromTheme(QStringLiteral("application-x-executable"))).pixmap(isApp ? QSize(22, 22) : QSize(18, 18), dpr);
                 if (!isApp) {
                     // an action glyph: in the text colour, whatever the icon theme draws it in (applications keep their colours)
                     QPainter tint(&pixmap);
@@ -2950,7 +2972,8 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             putText(line.label, QPointF(x0, lineY + smallFm.ascent()), small, 2);
             const QFont &valueFont = line.monospace ? mono : small;
             const QFontMetricsF &valueFm = line.monospace ? monoFm : smallFm;
-            putText(valueFm.elidedText(line.value, Qt::ElideRight, right - x0 - labelWidth), QPointF(x0 + labelWidth, lineY + smallFm.ascent()), valueFont, 0);
+            Q_UNUSED(valueFm)
+            putRich(line.value, x0 + labelWidth, lineY + smallFm.ascent(), right - x0 - labelWidth, valueFont, 0);
             lineY += lineHeight;
         }
         if (!quickActions.isEmpty()) {
@@ -2992,11 +3015,11 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         if (quickActions.isEmpty() && !fullInfo) {
             // nothing in the foot (folders, files without quick actions): each date gets its own line
             for (const QString &line : std::as_const(when)) {
-                putText(smallFm.elidedText(line, Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
+                putRich(line, x1, y + smallFm.ascent(), right - x1, small, 0);
                 y += smallFm.height() + 2;
             }
         } else {
-            putText(smallFm.elidedText(joined(when), Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
+            putRich(joined(when), x1, y + smallFm.ascent(), right - x1, small, 0);
         }
         actionsAt(right, footTop + (chipHeight - actionSide) / 2.0);
         const qreal footRight = right;
@@ -3281,7 +3304,8 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                 painter->setPen(text);
                 painter->drawText(chip.rect.adjusted(8 + 18 + 6, 0, -6, 0), Qt::AlignLeft | Qt::AlignVCenter, chip.text);
             } else {
-                painter->drawPixmap(QPointF(chip.rect.center().x() - 9, chip.rect.center().y() - 9), icon);
+                const qreal side = icon.width() / icon.devicePixelRatio(); // 22 for applications, 18 for glyphs
+                painter->drawPixmap(QPointF(chip.rect.center().x() - side / 2.0, chip.rect.center().y() - side / 2.0), icon);
             }
         }
         painter->setOpacity(1.0);
