@@ -41,6 +41,8 @@ protected:
 private:
     void ngLayoutBottom();
     void ngUpdateFade();
+    void ngPlaceScrollBar();
+    class QScrollBar *m_ngOverlayBar = nullptr;
     bool m_ngFadeWatched = false;
     QWidget *m_ngBottom = nullptr;
     bool m_ngLayouting = false;

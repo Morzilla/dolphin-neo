@@ -565,8 +565,42 @@ void PlacesPanel::ngUpdateFade()
     effect->setOpacityMask(mask);
 }
 
+// dolphin-ng: Qt's own scroll bar takes a column at the right edge of the panel, outside the glass card. It is
+// switched off; a thin bar of ours, tied to it, floats inside the card beside the places.
+void PlacesPanel::ngPlaceScrollBar()
+{
+    QScrollBar *real = verticalScrollBar();
+    if (!m_ngOverlayBar) {
+        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_ngOverlayBar = new QScrollBar(Qt::Vertical, this);
+        m_ngOverlayBar->setStyleSheet(QStringLiteral("QScrollBar:vertical { background: transparent; width: 7px; margin: 0; border: 0; }"
+                                                     "QScrollBar::handle:vertical { background: rgba(255, 255, 255, 0.34); border-radius: 3px; min-height: 28px; }"
+                                                     "QScrollBar::handle:vertical:hover { background: rgba(255, 255, 255, 0.55); }"
+                                                     "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+                                                     "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"));
+        auto sync = [this, real] {
+            m_ngOverlayBar->setRange(real->minimum(), real->maximum());
+            m_ngOverlayBar->setPageStep(real->pageStep());
+            m_ngOverlayBar->setSingleStep(real->singleStep());
+            m_ngOverlayBar->setValue(real->value());
+            m_ngOverlayBar->setVisible(real->maximum() > real->minimum());
+        };
+        connect(real, &QScrollBar::rangeChanged, m_ngOverlayBar, sync);
+        connect(real, &QScrollBar::valueChanged, m_ngOverlayBar, &QScrollBar::setValue);
+        connect(m_ngOverlayBar, &QScrollBar::valueChanged, real, &QScrollBar::setValue);
+        sync();
+    }
+    const QRect list = viewport()->geometry();
+    m_ngOverlayBar->setGeometry(width() - 7 - 5, list.top() + 4, 7, qMax(20, list.height() - 8));
+    m_ngOverlayBar->raise();
+}
+
 void PlacesPanel::ngLayoutBottom()
 {
+    if (!m_ngBarWatched) {
+        m_ngBarWatched = true;
+        verticalScrollBar()->installEventFilter(this);
+    }
     if (!m_ngFadeWatched) {
         m_ngFadeWatched = true;
         connect(verticalScrollBar(), &QScrollBar::valueChanged, this, &PlacesPanel::ngUpdateFade);
@@ -580,15 +614,13 @@ void PlacesPanel::ngLayoutBottom()
     }
     const int extra = shown ? m_ngBottom->height() + 8 : 0;
     setViewportMargins(10, 12, 10, 12 + 62 + extra);
+    ngPlaceScrollBar();
     if (shown) {
         // when the places need a scroll bar it runs down the right edge of the whole panel: the section ends
         // beside it instead of under it
         QScrollBar *bar = verticalScrollBar();
-        if (!m_ngBarWatched) {
-            m_ngBarWatched = true;
-            bar->installEventFilter(this);
-        }
-        const int beside = bar->isVisible() ? bar->width() + 2 : 0;
+        Q_UNUSED(bar)
+        const int beside = 0; // the bar floats inside the card, beside the places only
         m_ngBottom->setGeometry(14, height() - 12 - 62 - m_ngBottom->height(), width() - 28 - beside, m_ngBottom->height());
     }
 }
@@ -611,4 +643,5 @@ void PlacesPanel::resizeEvent(QResizeEvent *event)
     KFilePlacesView::resizeEvent(event);
     ngLayoutBottom();
     ngUpdateFade();
+    ngPlaceScrollBar();
 }
