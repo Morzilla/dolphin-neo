@@ -218,6 +218,8 @@ private:
 // dolphin-ng: the bar above the two-line list, which has no column header. On one line (wrapping when narrow):
 // "Sort by" — one button per visible role, clicking the active one reverses the order;
 // "Filtri" — a button with a menu of filters: all, files only, and one per kind of file, each with its count.
+static void ngOpenLightbox(DolphinView *view, const KFileItem &item); // see NgLightbox
+
 class NgSortBar : public QWidget
 {
 public:
@@ -1567,7 +1569,20 @@ private:
             y = toHost(m_rowRect.topLeft()).y() - height - 2; // no room below: open above the row
         }
         int x = below.x() + 3;
-        x = qMin(x, qMax(area.left() + 4, area.right() - width - 4));
+        if (m_view->viewMode() == DolphinView::CardsView) {
+            // cards: the popup opens at the pointer (the eye is in a corner of the card, far from its bottom left),
+            // below and to the right of it, or on the other side where there is no room
+            const QPoint pointer = toHost(QCursor::pos());
+            x = pointer.x() + 14;
+            if (x + width > area.right() - 4) {
+                x = pointer.x() - 14 - width;
+            }
+            y = pointer.y() + 14;
+            if (y + height > area.bottom() - 6) {
+                y = pointer.y() - 14 - height;
+            }
+        }
+        x = qBound(area.left() + 4, x, qMax(area.left() + 4, area.right() - width - 4));
         setGeometry(x, qMax(area.top() + 4, y), width, height);
     }
 
@@ -1835,7 +1850,14 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
     {
         // dolphin-ng: the preview card (the sort/filter bar is the window's, above the tabs: ngCreateSortBar)
         auto *previewCard = new NgPreviewCard(m_view, this);
-        connect(m_view, &DolphinView::ngPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
+        connect(m_view, &DolphinView::ngPreviewRequested, previewCard, [this, previewCard](const KFileItem &item, const QRect &rowRect) {
+            // in the cards view the eye of a picture opens the lightbox: the picture alone, large
+            if (m_view->viewMode() == DolphinView::CardsView && !item.isDir() && item.isLocalFile() && item.mimetype().startsWith(QLatin1String("image/"))
+                && ngSetting("CARDS_LIGHTBOX").toLower() != QLatin1String("off")) {
+                previewCard->hide();
+                ngOpenLightbox(m_view, item);
+                return;
+            }
             previewCard->showFor(item, rowRect);
         });
         connect(m_view, &DolphinView::ngHoverPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
@@ -2852,6 +2874,141 @@ QRect DolphinViewContainer::preferredSmallStatusBarGeometry()
 }
 
 #include "moc_dolphinviewcontainer.cpp"
+
+// dolphin-ng: a lightbox for pictures. It covers the Dolphin window with a dark veil and shows only the picture,
+// as large as it fits; the wheel zooms, dragging pans, the arrow keys go to the previous and next picture of the
+// folder, Esc or a click on the veil closes it. Animated pictures play.
+class NgLightbox : public QWidget
+{
+public:
+    explicit NgLightbox(DolphinView *view)
+        : QWidget(view->window())
+        , m_view(view)
+    {
+        setAttribute(Qt::WA_DeleteOnClose);
+        setFocusPolicy(Qt::StrongFocus);
+        m_image = new NgZoomImage(this);
+        m_caption = new QLabel(this);
+        m_caption->setAlignment(Qt::AlignCenter);
+        m_caption->setStyleSheet(QStringLiteral("color: rgba(255, 255, 255, 0.85); background: transparent;"));
+        m_close = new QToolButton(this);
+        m_close->setText(QStringLiteral("✕"));
+        m_close->setCursor(Qt::PointingHandCursor);
+        m_close->setStyleSheet(QStringLiteral("QToolButton { color: white; background: rgba(255, 255, 255, 0.12); border: 0; border-radius: 16px; font-size: 15px; } QToolButton:hover { background: rgba(255, 255, 255, 0.24); }"));
+        connect(m_close, &QToolButton::clicked, this, &QWidget::close);
+        window()->installEventFilter(this);
+    }
+
+    void open(const KFileItem &item)
+    {
+        m_pictures.clear();
+        const KFileItemList items = m_view->items();
+        for (const KFileItem &candidate : items) {
+            if (!candidate.isDir() && candidate.isLocalFile() && candidate.mimetype().startsWith(QLatin1String("image/"))) {
+                m_pictures.append(candidate);
+            }
+        }
+        m_current = qMax(0, m_pictures.indexOf(item));
+        if (m_pictures.isEmpty()) {
+            m_pictures.append(item);
+        }
+        place();
+        show();
+        raise();
+        setFocus();
+        load();
+    }
+
+protected:
+    void place()
+    {
+        setGeometry(parentWidget()->rect());
+        const int margin = 48;
+        m_image->setGeometry(margin, margin, width() - 2 * margin, height() - 2 * margin - 28);
+        m_caption->setGeometry(margin, height() - margin - 22, width() - 2 * margin, 24);
+        m_close->setGeometry(width() - 44, 12, 32, 32);
+    }
+    void load()
+    {
+        const KFileItem item = m_pictures.at(m_current);
+        const QString path = item.localPath();
+        const QString mime = item.mimetype();
+        m_image->stopMovie();
+        if (mime == QLatin1String("image/gif") || mime == QLatin1String("image/apng") || mime == QLatin1String("image/webp")) {
+            m_image->setMovie(path);
+        } else {
+            QImageReader reader(path);
+            reader.setAutoTransform(true);
+            const QImage image = reader.read();
+            m_image->setPixmap(QPixmap::fromImage(image));
+            m_caption->setText(image.isNull() ? item.text() : QStringLiteral("%1  ·  %2 × %3").arg(item.text()).arg(image.width()).arg(image.height()));
+            if (m_pictures.count() > 1) {
+                m_caption->setText(m_caption->text() + QStringLiteral("  ·  %1 / %2").arg(m_current + 1).arg(m_pictures.count()));
+            }
+            return;
+        }
+        m_caption->setText(item.text());
+    }
+    void step(int by)
+    {
+        if (m_pictures.count() > 1) {
+            m_current = (m_current + by + m_pictures.count()) % m_pictures.count();
+            load();
+        }
+    }
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.fillRect(rect(), QColor(8, 9, 11, 225));
+    }
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (!m_image->geometry().contains(event->pos())) {
+            close(); // a click on the veil
+        }
+    }
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        switch (event->key()) {
+        case Qt::Key_Escape:
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+        case Qt::Key_Space:
+            close();
+            break;
+        case Qt::Key_Left:
+        case Qt::Key_Up:
+            step(-1);
+            break;
+        case Qt::Key_Right:
+        case Qt::Key_Down:
+            step(1);
+            break;
+        default:
+            QWidget::keyPressEvent(event);
+        }
+    }
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == window() && event->type() == QEvent::Resize) {
+            place();
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+private:
+    DolphinView *m_view;
+    NgZoomImage *m_image;
+    QLabel *m_caption;
+    QToolButton *m_close;
+    KFileItemList m_pictures;
+    int m_current = 0;
+};
+
+static void ngOpenLightbox(DolphinView *view, const KFileItem &item)
+{
+    (new NgLightbox(view))->open(item);
+}
 
 // dolphin-ng: the filters of the sort bar again, as a section at the bottom of the sidebar: a title pill and one
 // row per kind of file with its count; the active one sits on a pill, a click chooses it.
