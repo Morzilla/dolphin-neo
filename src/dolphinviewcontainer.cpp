@@ -621,6 +621,7 @@ public:
         });
         m_fixedButtons = m_buttonCount;
 
+        setMouseTracking(true); // edge cursors
         qApp->installEventFilter(this);
         hide();
     }
@@ -793,8 +794,16 @@ public:
         fillPreview();
 
         QWidget *host = parentWidget();
-        const int width = qMin(460, qMax(340, rowRect.width() - 6));
-        const int height = qMin(host->height() - 8, 470);
+        // the size the user dragged it to last time (PREVIEW_SIZE=WxH), else a tall card
+        int width = 460;
+        int height = 470;
+        const QStringList saved = ngSetting("PREVIEW_SIZE").split(QLatin1Char('x'));
+        if (saved.size() == 2 && saved.at(0).toInt() >= MinimumWidth && saved.at(1).toInt() >= MinimumHeight) {
+            width = saved.at(0).toInt();
+            height = saved.at(1).toInt();
+        }
+        width = qMin(width, qMax(MinimumWidth, host->width() - 8));
+        height = qMin(height, qMax(MinimumHeight, host->height() - 8));
         const QPoint below = host->mapFromGlobal(rowRect.bottomLeft());
         int y = below.y() + 2;
         if (y + height > host->height() - 6) {
@@ -818,6 +827,79 @@ protected:
         painter.setPen(QPen(border, 1));
         painter.setBrush(fill);
         painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12);
+        // resize grip: three short diagonal strokes in the bottom-right corner
+        QColor grip = palette().color(QPalette::WindowText);
+        grip.setAlphaF(0.35);
+        painter.setPen(QPen(grip, 1.2));
+        const QPointF corner(width() - 5, height() - 5);
+        for (int i = 0; i < 3; ++i) {
+            const qreal d = 4 + i * 4;
+            painter.drawLine(QPointF(corner.x() - d, corner.y()), QPointF(corner.x(), corner.y() - d));
+        }
+    }
+
+    // ---- resizing by the right / bottom edge or the corner
+    Qt::Edges edgesAt(const QPoint &pos) const
+    {
+        Qt::Edges edges;
+        if (pos.x() >= width() - EdgeWidth) {
+            edges |= Qt::RightEdge;
+        }
+        if (pos.y() >= height() - EdgeWidth) {
+            edges |= Qt::BottomEdge;
+        }
+        if (QRect(width() - 18, height() - 18, 18, 18).contains(pos)) {
+            edges = Qt::RightEdge | Qt::BottomEdge;
+        }
+        return edges;
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        m_resizing = event->button() == Qt::LeftButton ? edgesAt(event->pos()) : Qt::Edges();
+        if (m_resizing) {
+            m_resizeStart = event->globalPosition().toPoint();
+            m_resizeSize = size();
+            event->accept();
+            return;
+        }
+        QWidget::mousePressEvent(event);
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (m_resizing) {
+            const QPoint delta = event->globalPosition().toPoint() - m_resizeStart;
+            QSize next = m_resizeSize;
+            if (m_resizing & Qt::RightEdge) {
+                next.setWidth(m_resizeSize.width() + delta.x());
+            }
+            if (m_resizing & Qt::BottomEdge) {
+                next.setHeight(m_resizeSize.height() + delta.y());
+            }
+            const QWidget *host = parentWidget();
+            next.setWidth(qBound(MinimumWidth, next.width(), qMax(MinimumWidth, host->width() - x() - 4)));
+            next.setHeight(qBound(MinimumHeight, next.height(), qMax(MinimumHeight, host->height() - y() - 4)));
+            resize(next);
+            return;
+        }
+        const Qt::Edges edges = edgesAt(event->pos());
+        setCursor(edges == (Qt::RightEdge | Qt::BottomEdge) ? Qt::SizeFDiagCursor
+                      : edges & Qt::RightEdge               ? Qt::SizeHorCursor
+                      : edges & Qt::BottomEdge              ? Qt::SizeVerCursor
+                                                            : Qt::ArrowCursor);
+        QWidget::mouseMoveEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        if (m_resizing) {
+            m_resizing = Qt::Edges();
+            setNgSetting("PREVIEW_SIZE", QStringLiteral("%1x%2").arg(width()).arg(height())); // remembered for the next time
+            event->accept();
+            return;
+        }
+        QWidget::mouseReleaseEvent(event);
     }
 
     bool eventFilter(QObject *watched, QEvent *event) override
@@ -825,7 +907,9 @@ protected:
         if (isVisible()) {
             if (event->type() == QEvent::MouseButtonPress) {
                 const auto *mouse = static_cast<QMouseEvent *>(event);
-                if (!QRect(mapToGlobal(QPoint(0, 0)), size()).contains(mouse->globalPosition().toPoint())) {
+                if (QApplication::activePopupWidget()) {
+                    // a click in a menu of the card (or any popup) is not a click elsewhere
+                } else if (!QRect(mapToGlobal(QPoint(0, 0)), size()).contains(mouse->globalPosition().toPoint())) {
                     close(); // a click anywhere else closes the card; the click still does its job
                 }
             } else if (event->type() == QEvent::Wheel) {
@@ -956,6 +1040,12 @@ private:
     QLabel *m_title;
     QLabel *m_meta;
     QGridLayout *m_buttons;
+    static constexpr int MinimumWidth = 320;
+    static constexpr int MinimumHeight = 300;
+    static constexpr int EdgeWidth = 8;
+    Qt::Edges m_resizing;
+    QPoint m_resizeStart;
+    QSize m_resizeSize;
     int m_buttonCount = 0;
     int m_fixedButtons = 0; // the first ones are for every file; the rest depend on its type
     QElapsedTimer m_hiddenAt;
