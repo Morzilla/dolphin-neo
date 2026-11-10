@@ -2812,7 +2812,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         const qreal right = card.right() - pad;
         qreal y = m_ngCardThumb.bottom() + pad * 0.8;
         actionsAt(right, y - 2);
-        setName(x0, y, (hovered ? m_ngCardEye.left() - 8 : right) - x0);
+        setName(x0, y, (!m_ngCardEye.isEmpty() ? m_ngCardEye.left() - 8 : right) - x0);
         y += nameFm.height() + 6;
         y = chipRow(x0, y, right, {m_ngSigla, sizeText, countText}, 1) + 8;
 
@@ -2897,7 +2897,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             putText(smallFm.elidedText(joined(when), Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
         }
         actionsAt(right, footTop + (chipHeight - actionSide) / 2.0);
-        const qreal footRight = hovered ? m_ngCardEye.left() - 6 : right;
+        const qreal footRight = !m_ngCardEye.isEmpty() ? m_ngCardEye.left() - 6 : right;
         if (!actionLabels.isEmpty()) {
             chipRow(x1, footTop, footRight, actionLabels, 0, &m_ngCardActions);
         } else if (fullInfo) {
@@ -2933,7 +2933,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         setName(nameX, y + (lineHeightC - nameFm.height()) / 2.0, nameRight - nameX);
         y += lineHeightC + 8;
         actionsAt(right, y - 1);
-        y = chipRow(x0, y, hovered ? m_ngCardEye.left() - 6 : right, {m_ngSigla, sizeText, countText, fullInfo ? permissions : QString()}, 1) + 4;
+        y = chipRow(x0, y, !m_ngCardEye.isEmpty() ? m_ngCardEye.left() - 6 : right, {m_ngSigla, sizeText, countText, fullInfo ? permissions : QString()}, 1) + 4;
         if (!actionLabels.isEmpty()) {
             y = chipRow(x0, y, right, actionLabels, 0, &m_ngCardActions) + 4;
         }
