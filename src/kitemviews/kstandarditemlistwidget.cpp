@@ -2775,13 +2775,16 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         }
         return y + chipHeight;
     };
-    // while hovered the card shows the preview eye in its top left corner (the popup opens on a click or, with the
+    // while hovered the card shows the preview eye in its top right corner (the popup opens on a click or, with the
     // hover preview on, when the pointer rests on it); the menu stays on the right click
     auto actionsAt = [](qreal, qreal) {};
     if (hovered) {
-        m_ngCardEye = QRectF(card.left() + 6, card.top() + 6, actionSide + 2, actionSide + 2);
+        m_ngCardEye = QRectF(card.right() - 6 - (actionSide + 2), card.top() + 6, actionSide + 2, actionSide + 2);
     }
     auto setName = [this, nameInfo, &nameFm, &name](qreal x, qreal top, qreal width) {
+        if (!m_ngCardEye.isEmpty() && top < m_ngCardEye.bottom() && x + width > m_ngCardEye.left() - 6) {
+            width = m_ngCardEye.left() - 6 - x; // the name makes room for the eye while the card is hovered
+        }
         nameInfo->staticText.setText(nameFm.elidedText(name, Qt::ElideMiddle, qMax(10.0, width)));
         nameInfo->pos = QPointF(x, top);
         m_textRect = QRectF(x, top, qMax(10.0, width), nameFm.height());
