@@ -235,6 +235,13 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_quickDelay->setSuffix(QStringLiteral(" ms"));
     m_quickDelay->setSpecialValueText(QStringLiteral("Subito"));
     cardsForm->addRow(QStringLiteral("Dopo:"), m_quickDelay);
+    m_quickSide = new QComboBox(this);
+    m_quickSide->addItem(QStringLiteral("A sinistra del cursore"), QString());
+    m_quickSide->addItem(QStringLiteral("A destra del cursore"), QStringLiteral("right"));
+    m_quickSide->addItem(QStringLiteral("Automatica, accanto alla card"), QStringLiteral("auto"));
+    cardsForm->addRow(QStringLiteral("Posizione:"), m_quickSide);
+    connect(m_quickSide, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
+    connect(m_quickView, &QCheckBox::toggled, m_quickSide, &QWidget::setEnabled);
     connect(m_quickView, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_quickView, &QCheckBox::toggled, m_quickDelay, &QWidget::setEnabled);
     connect(m_quickDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
@@ -368,6 +375,8 @@ void NgSettingsPage::loadSettings()
     m_quickView->setChecked(quick != QLatin1String("off"));
     m_quickDelay->setValue(qBound(0, quick.toInt(), 3000));
     m_quickDelay->setEnabled(m_quickView->isChecked());
+    m_quickSide->setCurrentIndex(qMax(0, m_quickSide->findData(ngSetting("CARDS_QUICKVIEW_SIDE").toLower())));
+    m_quickSide->setEnabled(m_quickView->isChecked());
 }
 
 void NgSettingsPage::applySettings()
@@ -412,6 +421,7 @@ void NgSettingsPage::applySettings()
     setNgSetting("CARDS_FIT", m_cardsFit->currentData().toString());
     setNgSetting("CARDS_INFO", m_cardsInfo->currentData().toString());
     setNgSetting("CARDS_MARK", m_cardsMark->currentData().toString());
+    setNgSetting("CARDS_QUICKVIEW_SIDE", m_quickSide->currentData().toString());
     setNgSetting("CARDS_QUICKVIEW", !m_quickView->isChecked() ? QStringLiteral("off") : m_quickDelay->value() > 0 ? QString::number(m_quickDelay->value()) : QString());
 
     ngSettingsInvalidate(); // everything that depends on these re-reads them now
@@ -450,6 +460,7 @@ void NgSettingsPage::restoreDefaults()
     m_cardsMark->setCurrentIndex(0);
     m_quickView->setChecked(true);
     m_quickDelay->setValue(0);
+    m_quickSide->setCurrentIndex(0);
 }
 
 void NgSettingsPage::applyPreset(const QString &name)

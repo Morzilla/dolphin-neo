@@ -370,6 +370,14 @@ protected:
                 y = m_anchor.top() - 10 - size.height();
             }
         }
+        // CARDS_QUICKVIEW_SIDE: left (default) or right of the pointer, or "auto": beside the card, as computed above
+        const QString side = ngSetting("CARDS_QUICKVIEW_SIDE", QStringLiteral("left")).toLower();
+        if (side != QLatin1String("auto")) {
+            const QPoint pointer = m_host->mapFromGlobal(QCursor::pos());
+            x = side == QLatin1String("right") ? pointer.x() + 18 : pointer.x() - 18 - size.width();
+            x = qBound(6, x, qMax(6, m_host->width() - 6 - size.width()));
+            y = pointer.y() - size.height() / 2;
+        }
         y = qBound(6, y, qMax(6, m_host->height() - 6 - size.height()));
         setGeometry(x, y, size.width(), size.height());
         show();
