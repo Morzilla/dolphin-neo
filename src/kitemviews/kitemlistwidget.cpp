@@ -205,7 +205,23 @@ bool ngCardsStretch()
     return ngSetting("CARDS_FIT").toLower() == QLatin1String("stretch");
 }
 
+static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime);
+
 QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &mime)
+{
+    static QHash<QString, QList<NgQuickAction>> cache;
+    const QString key = localPath + QLatin1Char('|') + mime;
+    auto it = cache.constFind(key);
+    if (it == cache.constEnd()) {
+        if (cache.size() > 4000) {
+            cache.clear();
+        }
+        it = cache.insert(key, ngQuickActionsCompute(localPath, mime));
+    }
+    return *it;
+}
+
+static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime)
 {
     QList<NgQuickAction> actions;
     if (localPath.isEmpty() || mime.isEmpty() || mime == QLatin1String("inode/directory")) {

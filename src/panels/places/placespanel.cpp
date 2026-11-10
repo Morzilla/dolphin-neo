@@ -551,7 +551,9 @@ void PlacesPanel::ngUpdateFade()
     QScrollBar *bar = verticalScrollBar();
     const bool below = bar->value() < bar->maximum();
     const bool above = bar->value() > bar->minimum();
-    if (!below && !above) {
+    // (the effect renders the list off screen at every repaint; with the compositor's blur the window is
+    // translucent and that is too slow, so there the list simply ends)
+    if ((!below && !above) || ngSetting("GLASS_MODE").toLower() == QLatin1String("live")) {
         if (viewport()->graphicsEffect()) {
             viewport()->setGraphicsEffect(nullptr);
         }

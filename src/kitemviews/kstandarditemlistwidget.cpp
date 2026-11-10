@@ -2855,14 +2855,23 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             chip.rect = QRectF(cx, y + inner, item.width, actionHeight - 2 * inner);
             chip.tinted = action.main;
             m_ngCardActions.append(chip);
-            QPixmap pixmap = QIcon::fromTheme(action.icon, QIcon::fromTheme(QStringLiteral("application-x-executable"))).pixmap(QSize(18, 18), dpr);
-            if (!action.program.startsWith(QLatin1String("@app"))) {
-                // an action glyph: in the text colour, whatever the icon theme draws it in (applications keep their colours)
-                QPainter tint(&pixmap);
-                tint.setCompositionMode(QPainter::CompositionMode_SourceIn);
-                tint.fillRect(pixmap.rect(), option.palette.color(QPalette::Text));
+            // rendered once per icon and kept: this runs for every card at every layout
+            static QHash<QString, QPixmap> iconCache;
+            const QColor glyphColor = option.palette.color(QPalette::Text);
+            const bool isApp = action.program.startsWith(QLatin1String("@app"));
+            const QString cacheKey = action.icon + QLatin1Char('|') + QString::number(dpr) + QLatin1Char('|') + (isApp ? QString() : glyphColor.name());
+            auto cached = iconCache.constFind(cacheKey);
+            if (cached == iconCache.constEnd()) {
+                QPixmap pixmap = QIcon::fromTheme(action.icon, QIcon::fromTheme(QStringLiteral("application-x-executable"))).pixmap(QSize(18, 18), dpr);
+                if (!isApp) {
+                    // an action glyph: in the text colour, whatever the icon theme draws it in (applications keep their colours)
+                    QPainter tint(&pixmap);
+                    tint.setCompositionMode(QPainter::CompositionMode_SourceIn);
+                    tint.fillRect(pixmap.rect(), glyphColor);
+                }
+                cached = iconCache.insert(cacheKey, pixmap);
             }
-            m_ngCardActionIcons.append(pixmap);
+            m_ngCardActionIcons.append(*cached);
             cx += item.width;
         }
         return y + actionHeight;

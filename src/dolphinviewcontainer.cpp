@@ -634,6 +634,12 @@ private:
         QList<QByteArray> roles = m_view->visibleRoles();
         roles.removeAll("text");
         roles.prepend("text");
+        // the usual ones are always there, whatever the view shows (the cards list only the name)
+        for (const char *usual : {"modificationtime", "creationtime", "size", "type"}) {
+            if (!roles.contains(usual)) {
+                roles.append(usual);
+            }
+        }
         const QList<KFileItemModel::RoleInfo> rolesInfo = KFileItemModel::rolesInformation();
         const QByteArray sortRole = m_view->sortRole();
         for (const QByteArray &role : std::as_const(roles)) {
