@@ -33,6 +33,14 @@
 
 namespace
 {
+bool ngGlassPlain()
+{
+    return DolphinDockWidget::ngGlassPlain();
+}
+bool ngGlassImageMode()
+{
+    return DolphinDockWidget::ngGlassImageMode();
+}
 // dolphin-ng glass settings. DOLPHIN_NG_GLASS=<0-100> fixes the transparency; without it the
 // transparency follows the backdrop: DOLPHIN_NG_GLASS_DARK (default 90) over black,
 // DOLPHIN_NG_GLASS_LIGHT (default 10) over white, linear in between.
@@ -40,19 +48,9 @@ int ngEnvInt(const char *name, int fallback)
 {
     return qEnvironmentVariableIsSet(name) ? qBound(0, qEnvironmentVariableIntValue(name), 100) : fallback;
 }
-bool ngGlassPlain()
-{
-    static const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
-    return plain;
-}
 
 // DOLPHIN_NG_GLASS_MODE=image (default): the card shows a static, blurred copy of the wallpaper, placed by the
 // window position on screen. DOLPHIN_NG_GLASS_MODE=live: the card is a hole showing the compositor's real blur.
-bool ngGlassImageMode()
-{
-    static const bool live = ngSetting("GLASS_MODE").toLower() == QLatin1String("live");
-    return !live;
-}
 
 // The image behind the glass: DOLPHIN_NG_GLASS_IMAGE, else the Plasma wallpaper of that screen.
 QString ngBackdropPath(const QScreen *screen)
@@ -427,6 +425,18 @@ void DolphinDockWidget::updateGlass()
 
 DolphinDockWidget::~DolphinDockWidget() = default;
 
+bool DolphinDockWidget::ngGlassPlain()
+{
+    static const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
+    return plain;
+}
+
+bool DolphinDockWidget::ngGlassImageMode()
+{
+    static const bool live = ngSetting("GLASS_MODE").toLower() == QLatin1String("live");
+    return !live;
+}
+
 void DolphinDockWidget::setLocked(bool lock)
 {
     if (lock != m_locked) {
@@ -581,24 +591,51 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
     painter.setBrush(veil);
     painter.drawRoundedRect(card, radius, radius);
 
-    // rim: bright towards the top-left, fading along the diagonal, a faint return at the bottom-right (GLASS_RIM=show)
-    static const bool showRim = ngSetting("GLASS_RIM").toLower() == QLatin1String("show");
-    QLinearGradient rim(card.topLeft(), card.bottomRight());
-    if (!showRim) {
-        rim.setColorAt(0.0, Qt::transparent);
-    } else if (ngIsDark(palette())) {
-        rim.setColorAt(0.0, QColor(255, 255, 255, 105));
-        rim.setColorAt(0.45, QColor(255, 255, 255, 22));
-        rim.setColorAt(1.0, QColor(255, 255, 255, 55));
-    } else {
-        // on a light scheme the edge is a soft shadow line with a highlight where the light comes from
-        rim.setColorAt(0.0, QColor(255, 255, 255, 230));
-        rim.setColorAt(0.45, QColor(0, 0, 0, 26));
-        rim.setColorAt(1.0, QColor(0, 0, 0, 48));
-    }
+    // rim around the card. GLASS_RIM: none (default) | diagonal | soft | bevel | glow | top
+    static const QString rimStyle = ngSetting("GLASS_RIM").toLower() == QLatin1String("show") ? QStringLiteral("diagonal") : ngSetting("GLASS_RIM").toLower();
+    const bool dark = ngIsDark(palette());
+    const QRectF edge = card.adjusted(0.5, 0.5, -0.5, -0.5);
     painter.setBrush(Qt::NoBrush);
-    painter.setPen(QPen(QBrush(rim), 1));
-    painter.drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+    if (rimStyle == QLatin1String("diagonal")) {
+        // bright towards the top-left, fading along the diagonal, a faint return at the bottom-right
+        QLinearGradient rim(card.topLeft(), card.bottomRight());
+        if (dark) {
+            rim.setColorAt(0.0, QColor(255, 255, 255, 105));
+            rim.setColorAt(0.45, QColor(255, 255, 255, 22));
+            rim.setColorAt(1.0, QColor(255, 255, 255, 55));
+        } else {
+            rim.setColorAt(0.0, QColor(255, 255, 255, 230));
+            rim.setColorAt(0.45, QColor(0, 0, 0, 26));
+            rim.setColorAt(1.0, QColor(0, 0, 0, 48));
+        }
+        painter.setPen(QPen(QBrush(rim), 1));
+        painter.drawRoundedRect(edge, radius, radius);
+    } else if (rimStyle == QLatin1String("soft")) {
+        // one even, faint hairline
+        painter.setPen(QPen(dark ? QColor(255, 255, 255, 38) : QColor(0, 0, 0, 34), 1));
+        painter.drawRoundedRect(edge, radius, radius);
+    } else if (rimStyle == QLatin1String("bevel")) {
+        // glass edge: a dark outer line with a light line just inside it
+        painter.setPen(QPen(QColor(0, 0, 0, dark ? 70 : 40), 1));
+        painter.drawRoundedRect(edge, radius, radius);
+        painter.setPen(QPen(QColor(255, 255, 255, dark ? 48 : 150), 1));
+        painter.drawRoundedRect(edge.adjusted(1, 1, -1, -1), radius - 1, radius - 1);
+    } else if (rimStyle == QLatin1String("glow")) {
+        // a soft halo fading inwards over a few pixels, no hard line
+        for (int i = 0; i < 4; ++i) {
+            const int alpha = dark ? 34 - i * 8 : 30 - i * 7;
+            painter.setPen(QPen(dark ? QColor(255, 255, 255, alpha) : QColor(0, 0, 0, alpha), 1));
+            painter.drawRoundedRect(edge.adjusted(i, i, -i, -i), radius - i, radius - i);
+        }
+    } else if (rimStyle == QLatin1String("top")) {
+        // light from above: a highlight on the top edge that dies out down the sides
+        QLinearGradient rim(card.topLeft(), card.bottomLeft());
+        rim.setColorAt(0.0, QColor(255, 255, 255, dark ? 120 : 240));
+        rim.setColorAt(0.35, QColor(255, 255, 255, dark ? 20 : 60));
+        rim.setColorAt(1.0, Qt::transparent);
+        painter.setPen(QPen(QBrush(rim), 1));
+        painter.drawRoundedRect(edge, radius, radius);
+    }
 
     // disk usage of the home file system, at the bottom of the Places card (PlacesPanel leaves the room for it)
     m_ngDiskBox = QRectF();

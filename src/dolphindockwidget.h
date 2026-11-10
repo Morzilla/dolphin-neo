@@ -36,6 +36,9 @@ public:
      * case it cannot be used to wipe something drawn on top of the card.
      */
     bool paintNgGlass(QPainter &painter);
+    /** dolphin-ng: true when the sidebar glass is off (SIDEBAR=plain) / when it shows the static image (not GLASS_MODE=live). */
+    static bool ngGlassPlain();
+    static bool ngGlassImageMode();
     /** dolphin-ng: the disk usage box, in this widget's coordinates (empty when none is drawn), and the mount point it shows. */
     QRectF ngDiskBox() const { return m_ngDiskBox; }
     QString ngDiskRoot() const { return m_ngDiskRoot; }

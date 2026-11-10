@@ -73,12 +73,14 @@
 #include <KToolBarPopupAction>
 #include <KUrlComboBox>
 #include <KUrlNavigator>
+#include <KWindowEffects>
 #include <KWindowSystem>
 #include <KXMLGUIFactory>
 
 #include <kwidgetsaddons_version.h>
 
 #include <QApplication>
+#include <QPainter>
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QDesktopServices>
@@ -147,6 +149,13 @@ DolphinMainWindow::DolphinMainWindow()
 #endif
     setComponentName(QStringLiteral("dolphin"), QGuiApplication::applicationDisplayName());
     setObjectName(QStringLiteral("Dolphin#"));
+
+    // dolphin-ng: the "live blur" sidebar is a hole in the window showing the compositor's blur, so the window
+    // needs an alpha channel. Kvantum used to provide it; with an opaque widget style (Breeze) we do it here,
+    // and paintEvent() fills the rest of the window with the window colour.
+    if (!DolphinDockWidget::ngGlassPlain() && !DolphinDockWidget::ngGlassImageMode()) {
+        setAttribute(Qt::WA_TranslucentBackground);
+    }
 
     setStateConfigGroup("State");
 
@@ -621,9 +630,22 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
 {
     KXmlGuiWindow::showEvent(event);
 
+    if (testAttribute(Qt::WA_TranslucentBackground) && windowHandle()) {
+        KWindowEffects::enableBlurBehind(windowHandle(), true); // dolphin-ng: ask the compositor to blur behind the glass
+    }
+
     if (!event->spontaneous() && m_activeViewContainer) {
         m_activeViewContainer->view()->setFocus();
     }
+}
+
+void DolphinMainWindow::paintEvent(QPaintEvent *event)
+{
+    if (testAttribute(Qt::WA_TranslucentBackground)) {
+        QPainter painter(this);
+        painter.fillRect(event->rect(), palette().color(QPalette::Window)); // the docks cut their glass out of this
+    }
+    KXmlGuiWindow::paintEvent(event);
 }
 
 void DolphinMainWindow::closeEvent(QCloseEvent *event)

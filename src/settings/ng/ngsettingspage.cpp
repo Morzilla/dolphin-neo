@@ -43,8 +43,14 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     form->addRow(QStringLiteral("Sfondo del pannello:"), m_backdrop);
     m_motion = new QCheckBox(QStringLiteral("L'immagine si muove (zoom e scorrimento, alla velocità qui sotto)"), this);
     form->addRow(QString(), m_motion);
-    m_rim = new QCheckBox(QStringLiteral("Bordo luminoso attorno al pannello *"), this);
-    form->addRow(QString(), m_rim);
+    m_rim = new QComboBox(this);
+    m_rim->addItem(QStringLiteral("Nessuno"), QString());
+    m_rim->addItem(QStringLiteral("Riflesso in diagonale"), QStringLiteral("diagonal"));
+    m_rim->addItem(QStringLiteral("Linea sottile uniforme"), QStringLiteral("soft"));
+    m_rim->addItem(QStringLiteral("Smusso (scuro fuori, chiaro dentro)"), QStringLiteral("bevel"));
+    m_rim->addItem(QStringLiteral("Alone sfumato"), QStringLiteral("glow"));
+    m_rim->addItem(QStringLiteral("Luce dall'alto"), QStringLiteral("top"));
+    form->addRow(QStringLiteral("Bordo del pannello: *"), m_rim);
 
     m_lavaStyle = new QComboBox(this);
     m_lavaStyle->addItem(QStringLiteral("Gradiente che scorre"), QString());
@@ -164,7 +170,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     connect(m_glassPanel, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_backdrop, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     connect(m_motion, &QCheckBox::toggled, this, &NgSettingsPage::changed);
-    connect(m_rim, &QCheckBox::toggled, this, &NgSettingsPage::changed);
+    connect(m_rim, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     connect(m_lavaSpeed, &QSlider::valueChanged, this, &NgSettingsPage::changed);
     connect(m_lavaSize, &QSlider::valueChanged, this, &NgSettingsPage::changed);
     connect(m_lavaStyle, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
@@ -189,7 +195,10 @@ void NgSettingsPage::loadSettings()
     m_glassPanel->setChecked(ngSetting("SIDEBAR").toLower() != QLatin1String("plain"));
     m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(ngSetting("GLASS_MODE").toLower())));
     m_motion->setChecked(ngSetting("GLASS_MOTION").toLower() == QLatin1String("drift"));
-    m_rim->setChecked(ngSetting("GLASS_RIM").toLower() == QLatin1String("show"));
+    {
+        const QString rim = ngSetting("GLASS_RIM").toLower();
+        m_rim->setCurrentIndex(qMax(0, m_rim->findData(rim == QLatin1String("show") ? QStringLiteral("diagonal") : rim)));
+    }
     m_lavaSpeed->setValue(qBound(5, ngSettingInt("LAVA_SPEED", 30), 100));
     m_lavaSize->setValue(qBound(10, ngSettingInt("LAVA_SIZE", 55), 100));
     m_lavaStyle->setCurrentIndex(ngSetting("LAVA_STYLE").toLower() == QLatin1String("blobs") ? 1 : 0);
@@ -225,7 +234,7 @@ void NgSettingsPage::applySettings()
     setNgSetting("SIDEBAR", m_glassPanel->isChecked() ? QString() : QStringLiteral("plain"));
     setNgSetting("GLASS_MODE", m_backdrop->currentData().toString());
     setNgSetting("GLASS_MOTION", m_motion->isChecked() ? QStringLiteral("drift") : QString());
-    setNgSetting("GLASS_RIM", m_rim->isChecked() ? QStringLiteral("show") : QString());
+    setNgSetting("GLASS_RIM", m_rim->currentData().toString());
     setNgSetting("LAVA_SPEED", QString::number(m_lavaSpeed->value()));
     setNgSetting("LAVA_SIZE", QString::number(m_lavaSize->value()));
     setNgSetting("LAVA_STYLE", m_lavaStyle->currentData().toString());
@@ -265,7 +274,7 @@ void NgSettingsPage::restoreDefaults()
     m_glassPanel->setChecked(true);
     m_backdrop->setCurrentIndex(0);
     m_motion->setChecked(false);
-    m_rim->setChecked(false);
+    m_rim->setCurrentIndex(0);
     m_lavaSpeed->setValue(30);
     m_lavaSize->setValue(55);
     m_lavaStyle->setCurrentIndex(0);

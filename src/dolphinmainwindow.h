@@ -273,6 +273,8 @@ protected:
 
     /** @see QWidget::showEvent() */
     void showEvent(QShowEvent *event) override;
+    /** dolphin-ng: with the "live blur" sidebar the window is translucent and paints its own opaque background. */
+    void paintEvent(QPaintEvent *event) override;
 
     /** @see QMainWindow::closeEvent() */
     void closeEvent(QCloseEvent *event) override;
