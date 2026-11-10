@@ -41,6 +41,9 @@ Q_SIGNALS:
 DOLPHIN_EXPORT void ngSettingsInvalidate();
 /** dolphin-ng: grows with every ngSettingsInvalidate(), for callers that keep a derived value. */
 DOLPHIN_EXPORT int ngSettingsGeneration();
+class QDateTime;
+/** dolphin-ng: "oggi", "ieri", "7 giorni fa", "2 anni fa". */
+DOLPHIN_EXPORT QString ngAgoText(const QDateTime &when);
 DOLPHIN_EXPORT QString ngSetting(const char *name, const QString &fallback = QString());
 DOLPHIN_EXPORT int ngSettingInt(const char *name, int fallback);
 /** Store a value in dolphinrc; an empty value removes it. */

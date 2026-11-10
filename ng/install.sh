@@ -67,24 +67,24 @@ if [ "$DEPS" = 1 ]; then
     say "installing the build dependencies (sudo)"
     if command -v dnf >/dev/null; then
         # A partly updated system can end up with mixed KDE Frameworks versions: update first if in doubt.
-        sudo dnf install -y git cmake gcc-c++ extra-cmake-modules 'dnf-command(builddep)' poppler-utils
+        sudo dnf install -y git cmake gcc-c++ extra-cmake-modules 'dnf-command(builddep)' poppler-utils qt6-qtmultimedia-devel ImageMagick ffmpeg-free
         sudo dnf builddep -y dolphin
         [ "$THEME" = 1 ] && sudo dnf install -y kvantum || true
     elif command -v apt-get >/dev/null; then
         sudo apt-get update
-        sudo apt-get install -y git cmake g++ extra-cmake-modules poppler-utils
+        sudo apt-get install -y git cmake g++ extra-cmake-modules poppler-utils qt6-multimedia-dev imagemagick ffmpeg
         sudo apt-get build-dep -y dolphin || {
             echo "apt could not install Dolphin's build dependencies: enable the source repositories (deb-src) and run this again." >&2
             exit 1
         }
         [ "$THEME" = 1 ] && sudo apt-get install -y qt6-style-kvantum || true
     elif command -v pacman >/dev/null; then
-        sudo pacman -S --needed --noconfirm git cmake extra-cmake-modules base-devel poppler \
+        sudo pacman -S --needed --noconfirm git cmake extra-cmake-modules base-devel poppler qt6-multimedia qt6-multimedia-ffmpeg imagemagick ffmpeg \
             kio kparts knewstuff kcmutils kdbusaddons kiconthemes ktextwidgets kcrash kbookmarks kcompletion \
             kwindowsystem kdoctools baloo baloo-widgets kfilemetadata kuserfeedback phonon-qt6 plasma-activities
         [ "$THEME" = 1 ] && sudo pacman -S --needed --noconfirm kvantum || true
     elif command -v zypper >/dev/null; then
-        sudo zypper --non-interactive install git cmake gcc-c++ extra-cmake-modules poppler-tools
+        sudo zypper --non-interactive install git cmake gcc-c++ extra-cmake-modules poppler-tools qt6-multimedia-devel ImageMagick ffmpeg
         sudo zypper --non-interactive source-install --build-deps-only dolphin
         [ "$THEME" = 1 ] && sudo zypper --non-interactive install kvantum-qt6 || true
     else

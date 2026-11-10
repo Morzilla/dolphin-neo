@@ -71,6 +71,13 @@
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QMimeDatabase>
+#include <QVideoSink>
+#include <QVideoFrame>
+#include <QAudioOutput>
+#include <QMediaMetaData>
+#include <QMediaPlayer>
+#include <QSlider>
+#include <QMovie>
 #include <QPainter>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -492,11 +499,50 @@ public:
 
     void setPixmap(const QPixmap &pixmap, bool keepView = false)
     {
+        stopMovie();
         m_pixmap = pixmap;
         if (!keepView) {
             m_zoom = 1.0;
             m_offset = QPointF();
         }
+        update();
+    }
+
+    // an animated picture (GIF, APNG, WebP): plays in a loop, zoom and pan work on the running frames
+    void setMovie(const QString &path)
+    {
+        stopMovie();
+        m_movie = new QMovie(path, QByteArray(), this);
+        m_movie->setCacheMode(QMovie::CacheAll);
+        connect(m_movie, &QMovie::frameChanged, this, [this] {
+            m_pixmap = m_movie->currentPixmap();
+            update();
+        });
+        m_zoom = 1.0;
+        m_offset = QPointF();
+        m_movie->start();
+    }
+
+    void stopMovie()
+    {
+        if (m_movie) {
+            m_movie->stop();
+            delete m_movie;
+            m_movie = nullptr;
+        }
+    }
+
+    void zoomBy(qreal factor)
+    {
+        m_zoom = qBound(1.0, m_zoom * factor, 12.0);
+        clampOffset();
+        update();
+    }
+
+    void resetZoom()
+    {
+        m_zoom = 1.0;
+        m_offset = QPointF();
         update();
     }
 
@@ -562,6 +608,7 @@ private:
     }
 
     QPixmap m_pixmap;
+    QMovie *m_movie = nullptr;
     qreal m_zoom = 1.0;
     QPointF m_offset;
     QPointF m_dragFrom;
@@ -576,190 +623,180 @@ public:
         : QWidget(parent)
         , m_view(view)
     {
-        // a tall card: the preview on top, then name and details, then the buttons (two per row)
+        setMouseTracking(true); // edge cursors
+        applyStyle();
         auto *layout = new QVBoxLayout(this);
-        layout->setContentsMargins(14, 14, 14, 14);
+        layout->setContentsMargins(8, 8, 8, 10);
         layout->setSpacing(8);
 
-        m_preview = new QLabel(this);
+        // ---- the picture area, with its overlays (type chip top-left, zoom top-right, video bar at the bottom)
+        m_art = new QWidget(this);
+        m_art->setObjectName(QStringLiteral("art"));
+        m_art->setAutoFillBackground(true);
+        m_art->setMinimumHeight(90);
+        m_art->setMouseTracking(true);
+        m_art->installEventFilter(this);
+        auto *artLayout = new QVBoxLayout(m_art);
+        artLayout->setContentsMargins(0, 0, 0, 0);
+        m_stack = new QStackedLayout();
+        artLayout->addLayout(m_stack);
+        m_preview = new QLabel(m_art);
+        m_preview->setObjectName(QStringLiteral("textPreview"));
         m_preview->setTextFormat(Qt::PlainText);
         m_preview->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-        m_preview->setMinimumSize(200, 120);
-        m_image = new NgZoomImage(this);
-        m_stack = new QStackedLayout();
+        m_preview->setMargin(10);
+        m_image = new NgZoomImage(m_art);
         m_stack->addWidget(m_preview);
         m_stack->addWidget(m_image);
-        layout->addLayout(m_stack, 1);
+        layout->addWidget(m_art, 1);
 
+        m_chip = new QLabel(m_art);
+        m_chip->setObjectName(QStringLiteral("chip"));
+        m_zoomBar = new QWidget(m_art);
+        auto *zoomLayout = new QHBoxLayout(m_zoomBar);
+        zoomLayout->setContentsMargins(0, 0, 0, 0);
+        zoomLayout->setSpacing(4);
+        auto overlayButton = [this, zoomLayout](const QString &text, const QString &tip, std::function<void()> action) {
+            auto *button = new QToolButton(m_zoomBar);
+            button->setObjectName(QStringLiteral("overlay"));
+            button->setText(text);
+            button->setToolTip(tip);
+            button->setAutoRaise(true);
+            connect(button, &QToolButton::clicked, this, action);
+            zoomLayout->addWidget(button);
+            return button;
+        };
+        overlayButton(QStringLiteral("−"), QStringLiteral("Riduci"), [this] {
+            m_image->zoomBy(1 / 1.25);
+        });
+        overlayButton(QStringLiteral("+"), QStringLiteral("Ingrandisci (anche con la rotellina)"), [this] {
+            m_image->zoomBy(1.25);
+        });
+        overlayButton(QStringLiteral("⤢"), QStringLiteral("Adatta"), [this] {
+            m_image->resetZoom();
+        });
+
+        // video: muted while the card is open by hovering, a thin bar on the picture while the mouse is on it
+        m_player = new QMediaPlayer(this);
+        m_audio = new QAudioOutput(this);
+        m_audio->setVolume(0.6);
+        m_player->setAudioOutput(m_audio);
+        // frames go through a sink into the picture widget (a QVideoWidget is a native window: nothing can be drawn over it)
+        m_sink = new QVideoSink(this);
+        m_player->setVideoSink(m_sink);
+        connect(m_sink, &QVideoSink::videoFrameChanged, this, [this](const QVideoFrame &frame) {
+            if (m_kind != Video || !frame.isValid()) {
+                return;
+            }
+            m_image->setPixmap(QPixmap::fromImage(frame.toImage()), true);
+            if (!m_mediaSize.isValid() && frame.size().isValid()) {
+                m_mediaSize = frame.size();
+                updateChip();
+                place();
+            }
+        });
+        m_player->setLoops(QMediaPlayer::Infinite);
+        m_videoBar = new QWidget(m_art);
+        m_videoBar->setObjectName(QStringLiteral("videoBar"));
+        auto *barLayout = new QHBoxLayout(m_videoBar);
+        barLayout->setContentsMargins(6, 3, 6, 3);
+        barLayout->setSpacing(6);
+        m_playButton = new QToolButton(m_videoBar);
+        m_playButton->setObjectName(QStringLiteral("barButton"));
+        m_playButton->setAutoRaise(true);
+        m_playButton->setIcon(QIcon::fromTheme(QStringLiteral("media-playback-pause")));
+        connect(m_playButton, &QToolButton::clicked, this, [this] {
+            if (m_player->playbackState() == QMediaPlayer::PlayingState) {
+                m_player->pause();
+            } else {
+                m_player->play();
+            }
+        });
+        m_position = new QSlider(Qt::Horizontal, m_videoBar);
+        m_position->setRange(0, 1000);
+        connect(m_position, &QSlider::sliderMoved, this, [this](int value) {
+            m_player->setPosition(m_player->duration() * value / 1000);
+        });
+        m_time = new QLabel(m_videoBar);
+        m_muteButton = new QToolButton(m_videoBar);
+        m_muteButton->setObjectName(QStringLiteral("barButton"));
+        m_muteButton->setAutoRaise(true);
+        connect(m_muteButton, &QToolButton::clicked, this, [this] {
+            m_audio->setMuted(!m_audio->isMuted());
+        });
+        barLayout->addWidget(m_playButton);
+        barLayout->addWidget(m_position, 1);
+        barLayout->addWidget(m_time);
+        barLayout->addWidget(m_muteButton);
+        connect(m_player, &QMediaPlayer::positionChanged, this, [this] {
+            updateVideoBar();
+        });
+        connect(m_player, &QMediaPlayer::durationChanged, this, [this] {
+            updateVideoBar();
+            updateChip();
+        });
+        connect(m_player, &QMediaPlayer::playbackStateChanged, this, [this] {
+            updateVideoBar();
+        });
+        connect(m_audio, &QAudioOutput::mutedChanged, this, [this] {
+            updateVideoBar();
+        });
+        connect(m_player, &QMediaPlayer::metaDataChanged, this, [this] {
+            updateChip();
+        });
+        m_videoBar->hide();
+
+        // ---- name, chips, actions
         m_title = new QLabel(this);
-        QFont bold = m_title->font();
-        bold.setBold(true);
-        m_title->setFont(bold);
-        m_meta = new QLabel(this);
-        m_meta->setWordWrap(true);
-        m_meta->setEnabled(false); // dimmed
+        m_title->setObjectName(QStringLiteral("title"));
         layout->addWidget(m_title);
-        layout->addWidget(m_meta);
+        m_metaRow = new QWidget(this);
+        m_metaFlow = new NgFlowLayout(m_metaRow, 6, 6);
+        m_metaFlow->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(m_metaRow);
 
-        m_buttons = new QGridLayout();
-        m_buttons->setSpacing(6);
-        layout->addLayout(m_buttons);
-        addButton(QStringLiteral("Apri"), [this] {
+        auto *actions = new QHBoxLayout();
+        actions->setSpacing(6);
+        layout->addLayout(actions);
+        auto action = [this, actions](const QString &text, const QString &icon, bool primary, std::function<void()> run) {
+            auto *button = new QPushButton(QIcon::fromTheme(icon), text, this);
+            button->setProperty("kind", primary ? QStringLiteral("primary") : QStringLiteral("plain"));
+            button->setCursor(Qt::PointingHandCursor);
+            button->setFocusPolicy(Qt::NoFocus);
+            connect(button, &QPushButton::clicked, this, [this, run] {
+                hide();
+                run();
+            });
+            actions->addWidget(button, 1);
+            return button;
+        };
+        action(QStringLiteral("Apri"), QStringLiteral("document-open"), true, [this] {
             Q_EMIT m_view->itemActivated(m_item);
-        })->setDefault(true);
-        addButton(QStringLiteral("Apri con…"), [this] {
+        });
+        action(QStringLiteral("Apri con"), QStringLiteral("system-run"), false, [this] {
             auto *job = new KIO::ApplicationLauncherJob(); // no application given: asks which one
             job->setUrls({m_item.url()});
             job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
             job->start();
         });
-        addButton(QStringLiteral("Rinomina"), [this] {
+        action(QStringLiteral("Rinomina"), QStringLiteral("edit-rename"), false, [this] {
             m_view->renameSelectedItems(); // the controller selected the item before asking for the preview
         });
-        addButton(QStringLiteral("Copia percorso"), [this] {
+        action(QStringLiteral("Percorso"), QStringLiteral("edit-copy"), false, [this] {
             QGuiApplication::clipboard()->setText(m_item.isLocalFile() ? m_item.localPath() : m_item.url().toDisplayString());
         });
-        m_fixedButtons = m_buttonCount;
 
-        setMouseTracking(true); // edge cursors
+        m_divider = new QWidget(this);
+        m_divider->setObjectName(QStringLiteral("divider"));
+        m_divider->setFixedHeight(1);
+        layout->addWidget(m_divider);
+        m_typeRow = new QWidget(this);
+        m_typeFlow = new NgFlowLayout(m_typeRow, 6, 6);
+        m_typeFlow->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(m_typeRow);
+
         qApp->installEventFilter(this);
         hide();
-    }
-
-    QPushButton *addButton(const QString &text, std::function<void()> action, bool keepOpen = false)
-    {
-        auto *button = new QPushButton(text, this);
-        connect(button, &QPushButton::clicked, this, [this, action, keepOpen] {
-            if (!keepOpen) {
-                hide();
-            }
-            action();
-        });
-        m_buttons->addWidget(button, m_buttonCount / 2, m_buttonCount % 2);
-        ++m_buttonCount;
-        return button;
-    }
-
-    // Runs a command line tool in the folder of the item; the folder view picks the result up by itself.
-    void run(const QString &program, const QStringList &arguments)
-    {
-        if (QStandardPaths::findExecutable(program).isEmpty()) {
-            KMessageBox::error(window(), QStringLiteral("Serve il programma «%1», che non è installato.").arg(program));
-            return;
-        }
-        auto *job = new KIO::CommandLauncherJob(program, arguments);
-        job->setWorkingDirectory(m_item.url().adjusted(QUrl::RemoveFilename).toLocalFile());
-        job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
-        job->start();
-    }
-
-    // a button that opens a menu of choices; `choices` are (label, arguments for `program`) pairs
-    void addMenuButton(const QString &text, const QString &program, const QList<std::pair<QString, QStringList>> &choices)
-    {
-        QPushButton *button = addButton(text, [] {}, true);
-        auto *menu = new QMenu(button);
-        for (const auto &[label, arguments] : choices) {
-            menu->addAction(label, this, [this, program, arguments] {
-                hide();
-                run(program, arguments);
-            });
-        }
-        button->setMenu(menu);
-        connect(menu, &QMenu::aboutToHide, this, [this] {
-            // menu closed without a choice while the card was opened by hovering: close it unless the mouse is back on it
-            QTimer::singleShot(300, this, [this] {
-                if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
-                    hide();
-                }
-            });
-        });
-    }
-
-    // The buttons that make sense for this kind of file (images, archives, PDF, audio, video).
-    void rebuildTypeButtons()
-    {
-        while (m_buttonCount > m_fixedButtons) {
-            --m_buttonCount;
-            QLayoutItem *item = m_buttons->itemAtPosition(m_buttonCount / 2, m_buttonCount % 2);
-            QWidget *widget = item ? item->widget() : nullptr; // removeWidget() frees the item itself
-            if (widget) {
-                m_buttons->removeWidget(widget);
-                widget->hide();
-                widget->deleteLater();
-            }
-        }
-        if (!m_item.isLocalFile() || m_item.isDir()) {
-            return;
-        }
-        const QString path = m_item.localPath();
-        const QFileInfo info(path);
-        const QString base = info.completeBaseName();
-        const QString suffix = info.suffix();
-        const QString mime = m_item.mimetype();
-        const bool isImage = mime.startsWith(QLatin1String("image/")) && !mime.contains(QLatin1String("svg"));
-        static const QSet<QString> archives{QStringLiteral("application/zip"),
-                                            QStringLiteral("application/x-tar"),
-                                            QStringLiteral("application/x-compressed-tar"),
-                                            QStringLiteral("application/x-bzip-compressed-tar"),
-                                            QStringLiteral("application/x-xz-compressed-tar"),
-                                            QStringLiteral("application/x-zstd-compressed-tar"),
-                                            QStringLiteral("application/x-7z-compressed"),
-                                            QStringLiteral("application/vnd.rar"),
-                                            QStringLiteral("application/x-rar"),
-                                            QStringLiteral("application/gzip"),
-                                            QStringLiteral("application/x-bzip"),
-                                            QStringLiteral("application/x-xz"),
-                                            QStringLiteral("application/zstd")};
-        if (isImage) {
-            addMenuButton(QStringLiteral("Ridimensiona…"),
-                          QStringLiteral("magick"),
-                          {{QStringLiteral("75 %"), {path, QStringLiteral("-resize"), QStringLiteral("75%"), QStringLiteral("%1-75.%2").arg(base, suffix)}},
-                           {QStringLiteral("50 %"), {path, QStringLiteral("-resize"), QStringLiteral("50%"), QStringLiteral("%1-50.%2").arg(base, suffix)}},
-                           {QStringLiteral("25 %"), {path, QStringLiteral("-resize"), QStringLiteral("25%"), QStringLiteral("%1-25.%2").arg(base, suffix)}},
-                           {QStringLiteral("Larghezza 1920"), {path, QStringLiteral("-resize"), QStringLiteral("1920x>"), QStringLiteral("%1-1920.%2").arg(base, suffix)}},
-                           {QStringLiteral("Larghezza 1280"), {path, QStringLiteral("-resize"), QStringLiteral("1280x>"), QStringLiteral("%1-1280.%2").arg(base, suffix)}},
-                           {QStringLiteral("Larghezza 800"), {path, QStringLiteral("-resize"), QStringLiteral("800x>"), QStringLiteral("%1-800.%2").arg(base, suffix)}}});
-            QList<std::pair<QString, QStringList>> formats;
-            for (const char *format : {"png", "jpg", "webp", "avif", "tiff", "bmp"}) {
-                if (QString::fromLatin1(format) != suffix.toLower() && !(suffix.toLower() == QLatin1String("jpeg") && QLatin1String(format) == QLatin1String("jpg"))) {
-                    formats.append({QString::fromLatin1(format).toUpper(), {path, QStringLiteral("%1.%2").arg(base, QString::fromLatin1(format))}});
-                }
-            }
-            addMenuButton(QStringLiteral("Converti in…"), QStringLiteral("magick"), formats);
-        } else if (archives.contains(mime)) {
-            addButton(QStringLiteral("Estrai qui in sottocartella"), [this, path] {
-                if (!QStandardPaths::findExecutable(QStringLiteral("ark")).isEmpty()) {
-                    run(QStringLiteral("ark"), {QStringLiteral("--batch"), QStringLiteral("--autosubfolder"), path});
-                } else {
-                    const QString folder = QFileInfo(path).completeBaseName();
-                    QDir(QFileInfo(path).absolutePath()).mkdir(folder);
-                    run(QStringLiteral("bsdtar"), {QStringLiteral("-xf"), path, QStringLiteral("-C"), folder});
-                }
-            });
-        } else if (mime == QLatin1String("application/pdf")) {
-            addButton(QStringLiteral("Estrai il testo (TXT)"), [this, path, base] {
-                run(QStringLiteral("pdftotext"), {QStringLiteral("-layout"), path, QStringLiteral("%1.txt").arg(base)});
-            });
-            addButton(QStringLiteral("Pagine in immagini (PNG)"), [this, path, base] {
-                run(QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), path, base});
-            });
-        } else if (mime.startsWith(QLatin1String("audio/"))) {
-            if (suffix.toLower() != QLatin1String("mp3")) {
-                addButton(QStringLiteral("Converti in MP3"), [this, path, base] {
-                    run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
-                });
-            }
-            addButton(QStringLiteral("Converti in FLAC"), [this, path, base] {
-                run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("%1.flac").arg(base)});
-            });
-        } else if (mime.startsWith(QLatin1String("video/"))) {
-            addButton(QStringLiteral("Converti in MP4 (H.264)"), [this, path, base] {
-                run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
-            });
-            addButton(QStringLiteral("Estrai l'audio (MP3)"), [this, path, base] {
-                run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
-            });
-        }
     }
 
     // Opened by hovering a row (PREVIEW_HOVER): the card goes away when the mouse leaves both the row and the card.
@@ -771,6 +808,8 @@ public:
         m_hiddenAt.invalidate();
         showFor(item, rowRect);
         m_hover = true;
+        m_audio->setMuted(m_item.mimetype().startsWith(QLatin1String("video/"))); // a video opened by passing by stays quiet
+        updateVideoBar();
     }
 
     void hoverEnded()
@@ -795,29 +834,16 @@ public:
             return;
         }
         m_item = item;
-        m_title->setText(m_title->fontMetrics().elidedText(item.text(), Qt::ElideMiddle, 420));
+        m_rowRect = rowRect;
+        m_mediaSize = QSize();
+        m_title->setText(m_title->fontMetrics().elidedText(item.text(), Qt::ElideMiddle, 600));
         m_title->setToolTip(item.text());
-        m_meta->setText(QStringLiteral("%1 · %2 · %3").arg(item.mimeComment(), item.isDir() ? QString() : KIO::convertSize(item.size()), QLocale().toString(item.time(KFileItem::ModificationTime), QLocale::ShortFormat)));
+        rebuildMeta();
         rebuildTypeButtons();
         fillPreview();
-
-        QWidget *host = parentWidget();
-        // the size the user dragged it to last time (PREVIEW_SIZE=WxH), else a tall card
-        int width = 460;
-        int height = 470;
-        const QStringList saved = ngSetting("PREVIEW_SIZE").split(QLatin1Char('x'));
-        if (saved.size() == 2 && saved.at(0).toInt() >= MinimumWidth && saved.at(1).toInt() >= MinimumHeight) {
-            width = saved.at(0).toInt();
-            height = saved.at(1).toInt();
-        }
-        width = qMin(width, qMax(MinimumWidth, host->width() - 8));
-        height = qMin(height, qMax(MinimumHeight, host->height() - 8));
-        const QPoint below = host->mapFromGlobal(rowRect.bottomLeft());
-        int y = below.y() + 2;
-        if (y + height > host->height() - 6) {
-            y = host->mapFromGlobal(rowRect.topLeft()).y() - height - 2; // no room below: open above the row
-        }
-        setGeometry(below.x() + 3, qMax(4, y), width, height);
+        updateChip();
+        m_audio->setMuted(false);
+        place();
         show();
         raise();
     }
@@ -828,13 +854,19 @@ protected:
         Q_UNUSED(event)
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
+        const bool dark = ngIsDark(palette());
         const QColor window = palette().color(QPalette::Window);
-        QColor fill = ngIsDark(palette()) ? window.lighter(118) : window.darker(104);
-        QColor border = palette().color(QPalette::WindowText);
-        border.setAlphaF(0.16);
-        painter.setPen(QPen(border, 1));
-        painter.setBrush(fill);
-        painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12);
+        const QRectF frame = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        // the glass sheet: a little lighter than the window, brighter towards the top, a bright hairline on top
+        QLinearGradient sheet(frame.topLeft(), frame.bottomLeft());
+        sheet.setColorAt(0.0, dark ? window.lighter(132) : window.darker(102));
+        sheet.setColorAt(0.35, dark ? window.lighter(120) : window.darker(104));
+        sheet.setColorAt(1.0, dark ? window.lighter(116) : window.darker(105));
+        painter.setPen(QPen(dark ? QColor(255, 255, 255, 34) : QColor(0, 0, 0, 40), 1));
+        painter.setBrush(sheet);
+        painter.drawRoundedRect(frame, 14, 14);
+        painter.setPen(QPen(QColor(255, 255, 255, dark ? 70 : 200), 1));
+        painter.drawLine(QPointF(frame.left() + 14, frame.top() + 1), QPointF(frame.right() - 14, frame.top() + 1));
         // resize grip: three short diagonal strokes in the bottom-right corner
         QColor grip = palette().color(QPalette::WindowText);
         grip.setAlphaF(0.35);
@@ -903,15 +935,54 @@ protected:
     {
         if (m_resizing) {
             m_resizing = Qt::Edges();
-            setNgSetting("PREVIEW_SIZE", QStringLiteral("%1x%2").arg(width()).arg(height())); // remembered for the next time
+            // remembered for the next time: the width always, the height only for cards without a picture to fit
+            setNgSetting("PREVIEW_SIZE", QStringLiteral("%1x%2").arg(width()).arg(height()));
             event->accept();
             return;
         }
         QWidget::mouseReleaseEvent(event);
     }
 
+    void leaveEvent(QEvent *event) override
+    {
+        QWidget::leaveEvent(event);
+        if (m_hover && isVisible()) {
+            // left the card: if the mouse is not back on a row, close; a row re-opens it after its delay
+            QTimer::singleShot(120, this, [this] {
+                if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
+                    hide(); // (a menu of the card holds the mouse: not a leave)
+                }
+            });
+        }
+    }
+
+    void hideEvent(QHideEvent *event) override
+    {
+        m_hiddenAt.start();
+        m_player->stop();
+        m_player->setSource(QUrl());
+        m_image->stopMovie();
+        QWidget::hideEvent(event);
+    }
+
+    void changeEvent(QEvent *event) override
+    {
+        QWidget::changeEvent(event);
+        if (event->type() == QEvent::PaletteChange) {
+            applyStyle();
+        }
+    }
+
     bool eventFilter(QObject *watched, QEvent *event) override
     {
+        if (watched == m_art) {
+            if (event->type() == QEvent::Resize) {
+                placeOverlays();
+            } else if (event->type() == QEvent::Enter || event->type() == QEvent::Leave) {
+                updateVideoBar();
+            }
+            return false;
+        }
         if (isVisible()) {
             if (event->type() == QEvent::MouseButtonPress) {
                 const auto *mouse = static_cast<QMouseEvent *>(event);
@@ -933,46 +1004,388 @@ protected:
         return QWidget::eventFilter(watched, event);
     }
 
-    void leaveEvent(QEvent *event) override
+private:
+    enum Kind { Picture, Animation, Video, Audio, Text, Folder, Other };
+
+    Kind kindOf(const KFileItem &item) const
     {
-        QWidget::leaveEvent(event);
-        if (m_hover && isVisible()) {
-            // left the card: if the mouse is not back on a row, close; a row re-opens it after its delay
-            QTimer::singleShot(120, this, [this] {
-                if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
-                    hide(); // (a menu of the card holds the mouse: not a leave)
-                }
-            });
+        const QString mime = item.mimetype();
+        if (item.isDir()) {
+            return Folder;
+        }
+        if (mime == QLatin1String("image/gif") || mime == QLatin1String("image/apng") || mime == QLatin1String("image/webp")) {
+            return Animation;
+        }
+        if (mime.startsWith(QLatin1String("image/"))) {
+            return Picture;
+        }
+        if (mime.startsWith(QLatin1String("video/"))) {
+            return Video;
+        }
+        if (mime.startsWith(QLatin1String("audio/"))) {
+            return Audio;
+        }
+        const QMimeType mimeType = QMimeDatabase().mimeTypeForName(mime);
+        if (mimeType.isValid() && mimeType.inherits(QStringLiteral("text/plain"))) {
+            return Text;
+        }
+        return Other;
+    }
+
+    void applyStyle()
+    {
+        const bool dark = ngIsDark(palette());
+        const QString ink = dark ? QStringLiteral("255, 255, 255") : QStringLiteral("0, 0, 0");
+        const QString amber = dark ? QStringLiteral("#f1cf9a") : QStringLiteral("#7d4f12");
+        const QString amberRgb = dark ? QStringLiteral("217, 163, 90") : QStringLiteral("168, 107, 35");
+        setStyleSheet(QStringLiteral(
+            "QWidget#art { background: %3; }"
+            "QLabel#textPreview { color: %4; background: transparent; }"
+            "QLabel#title { font-weight: 700; font-size: 15px; background: transparent; }"
+            "QLabel#metaChip { color: rgba(%1, 0.80); padding: 3px 8px; border-radius: 10px; background: rgba(%1, 0.07); border: 1px solid rgba(%1, 0.09); font-size: 12px; }"
+            "QLabel#chip { color: white; background: rgba(0, 0, 0, 0.50); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 600; letter-spacing: 1px; }"
+            "QToolButton#overlay { color: white; background: rgba(0, 0, 0, 0.50); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 8px; min-width: 24px; min-height: 24px; padding: 0; font-size: 14px; font-weight: 600; }"
+            "QToolButton#overlay:hover { background: rgba(0, 0, 0, 0.72); }"
+            "QWidget#videoBar { background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(255, 255, 255, 0.20); border-radius: 10px; }"
+            "QWidget#videoBar QLabel { color: white; font-size: 11px; background: transparent; border: 0; }"
+            "QToolButton#barButton { border: 0; background: transparent; padding: 2px; }"
+            "QToolButton#barButton:hover { background: rgba(255, 255, 255, 0.18); border-radius: 6px; }"
+            "QWidget#videoBar QSlider::groove:horizontal { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.25); }"
+            "QWidget#videoBar QSlider::sub-page:horizontal { border-radius: 2px; background: %5; }"
+            "QWidget#videoBar QSlider::handle:horizontal { width: 10px; margin: -3px 0; border-radius: 5px; background: white; }"
+            "QWidget#divider { background: rgba(%1, 0.10); }"
+            "QPushButton { border: 1px solid rgba(%1, 0.12); border-radius: 10px; padding: 7px 8px; background: rgba(%1, 0.07); color: palette(window-text); font-weight: 500; }"
+            "QPushButton:hover { background: rgba(%1, 0.13); border-color: rgba(%1, 0.22); }"
+            "QPushButton:pressed { background: rgba(%1, 0.18); }"
+            "QPushButton[kind=\"primary\"] { background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 rgba(%1, 0.20), stop: 1 rgba(%1, 0.09)); border-color: rgba(%1, 0.28); }"
+            "QPushButton[kind=\"primary\"]:hover { background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 rgba(%1, 0.27), stop: 1 rgba(%1, 0.14)); }"
+            "QPushButton[kind=\"type\"] { border-radius: 14px; padding: 5px 12px; color: %2; border: 1px solid rgba(%6, 0.45); background: rgba(%6, 0.09); font-weight: 500; }"
+            "QPushButton[kind=\"type\"]:hover { background: rgba(%6, 0.20); border-color: rgba(%6, 0.70); }"
+            "QPushButton::menu-indicator { image: none; width: 0; }")
+                          .arg(ink, amber, dark ? QStringLiteral("#0f1115") : QStringLiteral("#e9e8e3"), dark ? QStringLiteral("rgba(255, 255, 255, 0.86)") : QStringLiteral("rgba(0, 0, 0, 0.82)"), amber, amberRgb));
+    }
+
+    void placeOverlays()
+    {
+        const int w = m_art->width();
+        const int h = m_art->height();
+        QPainterPath mask;
+        mask.addRoundedRect(QRectF(0, 0, w, h), 10, 10);
+        m_art->setMask(QRegion(mask.toFillPolygon().toPolygon()));
+        m_chip->adjustSize();
+        m_chip->move(10, 10);
+        m_zoomBar->adjustSize();
+        m_zoomBar->move(w - m_zoomBar->width() - 10, 10);
+        m_videoBar->setGeometry(10, h - 10 - 32, w - 20, 32);
+        m_chip->raise();
+        m_zoomBar->raise();
+        m_videoBar->raise();
+    }
+
+    void updateVideoBar()
+    {
+        const bool media = m_kind == Video || m_kind == Audio;
+        m_videoBar->setVisible(media && (m_art->underMouse() || m_kind == Audio || m_player->playbackState() != QMediaPlayer::PlayingState));
+        if (!media) {
+            return;
+        }
+        m_playButton->setIcon(QIcon::fromTheme(m_player->playbackState() == QMediaPlayer::PlayingState ? QStringLiteral("media-playback-pause") : QStringLiteral("media-playback-start")));
+        m_muteButton->setIcon(QIcon::fromTheme(m_audio->isMuted() ? QStringLiteral("audio-volume-muted") : QStringLiteral("audio-volume-high")));
+        const qint64 duration = m_player->duration();
+        if (duration > 0 && !m_position->isSliderDown()) {
+            m_position->setValue(int(m_player->position() * 1000 / duration));
+        }
+        m_time->setText(QStringLiteral("%1 / %2").arg(clock(m_player->position()), clock(duration)));
+    }
+
+    static QString clock(qint64 ms)
+    {
+        const qint64 seconds = ms / 1000;
+        if (seconds >= 3600) {
+            return QStringLiteral("%1:%2:%3").arg(seconds / 3600).arg((seconds / 60) % 60, 2, 10, QLatin1Char('0')).arg(seconds % 60, 2, 10, QLatin1Char('0'));
+        }
+        return QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
+    }
+
+    // the small label on the picture: type, and the size of a picture or the length of a video
+    void updateChip()
+    {
+        QStringList parts;
+        const QString suffix = QFileInfo(m_item.name()).suffix().toUpper();
+        parts << (m_item.isDir() ? QStringLiteral("DIR") : suffix.isEmpty() ? QStringLiteral("FILE") : suffix);
+        if (m_mediaSize.isValid()) {
+            parts << QStringLiteral("%1×%2").arg(m_mediaSize.width()).arg(m_mediaSize.height());
+        }
+        if ((m_kind == Video || m_kind == Audio) && m_player->duration() > 0) {
+            const QSize resolution = m_player->metaData().value(QMediaMetaData::Resolution).toSize();
+            if (resolution.isValid() && !m_mediaSize.isValid()) {
+                parts << QStringLiteral("%1p").arg(resolution.height());
+            }
+            parts << clock(m_player->duration());
+        }
+        m_chip->setText(parts.join(QStringLiteral("  ·  ")));
+        m_chip->adjustSize();
+    }
+
+    void rebuildMeta()
+    {
+        while (QLayoutItem *item = m_metaFlow->takeAt(0)) {
+            delete item->widget();
+            delete item;
+        }
+        auto chip = [this](const QString &text) {
+            auto *label = new QLabel(text, m_metaRow);
+            label->setObjectName(QStringLiteral("metaChip"));
+            m_metaFlow->addWidget(label);
+        };
+        chip(m_item.mimeComment());
+        if (!m_item.isDir()) {
+            chip(KIO::convertSize(m_item.size()));
+        }
+        const QDateTime modified = m_item.time(KFileItem::ModificationTime);
+        if (modified.isValid()) {
+            chip(QStringLiteral("Modificato %1 · %2").arg(QLocale().toString(modified.date(), QLocale::ShortFormat), ngAgoText(modified)));
         }
     }
 
-    void hideEvent(QHideEvent *event) override
+    // Runs a command line tool in the folder of the item; the folder view picks the result up by itself.
+    void run(const QString &program, const QStringList &arguments)
     {
-        m_hiddenAt.start();
-        QWidget::hideEvent(event);
+        if (QStandardPaths::findExecutable(program).isEmpty()) {
+            KMessageBox::error(window(), QStringLiteral("Serve il programma «%1», che non è installato.").arg(program));
+            return;
+        }
+        auto *job = new KIO::CommandLauncherJob(program, arguments);
+        job->setWorkingDirectory(m_item.url().adjusted(QUrl::RemoveFilename).toLocalFile());
+        job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
+        job->start();
     }
 
-private:
+    QPushButton *addTypeButton(const QString &text, std::function<void()> action, bool keepOpen = false)
+    {
+        auto *button = new QPushButton(text, m_typeRow);
+        button->setProperty("kind", QStringLiteral("type"));
+        button->setCursor(Qt::PointingHandCursor);
+        button->setFocusPolicy(Qt::NoFocus);
+        connect(button, &QPushButton::clicked, this, [this, action, keepOpen] {
+            if (!keepOpen) {
+                hide();
+            }
+            action();
+        });
+        m_typeFlow->addWidget(button);
+        return button;
+    }
+
+    // a pill that opens a menu of choices; `choices` are (label, arguments for `program`) pairs
+    void addTypeMenu(const QString &text, const QString &program, const QList<std::pair<QString, QStringList>> &choices)
+    {
+        QPushButton *button = addTypeButton(text, [] {}, true);
+        auto *menu = new QMenu(button);
+        for (const auto &[label, arguments] : choices) {
+            menu->addAction(label, this, [this, program, arguments] {
+                hide();
+                run(program, arguments);
+            });
+        }
+        button->setMenu(menu);
+        connect(menu, &QMenu::aboutToHide, this, [this] {
+            // menu closed without a choice while the card was opened by hovering: close it unless the mouse is back on it
+            QTimer::singleShot(300, this, [this] {
+                if (m_hover && isVisible() && !underMouse() && !QApplication::activePopupWidget()) {
+                    hide();
+                }
+            });
+        });
+    }
+
+    // The pills that make sense for this kind of file (images, archives, PDF, audio, video).
+    void rebuildTypeButtons()
+    {
+        while (QLayoutItem *item = m_typeFlow->takeAt(0)) {
+            delete item->widget();
+            delete item;
+        }
+        const bool any = m_item.isLocalFile() && !m_item.isDir();
+        if (!any) {
+            m_divider->hide();
+            m_typeRow->hide();
+            return;
+        }
+        const QString path = m_item.localPath();
+        const QFileInfo info(path);
+        const QString base = info.completeBaseName();
+        const QString suffix = info.suffix();
+        const QString mime = m_item.mimetype();
+        const bool isImage = mime.startsWith(QLatin1String("image/")) && !mime.contains(QLatin1String("svg"));
+        static const QSet<QString> archives{QStringLiteral("application/zip"),
+                                            QStringLiteral("application/x-tar"),
+                                            QStringLiteral("application/x-compressed-tar"),
+                                            QStringLiteral("application/x-bzip-compressed-tar"),
+                                            QStringLiteral("application/x-xz-compressed-tar"),
+                                            QStringLiteral("application/x-zstd-compressed-tar"),
+                                            QStringLiteral("application/x-7z-compressed"),
+                                            QStringLiteral("application/vnd.rar"),
+                                            QStringLiteral("application/x-rar"),
+                                            QStringLiteral("application/gzip"),
+                                            QStringLiteral("application/x-bzip"),
+                                            QStringLiteral("application/x-xz"),
+                                            QStringLiteral("application/zstd")};
+        if (isImage) {
+            addTypeMenu(QStringLiteral("Ridimensiona…"),
+                        QStringLiteral("magick"),
+                        {{QStringLiteral("75 %"), {path, QStringLiteral("-resize"), QStringLiteral("75%"), QStringLiteral("%1-75.%2").arg(base, suffix)}},
+                         {QStringLiteral("50 %"), {path, QStringLiteral("-resize"), QStringLiteral("50%"), QStringLiteral("%1-50.%2").arg(base, suffix)}},
+                         {QStringLiteral("25 %"), {path, QStringLiteral("-resize"), QStringLiteral("25%"), QStringLiteral("%1-25.%2").arg(base, suffix)}},
+                         {QStringLiteral("Larghezza 1920"), {path, QStringLiteral("-resize"), QStringLiteral("1920x>"), QStringLiteral("%1-1920.%2").arg(base, suffix)}},
+                         {QStringLiteral("Larghezza 1280"), {path, QStringLiteral("-resize"), QStringLiteral("1280x>"), QStringLiteral("%1-1280.%2").arg(base, suffix)}},
+                         {QStringLiteral("Larghezza 800"), {path, QStringLiteral("-resize"), QStringLiteral("800x>"), QStringLiteral("%1-800.%2").arg(base, suffix)}}});
+            QList<std::pair<QString, QStringList>> formats;
+            for (const char *format : {"png", "jpg", "webp", "avif", "tiff", "bmp"}) {
+                if (QString::fromLatin1(format) != suffix.toLower() && !(suffix.toLower() == QLatin1String("jpeg") && QLatin1String(format) == QLatin1String("jpg"))) {
+                    formats.append({QString::fromLatin1(format).toUpper(), {path, QStringLiteral("%1.%2").arg(base, QString::fromLatin1(format))}});
+                }
+            }
+            addTypeMenu(QStringLiteral("Converti in…"), QStringLiteral("magick"), formats);
+            if (mime == QLatin1String("image/gif")) {
+                addTypeButton(QStringLiteral("In MP4"), [this, path, base] {
+                    run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-movflags"), QStringLiteral("faststart"), QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"), QStringLiteral("-vf"), QStringLiteral("scale=trunc(iw/2)*2:trunc(ih/2)*2"), QStringLiteral("%1.mp4").arg(base)});
+                });
+            }
+        } else if (archives.contains(mime)) {
+            addTypeButton(QStringLiteral("Estrai qui in sottocartella"), [this, path] {
+                if (!QStandardPaths::findExecutable(QStringLiteral("ark")).isEmpty()) {
+                    run(QStringLiteral("ark"), {QStringLiteral("--batch"), QStringLiteral("--autosubfolder"), path});
+                } else {
+                    const QString folder = QFileInfo(path).completeBaseName();
+                    QDir(QFileInfo(path).absolutePath()).mkdir(folder);
+                    run(QStringLiteral("bsdtar"), {QStringLiteral("-xf"), path, QStringLiteral("-C"), folder});
+                }
+            });
+        } else if (mime == QLatin1String("application/pdf")) {
+            addTypeButton(QStringLiteral("Estrai il testo"), [this, path, base] {
+                run(QStringLiteral("pdftotext"), {QStringLiteral("-layout"), path, QStringLiteral("%1.txt").arg(base)});
+            });
+            addTypeButton(QStringLiteral("Pagine in PNG"), [this, path, base] {
+                run(QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), path, base});
+            });
+        } else if (mime.startsWith(QLatin1String("audio/"))) {
+            if (suffix.toLower() != QLatin1String("mp3")) {
+                addTypeButton(QStringLiteral("In MP3"), [this, path, base] {
+                    run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+                });
+            }
+            addTypeButton(QStringLiteral("In FLAC"), [this, path, base] {
+                run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("%1.flac").arg(base)});
+            });
+        } else if (mime.startsWith(QLatin1String("video/"))) {
+            addTypeButton(QStringLiteral("In MP4 (H.264)"), [this, path, base] {
+                run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
+            });
+            addTypeButton(QStringLiteral("Estrai l'audio (MP3)"), [this, path, base] {
+                run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+            });
+            addTypeButton(QStringLiteral("Fotogramma in PNG"), [this, path, base] {
+                const qint64 at = m_player->position() / 1000;
+                run(QStringLiteral("ffmpeg"), {QStringLiteral("-ss"), QString::number(at), QStringLiteral("-i"), path, QStringLiteral("-frames:v"), QStringLiteral("1"), QStringLiteral("%1-%2s.png").arg(base).arg(at)});
+            }, true);
+        }
+        const bool some = m_typeFlow->count() > 0;
+        m_divider->setVisible(some);
+        m_typeRow->setVisible(some);
+    }
+
+    // The card takes the shape of what it shows: a picture or video sets the height of its area from its
+    // proportions (a landscape picture gets a wider card, a portrait one a taller card); text and folders get a
+    // short block of lines; audio only the bar. A width the user dragged it to is kept (PREVIEW_SIZE).
+    void place()
+    {
+        QWidget *host = parentWidget();
+        int width = 440;
+        int height = 0; // 0: from the content
+        const QStringList saved = ngSetting("PREVIEW_SIZE").split(QLatin1Char('x'));
+        const bool userSize = saved.size() == 2 && saved.at(0).toInt() >= MinimumWidth && saved.at(1).toInt() >= MinimumHeight;
+        if (userSize) {
+            width = saved.at(0).toInt();
+        }
+        qreal aspect = 0; // width / height of the picture, when known
+        if (m_mediaSize.isValid() && m_mediaSize.height() > 0) {
+            aspect = qreal(m_mediaSize.width()) / m_mediaSize.height();
+            if (!userSize) {
+                width = aspect > 1.3 ? 520 : aspect < 0.8 ? 380 : 440;
+            }
+        } else if (m_kind == Video) {
+            aspect = 16.0 / 9.0;
+            if (!userSize) {
+                width = 520;
+            }
+        }
+        width = qMin(width, qMax(MinimumWidth, host->width() - 8));
+        const int artWidth = width - 16;
+        int artHeight;
+        switch (m_kind) {
+        case Picture:
+        case Animation:
+        case Video:
+            artHeight = aspect > 0 ? qRound(artWidth / aspect) : qRound(artWidth * 0.66);
+            artHeight = qBound(140, artHeight, qRound(artWidth * 1.4));
+            break;
+        case Audio:
+            artHeight = 52;
+            break;
+        case Text:
+        case Folder:
+            artHeight = 170;
+            break;
+        default:
+            artHeight = 150;
+            break;
+        }
+        if (userSize && m_kind != Picture && m_kind != Animation && m_kind != Video) {
+            height = saved.at(1).toInt();
+        } else {
+            // the rest of the card below the picture
+            m_art->setFixedHeight(artHeight);
+            height = sizeHint().height();
+            m_art->setMinimumHeight(90);
+            m_art->setMaximumHeight(QWIDGETSIZE_MAX);
+        }
+        height = qMin(qMax(height, MinimumHeight), qMax(MinimumHeight, host->height() - 8));
+
+        const QPoint below = host->mapFromGlobal(m_rowRect.bottomLeft());
+        int y = below.y() + 2;
+        if (y + height > host->height() - 6) {
+            y = host->mapFromGlobal(m_rowRect.topLeft()).y() - height - 2; // no room below: open above the row
+        }
+        int x = below.x() + 3;
+        x = qMin(x, qMax(4, host->width() - width - 4));
+        setGeometry(x, qMax(4, y), width, height);
+    }
+
     void fillPreview()
     {
+        m_kind = kindOf(m_item);
         m_stack->setCurrentWidget(m_preview);
         m_preview->setPixmap(QPixmap());
         m_preview->setAlignment(Qt::AlignLeft | Qt::AlignTop);
         m_preview->setFont(font());
+        m_zoomBar->setVisible(m_kind == Picture || m_kind == Animation);
+        m_player->stop();
+        m_player->setSource(QUrl());
         const QString path = m_item.localPath();
 
-        if (m_item.isDir() && !path.isEmpty()) {
+        if (m_kind == Folder && !path.isEmpty()) {
             const QStringList entries = QDir(path).entryList(QDir::AllEntries | QDir::NoDotAndDotDot, QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
             QStringList lines = entries.mid(0, 9);
             if (entries.size() > lines.size()) {
                 lines.append(QStringLiteral("… altri %1").arg(entries.size() - lines.size()));
             }
             m_preview->setText(lines.isEmpty() ? QStringLiteral("(cartella vuota)") : lines.join(QLatin1Char('\n')));
+            updateVideoBar();
             return;
         }
 
-        const QMimeType mimeType = QMimeDatabase().mimeTypeForName(m_item.mimetype());
-        if (!path.isEmpty() && mimeType.isValid() && mimeType.inherits(QStringLiteral("text/plain"))) {
+        if (m_kind == Text && !path.isEmpty()) {
             QFile file(path);
             if (file.open(QIODevice::ReadOnly)) {
                 QStringList lines = QString::fromUtf8(file.read(8000)).split(QLatin1Char('\n')).mid(0, 9);
@@ -981,15 +1394,40 @@ private:
                 }
                 m_preview->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
                 m_preview->setText(lines.join(QLatin1Char('\n')));
+                updateVideoBar();
                 return;
             }
+        }
+
+        if ((m_kind == Video || m_kind == Audio) && !path.isEmpty()) {
+            m_stack->setCurrentWidget(m_image);
+            m_image->setPixmap(m_kind == Audio ? QIcon::fromTheme(m_item.iconName()).pixmap(40, 40) : QPixmap());
+            m_player->setSource(QUrl::fromLocalFile(path));
+            m_player->play();
+            updateVideoBar();
+            return;
         }
 
         // everything else: the type icon at once, then a thumbnail from KIO, then (pictures only) the picture itself,
         // so that zooming in shows real detail
         m_stack->setCurrentWidget(m_image);
         m_image->setPixmap(QIcon::fromTheme(m_item.iconName()).pixmap(96, 96));
+        updateVideoBar();
         const QUrl url = m_item.url();
+        if (m_kind == Animation && !path.isEmpty()) {
+            QImageReader reader(path);
+            m_mediaSize = reader.size();
+            m_image->setMovie(path);
+            return;
+        }
+        if (m_kind == Picture && !path.isEmpty()) {
+            QImageReader reader(path);
+            reader.setAutoTransform(true);
+            m_mediaSize = reader.size(); // only the header is read
+            if (reader.transformation() & QImageIOHandler::TransformationRotate90) {
+                m_mediaSize.transpose();
+            }
+        }
         KIO::PreviewJob *job = KIO::filePreview(KFileItemList{m_item}, QSize(1024, 640));
         job->setIgnoreMaximumSize(m_item.isLocalFile());
         connect(job, &KIO::PreviewJob::gotPreview, this, [this, url](const KFileItem &, const QPixmap &pixmap) {
@@ -1019,7 +1457,7 @@ private:
                 process->start(pdftoppm, {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("200"), QStringLiteral("-f"), QStringLiteral("1"), QStringLiteral("-l"), QStringLiteral("1"), QStringLiteral("-singlefile"), path, base});
             }
         }
-        if (!path.isEmpty() && m_item.mimetype().startsWith(QLatin1String("image/")) && m_item.size() < 80 * 1024 * 1024) {
+        if (m_kind == Picture && !path.isEmpty() && m_item.size() < 80 * 1024 * 1024) {
             QTimer::singleShot(150, this, [this, url, path] {
                 if (!isVisible() || m_item.url() != url) {
                     return;
@@ -1041,21 +1479,36 @@ private:
 
     DolphinView *m_view;
     KFileItem m_item;
+    QRect m_rowRect;
+    Kind m_kind = Other;
+    QSize m_mediaSize;
+    QWidget *m_art;
     QLabel *m_preview;
     NgZoomImage *m_image;
+    QVideoSink *m_sink;
     QStackedLayout *m_stack;
+    QLabel *m_chip;
+    QWidget *m_zoomBar;
+    QMediaPlayer *m_player;
+    QAudioOutput *m_audio;
+    QWidget *m_videoBar;
+    QToolButton *m_playButton;
+    QSlider *m_position;
+    QLabel *m_time;
+    QToolButton *m_muteButton;
     bool m_fullPicture = false;
     QLabel *m_title;
-    QLabel *m_meta;
-    QGridLayout *m_buttons;
+    QWidget *m_metaRow;
+    NgFlowLayout *m_metaFlow;
+    QWidget *m_divider;
+    QWidget *m_typeRow;
+    NgFlowLayout *m_typeFlow;
     static constexpr int MinimumWidth = 320;
-    static constexpr int MinimumHeight = 300;
+    static constexpr int MinimumHeight = 260;
     static constexpr int EdgeWidth = 8;
     Qt::Edges m_resizing;
     QPoint m_resizeStart;
     QSize m_resizeSize;
-    int m_buttonCount = 0;
-    int m_fixedButtons = 0; // the first ones are for every file; the rest depend on its type
     QElapsedTimer m_hiddenAt;
     bool m_hover = false; // opened by resting the mouse on the row
 };

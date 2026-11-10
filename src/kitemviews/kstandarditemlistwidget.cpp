@@ -62,22 +62,6 @@ NgMark ngMark()
     return mark;
 }
 
-// "oggi", "ieri", "7 giorni fa", "2 anni fa"
-QString ngAgoText(const QDateTime &when)
-{
-    const qint64 days = when.date().daysTo(QDate::currentDate());
-    if (days <= 0) {
-        return QStringLiteral("oggi");
-    }
-    if (days == 1) {
-        return QStringLiteral("ieri");
-    }
-    if (days < 365) {
-        return QStringLiteral("%1 giorni fa").arg(days);
-    }
-    const qint64 years = days / 365;
-    return years == 1 ? QStringLiteral("1 anno fa") : QStringLiteral("%1 anni fa").arg(years);
-}
 
 QDateTime ngDateTimeOf(const QVariant &raw)
 {
