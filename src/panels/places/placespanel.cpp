@@ -31,53 +31,23 @@
 #include <QMenu>
 #include <QMimeData>
 #include <QPainter>
-#include <QProxyStyle>
-#include <QStyleOption>
 #include <QShowEvent>
 #include <QTimer>
 
 #include <Solid/StorageAccess>
 
-// dolphin-ng: the selected and hovered entries of Places are glass pills, like the section titles,
-// instead of the style's filled highlight.
-class NgPlacesStyle : public QProxyStyle
-{
-public:
-    explicit NgPlacesStyle(const QString &baseStyle)
-        : QProxyStyle(baseStyle)
-    {
-    }
-    void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget) const override
-    {
-        if (element == PE_PanelItemViewItem) {
-            const bool selected = option->state & State_Selected;
-            const bool hovered = option->state & State_MouseOver;
-            if (!selected && !hovered) {
-                return;
-            }
-            const bool dark = ngIsDark(option->palette);
-            const QRectF pill = QRectF(option->rect).adjusted(1.5, 1.5, -1.5, -1.5);
-            const int base = dark ? 255 : 0;
-            painter->save();
-            painter->setRenderHint(QPainter::Antialiasing);
-            painter->setBrush(QColor(base, base, base, selected ? (hovered ? 46 : 36) : 20));
-            painter->setPen(QPen(QColor(base, base, base, selected ? 60 : 34), 1));
-            painter->drawRoundedRect(pill, 9, 9);
-            painter->restore();
-            return;
-        }
-        QProxyStyle::drawPrimitive(element, option, painter, widget);
-    }
-};
-
 PlacesPanel::PlacesPanel(QWidget *parent)
     : KFilePlacesView(parent)
 {
     if (ngSetting("SIDEBAR").toLower() != QLatin1String("plain")) {
-        auto *glassStyle = new NgPlacesStyle(style()->objectName());
-        glassStyle->setParent(this);
-        setStyle(glassStyle);
-        viewport()->setStyle(glassStyle);
+        // dolphin-ng: the style highlights the selected and hovered entries with the palette's highlight colour;
+        // a translucent white (black on light schemes) turns that into a glass pill over the backdrop
+        QPalette glass = palette();
+        const int base = ngIsDark(glass) ? 255 : 0;
+        glass.setColor(QPalette::Highlight, QColor(base, base, base, 46));
+        glass.setColor(QPalette::HighlightedText, glass.color(QPalette::WindowText));
+        setPalette(glass);
+        viewport()->setPalette(glass);
     }
     setViewportMargins(10, 12, 10, 12 + 62); // dolphin-ng: keep the entries inside the glass card drawn by the dock, above its disk usage box
     // dolphin-ng: never fill the list background, whatever the style's base colour is, so the glass card shows through
