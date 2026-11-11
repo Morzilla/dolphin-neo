@@ -3512,7 +3512,17 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         actionsAt(right, y - 2);
         setName(x0, y, right - x0);
         y += nameFm.height() + 6;
-        y = chipRow(x0, y, right, {m_ngSigla, sizeText, countText}, 1) + 8;
+        {
+            // the chips (type, size, items) sit on the band, at its bottom right: laid out from the left, then moved
+            const int first = m_ngChips.count();
+            chipRow(card.left() + 8, m_ngCardThumb.bottom() - chipHeight - 7, card.right() - 8, {m_ngSigla, sizeText, countText}, 1);
+            if (m_ngChips.count() > first) {
+                const qreal shift = card.right() - 8 - m_ngChips.constLast().rect.right();
+                for (int i = first; i < m_ngChips.count(); ++i) {
+                    m_ngChips[i].rect.translate(shift, 0);
+                }
+            }
+        }
 
         struct Line {
             QString label;
@@ -3889,11 +3899,13 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                 peekFont.setPointSizeF(peekFont.pointSizeF() * 0.84);
                 const QFontMetricsF peekFm(peekFont);
                 const qreal rowHeight = peekFm.height() + 3;
-                const int room = qMax(1, int((m_ngCardThumb.height() - 12) / rowHeight));
+                // (the chips of the card sit at the bottom right of the band: the list stays above them)
+                const qreal listHeight = m_ngCardThumb.height() - 12 - (peekFm.height() + 12);
+                const int room = qMax(1, int(listHeight / rowHeight));
                 const bool more = m_ngCardPeekMore != 0 || m_ngCardPeek.count() > room;
                 const int shown = qMin<int>(m_ngCardPeek.count(), more ? room - 1 : room);
                 const qreal x = left.right() + 2, right = m_ngCardThumb.right() - 10;
-                qreal y = m_ngCardThumb.center().y() - (shown + (more ? 1 : 0)) * rowHeight / 2.0;
+                qreal y = m_ngCardThumb.top() + 6 + qMax(0.0, (listHeight - (shown + (more ? 1 : 0)) * rowHeight) / 2.0);
                 painter->setFont(peekFont);
                 for (int i = 0; i < shown; ++i) {
                     QString name = m_ngCardPeek.at(i);
@@ -3957,11 +3969,19 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             fill.setAlpha(chip.tinted ? (dark ? 34 : 40) : (dark ? 18 : 16));
             QColor edge = chip.tinted ? m_ngTint : QColor(ink, ink, ink);
             edge.setAlpha(chip.tinted ? 110 : 26);
+            const qreal radius = chip.rect.height() / 2.0;
+            const bool onBand = look == NgCardStyle::Tessera && m_ngCardThumb.contains(chip.rect.center());
+            if (onBand) {
+                // over the picture a chip needs a ground of its own, or it is lost in it
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(dark ? QColor(12, 13, 16, 228) : QColor(252, 252, 252, 232));
+                painter->drawRoundedRect(chip.rect, radius, radius);
+                edge.setAlpha(chip.tinted ? 150 : 60);
+            }
             painter->setPen(QPen(edge, 1));
             painter->setBrush(fill);
-            const qreal radius = chip.rect.height() / 2.0;
             painter->drawRoundedRect(chip.rect.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
-            QColor chipText = chip.tinted ? m_ngTint : m_additionalInfoTextColor;
+            QColor chipText = chip.tinted ? m_ngTint : onBand ? text : m_additionalInfoTextColor;
             if (chip.tinted && !dark) {
                 chipText = chipText.darker(135);
             }
