@@ -15,10 +15,17 @@
 #include <QDBusPendingCall>
 #include <KUrlRequester>
 
+#include <QAbstractButton>
+#include <QButtonGroup>
 #include <QCheckBox>
+#include <QGridLayout>
+#include <QPainter>
+#include <QPainterPath>
+#include <QStackedWidget>
+#include <QToolButton>
+#include <functional>
 #include <QComboBox>
 #include <QFormLayout>
-#include <QGroupBox>
 #include <QScrollArea>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -54,100 +61,934 @@ void reloadKWinBlur()
         QDBusConnection::sessionBus().asyncCall(call);
     }
 }
-QGroupBox *group(const QString &title, QVBoxLayout *into, QFormLayout **form)
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// dolphin-ng: the page is graphical. Every choice between looks is a row of tiles with a small drawing of the
+// look, on/off options are switches, and a miniature of the window on the left follows the choices. The combo
+// boxes and check boxes of the old page are still there, unseen, as the values the tiles and switches drive:
+// loading, applying, the presets and the defaults keep working on them.
+namespace
 {
-    auto *box = new QGroupBox(title);
-    *form = new QFormLayout(box);
-    (*form)->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    into->addWidget(box);
-    return box;
+const QColor kindPdf(0xe0, 0x52, 0x4a), kindDoc(0x4a, 0x8f, 0xe0), kindSheet(0x4c, 0xaf, 0x6a), kindImage(0x5b, 0x7b, 0xb0), kindCode(0xc9, 0xa2, 0x4d),
+    kindFolder(0x8f, 0x99, 0xa6);
+
+// KDE gives every button a keyboard accelerator by putting "&" in its text; these widgets draw their own text
+QString ngPlainText(QString text)
+{
+    return text.remove(QLatin1Char('&'));
 }
+QColor ngInk(const QPalette &palette, qreal alpha)
+{
+    QColor colour = palette.color(QPalette::WindowText);
+    colour.setAlphaF(alpha);
+    return colour;
 }
+QColor ngWithAlpha(QColor colour, qreal alpha)
+{
+    colour.setAlphaF(alpha);
+    return colour;
+}
+void ngBar(QPainter &painter, const QRectF &rect, const QColor &colour)
+{
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(colour);
+    painter.drawRoundedRect(rect, rect.height() / 2.0, rect.height() / 2.0);
+}
+// a picture standing for "an image": the same in the tiles and in the miniature
+QBrush ngPictureBrush(const QRectF &rect)
+{
+    QLinearGradient gradient(rect.topLeft(), rect.bottomRight());
+    gradient.setColorAt(0.0, QColor(0x3f, 0xb0, 0xc9));
+    gradient.setColorAt(0.6, QColor(0x6b, 0x5f, 0xb5));
+    gradient.setColorAt(1.0, QColor(0xe0, 0xa0, 0x3a));
+    return gradient;
+}
+// what is behind the sidebar card: plain | image ("") | lava | live
+QBrush ngBackdropBrush(const QString &side, const QRectF &rect, const QPalette &palette)
+{
+    if (side == QLatin1String("plain")) {
+        return ngInk(palette, 0.08);
+    }
+    if (side == QLatin1String("live")) {
+        return QColor(255, 255, 255, 40);
+    }
+    QLinearGradient gradient(rect.topLeft(), rect.bottomRight());
+    if (side == QLatin1String("lava")) {
+        gradient.setColorAt(0.0, QColor(0x1f, 0x7a, 0x78));
+        gradient.setColorAt(0.5, QColor(0x2b, 0x2f, 0x5c));
+        gradient.setColorAt(1.0, QColor(0xb3, 0x74, 0x2c));
+    } else {
+        gradient.setColorAt(0.0, QColor(0x47, 0x61, 0x7a));
+        gradient.setColorAt(0.55, QColor(0x2b, 0x3a, 0x4d));
+        gradient.setColorAt(1.0, QColor(0x5a, 0x4a, 0x63));
+    }
+    return gradient;
+}
+// the desktop showing through, behind a "live" sidebar
+void ngWallpaperWedge(QPainter &painter, const QRectF &rect, qreal fraction)
+{
+    QPainterPath wedge;
+    wedge.moveTo(rect.topLeft());
+    wedge.lineTo(rect.left() + rect.width() * (fraction + 0.08), rect.top());
+    wedge.lineTo(rect.left() + rect.width() * (fraction - 0.04), rect.bottom());
+    wedge.lineTo(rect.bottomLeft());
+    wedge.closeSubpath();
+    painter.fillPath(wedge, QColor(0x5d, 0x3f, 0x6e));
+}
+void ngRim(QPainter &painter, const QRectF &card, qreal radius, const QString &rim, const QPalette &palette)
+{
+    painter.setBrush(Qt::NoBrush);
+    const QRectF line = card.adjusted(0.5, 0.5, -0.5, -0.5);
+    if (rim == QLatin1String("soft")) {
+        painter.setPen(QPen(ngInk(palette, 0.32), 1));
+        painter.drawRoundedRect(line, radius, radius);
+    } else if (rim == QLatin1String("diagonal")) {
+        QLinearGradient gradient(card.topLeft(), card.bottomRight());
+        gradient.setColorAt(0.0, ngInk(palette, 0.85));
+        gradient.setColorAt(0.6, ngInk(palette, 0.0));
+        painter.setPen(QPen(QBrush(gradient), 1.4));
+        painter.drawRoundedRect(line, radius, radius);
+    } else if (rim == QLatin1String("bevel")) {
+        painter.setPen(QPen(QColor(0, 0, 0, 170), 1));
+        painter.drawRoundedRect(line, radius, radius);
+        painter.setPen(QPen(ngInk(palette, 0.30), 1));
+        painter.drawRoundedRect(line.adjusted(1, 1, -1, -1), radius - 1, radius - 1);
+    } else if (rim == QLatin1String("glow")) {
+        for (int i = 3; i >= 1; --i) {
+            painter.setPen(QPen(ngInk(palette, 0.07 * (4 - i)), i * 2));
+            painter.drawRoundedRect(line, radius, radius);
+        }
+    } else if (rim == QLatin1String("top")) {
+        painter.save();
+        painter.setClipRect(QRectF(card.left(), card.top(), card.width(), radius + 1));
+        painter.setPen(QPen(ngInk(palette, 0.8), 1.4));
+        painter.drawRoundedRect(line, radius, radius);
+        painter.restore();
+    }
+}
+void ngLetters(QPainter &painter, const QRectF &rect, const QString &text, const QColor &colour, qreal pixelSize, int flags = Qt::AlignCenter)
+{
+    QFont font = painter.font();
+    font.setPixelSize(qMax(6, qRound(pixelSize)));
+    font.setWeight(QFont::Bold);
+    painter.setFont(font);
+    painter.setPen(colour);
+    painter.drawText(rect, flags, text);
+}
+void ngGlyph(QPainter &painter, const QRectF &rect, const QColor &colour, qreal width = 1.6)
+{
+    painter.setPen(QPen(colour, width));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRoundedRect(rect, rect.width() * 0.22, rect.width() * 0.22);
+}
+
+// One row of the miniature list: `background` is card | open | line | stripe | none
+void ngMiniRow(QPainter &painter, const QRectF &row, const QString &background, const QString &mark, const QColor &kind, bool odd, bool twoLines, bool thumb,
+               bool actions, const QPalette &palette)
+{
+    painter.setPen(Qt::NoPen);
+    if (background == QLatin1String("card")) {
+        painter.setBrush(ngInk(palette, 0.06));
+        painter.drawRoundedRect(row, 3, 3);
+    } else if (background == QLatin1String("stripe") && odd) {
+        painter.fillRect(row, ngInk(palette, 0.07));
+    }
+    if (background == QLatin1String("card") || background == QLatin1String("open") || background == QLatin1String("line")) {
+        QLinearGradient wash(row.left(), 0, row.left() + row.width() * 0.5, 0);
+        wash.setColorAt(0.0, ngWithAlpha(kind, 0.26));
+        wash.setColorAt(1.0, ngWithAlpha(kind, 0.0));
+        painter.fillRect(row, wash);
+    }
+    if (background == QLatin1String("line")) {
+        painter.fillRect(QRectF(row.left(), row.bottom() - 1, row.width(), 1), ngInk(palette, 0.14));
+    }
+    const qreal side = qMin(row.height() - 4, 12.0);
+    QRectF markRect(row.left() + 5, row.center().y() - side / 2, side, side);
+    if (thumb) {
+        const QRectF picture = markRect.adjusted(-1, 0, 4, 0);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(ngPictureBrush(picture));
+        painter.drawRoundedRect(picture, 2, 2);
+        markRect = picture;
+    } else if (mark == QLatin1String("tile")) {
+        painter.setPen(QPen(ngWithAlpha(kind, 0.5), 1));
+        painter.setBrush(ngWithAlpha(kind, 0.22));
+        painter.drawRoundedRect(markRect, 3, 3);
+    } else if (mark == QLatin1String("pill")) {
+        const QRectF pill(markRect.left(), row.center().y() - side * 0.32, side * 1.3, side * 0.64);
+        painter.setPen(QPen(ngWithAlpha(kind, 0.5), 1));
+        painter.setBrush(ngWithAlpha(kind, 0.22));
+        painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2);
+        markRect = pill;
+    } else if (mark == QLatin1String("header")) {
+        const QRectF head(row.left(), row.top(), side + 6, row.height());
+        painter.fillRect(head, ngWithAlpha(kind, 0.36));
+        markRect = head;
+    } else if (mark == QLatin1String("signs")) {
+        ngGlyph(painter, markRect.adjusted(1, 1, -1, -1), kind, 1.4);
+    } else { // watermark
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(ngWithAlpha(kind, 0.42));
+        painter.drawRoundedRect(markRect.adjusted(0, -1, 5, 1), 2, 2);
+    }
+    const qreal textLeft = markRect.right() + 6;
+    const qreal lineHeight = qMin(4.0, row.height() / 5.0);
+    if (twoLines) {
+        ngBar(painter, QRectF(textLeft, row.center().y() - lineHeight - 1.5, row.width() * 0.34, lineHeight), ngInk(palette, 0.6));
+        ngBar(painter, QRectF(textLeft, row.center().y() + 1.5, row.width() * 0.14, lineHeight + 1), ngWithAlpha(kind, 0.6));
+    } else {
+        ngBar(painter, QRectF(textLeft, row.center().y() - lineHeight / 2, row.width() * 0.34, lineHeight), ngInk(palette, 0.6));
+        ngBar(painter, QRectF(row.left() + row.width() * 0.62, row.center().y() - lineHeight / 2, row.width() * 0.12, lineHeight), ngInk(palette, 0.25));
+    }
+    if (actions && twoLines) {
+        const QRectF pill(row.right() - row.width() * 0.34, row.center().y() - 4, row.width() * 0.16, 8);
+        painter.setPen(QPen(ngInk(palette, 0.16), 1));
+        painter.setBrush(QColor(0, 0, 0, 80));
+        painter.drawRoundedRect(pill, 4, 4);
+    }
+    ngBar(painter, QRectF(row.right() - row.width() * 0.13, row.center().y() - lineHeight / 2, row.width() * 0.10, lineHeight), ngInk(palette, 0.3));
+}
+
+// One card of the miniature: `look` is a | b | c
+void ngMiniCard(QPainter &painter, const QRectF &card, const QString &look, const QColor &kind, bool picture, bool typeBackground, const QPalette &palette)
+{
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(ngInk(palette, 0.07));
+    painter.drawRoundedRect(card, 5, 5);
+    painter.save();
+    QPainterPath clip;
+    clip.addRoundedRect(card, 5, 5);
+    painter.setClipPath(clip);
+    QLinearGradient wash(card.topLeft(), look == QLatin1String("a") ? card.bottomLeft() : card.topRight());
+    wash.setColorAt(0.0, ngWithAlpha(kind, typeBackground ? 0.36 : 0.22));
+    wash.setColorAt(0.7, ngWithAlpha(kind, 0.0));
+    painter.fillRect(card, wash);
+    const qreal pad = qMax(3.0, card.width() * 0.07);
+    const qreal lineHeight = qMax(2.5, card.height() * 0.07);
+    if (look == QLatin1String("a")) {
+        const QRectF band(card.left(), card.top(), card.width(), card.height() * 0.46);
+        if (picture) {
+            painter.fillRect(band, ngPictureBrush(band));
+        } else if (typeBackground) {
+            ngLetters(painter, band.adjusted(0, 0, -pad, 0), QStringLiteral("PDF"), ngWithAlpha(kind, 0.55), band.height() * 0.6, Qt::AlignRight | Qt::AlignVCenter);
+        } else {
+            const qreal side = band.height() * 0.5;
+            ngGlyph(painter, QRectF(band.center().x() - side / 2, band.center().y() - side / 2, side, side), kind);
+        }
+        ngBar(painter, QRectF(card.left() + pad, band.bottom() + pad, card.width() * 0.6, lineHeight), ngInk(palette, 0.62));
+        ngBar(painter, QRectF(card.left() + pad, band.bottom() + pad + lineHeight * 2, card.width() * 0.3, lineHeight), ngWithAlpha(kind, 0.6));
+        ngBar(painter, QRectF(card.left() + pad, card.bottom() - pad - lineHeight, card.width() * 0.45, lineHeight), ngInk(palette, 0.22));
+    } else if (look == QLatin1String("b")) {
+        const qreal side = qMin(card.height() * 0.42, card.width() * 0.24);
+        const QRectF icon(card.left() + pad, card.top() + pad, side, side);
+        if (picture) {
+            painter.setBrush(ngPictureBrush(icon));
+            painter.setPen(Qt::NoPen);
+            painter.drawRoundedRect(icon, 2, 2);
+        } else {
+            ngGlyph(painter, icon, kind);
+        }
+        const qreal x = icon.right() + pad;
+        ngBar(painter, QRectF(x, card.top() + pad, card.right() - pad - x, lineHeight), ngInk(palette, 0.62));
+        ngBar(painter, QRectF(x, card.top() + pad + lineHeight * 2, (card.right() - pad - x) * 0.5, lineHeight), ngInk(palette, 0.25));
+        ngBar(painter, QRectF(x, card.top() + pad + lineHeight * 4, (card.right() - pad - x) * 0.8, lineHeight), ngInk(palette, 0.25));
+        ngBar(painter, QRectF(card.left() + pad, card.bottom() - pad - lineHeight * 1.6, side, lineHeight * 1.6), ngWithAlpha(kind, 0.6));
+    } else {
+        ngGlyph(painter, QRectF(card.left() + pad, card.top() + pad, lineHeight * 2.4, lineHeight * 2.4), kind, 1.2);
+        ngBar(painter, QRectF(card.left() + pad + lineHeight * 3.4, card.top() + pad + lineHeight * 0.7, card.width() * 0.45, lineHeight), ngInk(palette, 0.62));
+        ngBar(painter, QRectF(card.left() + pad, card.top() + pad + lineHeight * 4, card.width() * 0.24, lineHeight * 1.4), ngWithAlpha(kind, 0.6));
+        ngBar(painter, QRectF(card.right() - pad - card.width() * 0.46, card.bottom() - pad - lineHeight * 2.4, card.width() * 0.46, lineHeight * 2.4), ngInk(palette, 0.75));
+        ngBar(painter, QRectF(card.left() + pad, card.bottom() - pad - lineHeight, card.width() * 0.26, lineHeight), ngInk(palette, 0.22));
+    }
+    painter.restore();
+}
+
+// The drawing inside a tile: `key` names the option, `id` the choice
+void ngDrawChoice(QPainter &painter, const QRectF &rect, const QString &key, const QString &id, const QPalette &palette)
+{
+    painter.setRenderHint(QPainter::Antialiasing);
+    const QRectF in = rect.adjusted(6, 6, -6, -6);
+    if (key == QLatin1String("preset")) {
+        if (id == QLatin1String("glass")) {
+            ngWallpaperWedge(painter, rect, 0.34);
+        }
+        const QRectF panel(in.left(), in.top(), in.width() * 0.26, in.height());
+        painter.setPen(id == QLatin1String("glass") ? QPen(ngInk(palette, 0.3), 1) : QPen(Qt::NoPen));
+        painter.setBrush(ngBackdropBrush(id == QLatin1String("glass") ? QStringLiteral("live") : QStringLiteral("plain"), panel, palette));
+        painter.drawRoundedRect(panel, 4, 4);
+        const QRectF main(panel.right() + 6, in.top(), in.right() - panel.right() - 6, in.height());
+        static const QColor kinds[4] = {kindDoc, kindPdf, kindSheet, kindCode};
+        if (id == QLatin1String("classic")) {
+            for (int i = 0; i < 4; ++i) {
+                ngMiniRow(painter, QRectF(main.left(), main.top() + i * main.height() / 4, main.width(), main.height() / 4 - 1), QStringLiteral("stripe"), QStringLiteral("signs"),
+                          kinds[i], i % 2, false, false, false, palette);
+            }
+        } else {
+            for (int i = 0; i < 4; ++i) {
+                const QRectF card(main.left() + (i % 2) * (main.width() / 2 + 2), main.top() + (i / 2) * (main.height() / 2 + 2), main.width() / 2 - 4, main.height() / 2 - 4);
+                ngMiniCard(painter, card, QStringLiteral("b"), kinds[i], false, id == QLatin1String("glass"), palette);
+            }
+        }
+    } else if (key == QLatin1String("side")) {
+        if (id == QLatin1String("live")) {
+            ngWallpaperWedge(painter, rect, 0.42);
+        }
+        const QRectF panel(in.left(), in.top(), in.width() * 0.36, in.height());
+        painter.setPen(id == QLatin1String("plain") ? QPen(Qt::NoPen) : QPen(ngInk(palette, 0.28), 1));
+        painter.setBrush(ngBackdropBrush(id, panel, palette));
+        painter.drawRoundedRect(panel, 4, 4);
+        ngBar(painter, QRectF(panel.right() + 8, in.center().y() - 6, in.width() * 0.4, 4), ngInk(palette, 0.5));
+        ngBar(painter, QRectF(panel.right() + 8, in.center().y() + 2, in.width() * 0.24, 4), ngInk(palette, 0.25));
+    } else if (key == QLatin1String("rim")) {
+        const QRectF card(in.center().x() - 27, in.center().y() - 16, 54, 32);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(ngInk(palette, 0.12));
+        painter.drawRoundedRect(card, 7, 7);
+        ngRim(painter, card, 7, id, palette);
+    } else if (key == QLatin1String("rows")) {
+        static const QColor kinds[3] = {kindDoc, kindPdf, kindSheet};
+        for (int i = 0; i < 3; ++i) {
+            ngMiniRow(painter, QRectF(in.left(), in.top() + i * in.height() / 3, in.width(), in.height() / 3 - 2), id, QStringLiteral("signs"), kinds[i], i % 2, false, false,
+                      false, palette);
+        }
+    } else if (key == QLatin1String("mark")) {
+        const QColor kind = kindPdf;
+        if (id == QLatin1String("tile")) {
+            const QRectF tile(in.center().x() - 19, in.center().y() - 19, 38, 38);
+            painter.setPen(QPen(ngWithAlpha(kind, 0.5), 1));
+            painter.setBrush(ngWithAlpha(kind, 0.2));
+            painter.drawRoundedRect(tile, 9, 9);
+            ngLetters(painter, tile, QStringLiteral("PDF"), kind, 11);
+        } else if (id == QLatin1String("pill")) {
+            const QRectF pill(in.center().x() - 26, in.center().y() - 11, 52, 22);
+            painter.setPen(QPen(ngWithAlpha(kind, 0.5), 1));
+            painter.setBrush(ngWithAlpha(kind, 0.2));
+            painter.drawRoundedRect(pill, 11, 11);
+            ngLetters(painter, pill, QStringLiteral("PDF"), kind, 11);
+        } else if (id == QLatin1String("header")) {
+            const QRectF head(rect.left(), rect.top(), 38, rect.height());
+            painter.fillRect(head, ngWithAlpha(kind, 0.3));
+            ngLetters(painter, head, QStringLiteral("PDF"), kind, 11);
+            ngBar(painter, QRectF(head.right() + 8, in.center().y() - 2, in.width() * 0.4, 4), ngInk(palette, 0.5));
+        } else if (id == QLatin1String("signs")) {
+            ngGlyph(painter, QRectF(in.left() + 6, in.center().y() - 8, 16, 16), kind, 1.8);
+            ngLetters(painter, QRectF(in.left() + 28, in.top(), 60, in.height()), QStringLiteral("PDF"), kind, 13, Qt::AlignLeft | Qt::AlignVCenter);
+        } else {
+            ngLetters(painter, in, QStringLiteral("PDF"), ngWithAlpha(kind, 0.4), in.height() * 0.8, Qt::AlignLeft | Qt::AlignVCenter);
+        }
+    } else if (key == QLatin1String("sigla")) {
+        const QColor kind = kindPdf;
+        if (id == QLatin1String("outline")) {
+            QFont font = painter.font();
+            font.setPixelSize(qRound(in.height() * 0.78));
+            font.setWeight(QFont::Black);
+            QPainterPath letters;
+            letters.addText(QPointF(in.left() + 4, in.bottom() - in.height() * 0.2), font, QStringLiteral("PDF"));
+            painter.fillPath(letters, ngWithAlpha(kind, 0.08));
+            painter.strokePath(letters, QPen(ngWithAlpha(kind, 0.8), 1.2));
+        } else if (id == QLatin1String("label")) {
+            ngLetters(painter, in, QStringLiteral("PDF"), kind, 12, Qt::AlignLeft | Qt::AlignVCenter);
+        } else {
+            ngLetters(painter, in, QStringLiteral("PDF"), ngWithAlpha(kind, 0.4), in.height() * 0.8, Qt::AlignLeft | Qt::AlignVCenter);
+        }
+    } else if (key == QLatin1String("cards")) {
+        const QSizeF size = id == QLatin1String("a") ? QSizeF(52, in.height()) : id == QLatin1String("b") ? QSizeF(96, in.height() * 0.66) : QSizeF(100, in.height() * 0.8);
+        ngMiniCard(painter, QRectF(in.center().x() - size.width() / 2, in.center().y() - size.height() / 2, size.width(), size.height()), id, kindImage,
+                   id == QLatin1String("a"), false, palette);
+    } else if (key == QLatin1String("fit")) {
+        const bool stretch = id == QLatin1String("stretch");
+        const qreal width = stretch ? (in.width() - 8) / 3 : in.width() * 0.24;
+        const qreal step = stretch ? width + 4 : (in.width() - width) / 2;
+        for (int i = 0; i < 3; ++i) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(ngInk(palette, 0.16));
+            painter.drawRoundedRect(QRectF(in.left() + i * step, in.top() + 4, width, in.height() - 8), 4, 4);
+        }
+    } else if (key == QLatin1String("cardsmark")) {
+        ngMiniCard(painter, QRectF(in.center().x() - 26, in.top(), 52, in.height()), QStringLiteral("a"), kindPdf, false, id == QLatin1String("type"), palette);
+    } else if (key == QLatin1String("quickside")) {
+        const QPointF cursor(in.center().x(), in.center().y() + 4);
+        const QSizeF size(in.width() * 0.32, in.height() * 0.62);
+        const QRectF popup = id == QLatin1String("right") ? QRectF(cursor.x() + 10, cursor.y() - size.height() / 2, size.width(), size.height())
+            : id == QLatin1String("auto")                 ? QRectF(cursor.x() - size.width() / 2, in.top(), size.width(), size.height() * 0.6)
+                                                           : QRectF(cursor.x() - 10 - size.width(), cursor.y() - size.height() / 2, size.width(), size.height());
+        painter.setPen(QPen(ngInk(palette, 0.4), 1));
+        painter.setBrush(ngPictureBrush(popup));
+        painter.drawRoundedRect(popup, 4, 4);
+        QPainterPath arrow;
+        arrow.moveTo(cursor);
+        arrow.lineTo(cursor + QPointF(0, 11));
+        arrow.lineTo(cursor + QPointF(3, 8));
+        arrow.lineTo(cursor + QPointF(8, 8));
+        arrow.closeSubpath();
+        painter.setPen(QPen(QColor(0, 0, 0, 160), 1));
+        painter.setBrush(palette.color(QPalette::WindowText));
+        painter.drawPath(arrow);
+    }
+}
+
+// Lays its items out left to right and starts a new line when the width runs out
+class NgWrapLayout : public QLayout
+{
+public:
+    explicit NgWrapLayout(QWidget *parent, int spacing)
+        : QLayout(parent)
+        , m_gap(spacing)
+    {
+        setContentsMargins(0, 0, 0, 0);
+    }
+    ~NgWrapLayout() override
+    {
+        qDeleteAll(m_items);
+    }
+    void addItem(QLayoutItem *item) override
+    {
+        m_items.append(item);
+    }
+    int count() const override
+    {
+        return m_items.count();
+    }
+    QLayoutItem *itemAt(int index) const override
+    {
+        return m_items.value(index);
+    }
+    QLayoutItem *takeAt(int index) override
+    {
+        return index >= 0 && index < m_items.count() ? m_items.takeAt(index) : nullptr;
+    }
+    Qt::Orientations expandingDirections() const override
+    {
+        return {};
+    }
+    bool hasHeightForWidth() const override
+    {
+        return true;
+    }
+    int heightForWidth(int width) const override
+    {
+        return place(QRect(0, 0, width, 0), false);
+    }
+    void setGeometry(const QRect &rect) override
+    {
+        QLayout::setGeometry(rect);
+        place(rect, true);
+    }
+    QSize sizeHint() const override
+    {
+        return minimumSize();
+    }
+    QSize minimumSize() const override
+    {
+        QSize size;
+        for (const QLayoutItem *item : m_items) {
+            size = size.expandedTo(item->minimumSize());
+        }
+        return size;
+    }
+
+private:
+    int place(const QRect &rect, bool apply) const
+    {
+        int x = rect.x(), y = rect.y(), lineHeight = 0;
+        for (QLayoutItem *item : m_items) {
+            if (item->widget() && item->widget()->isHidden()) {
+                continue;
+            }
+            const QSize hint = item->sizeHint();
+            if (x > rect.x() && x + hint.width() > rect.right() + 1) {
+                x = rect.x();
+                y += lineHeight + m_gap;
+                lineHeight = 0;
+            }
+            if (apply) {
+                item->setGeometry(QRect(QPoint(x, y), hint));
+            }
+            x += hint.width() + m_gap;
+            lineHeight = qMax(lineHeight, hint.height());
+        }
+        return y + lineHeight - rect.y();
+    }
+    QList<QLayoutItem *> m_items;
+    int m_gap;
+};
+
+// A choice: the drawing, its name and, on the wide tiles, a line of description
+class NgTile : public QAbstractButton
+{
+public:
+    NgTile(const QString &key, const QString &id, const QString &name, const QString &description, QWidget *parent)
+        : QAbstractButton(parent)
+        , m_key(key)
+        , m_id(id)
+        , m_description(description)
+    {
+        setText(name);
+        setCheckable(true);
+        setCursor(Qt::PointingHandCursor);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        setAttribute(Qt::WA_Hover);
+    }
+    QString id() const
+    {
+        return m_id;
+    }
+    QSize sizeHint() const override
+    {
+        const QFontMetrics metrics(font());
+        const int thumb = m_description.isEmpty() ? 56 : 76;
+        // a plain tile has room for a name of two lines; a wide one has its name and two lines of description
+        return QSize(m_description.isEmpty() ? 106 : 176, 8 + thumb + 6 + (m_description.isEmpty() ? 2 * metrics.height() : 3 * metrics.height() + 2) + 8);
+    }
+    QSize minimumSizeHint() const override
+    {
+        return sizeHint();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setOpacity(isEnabled() ? 1.0 : 0.45);
+        const QPalette &pal = palette();
+        const QColor accent = pal.color(QPalette::Highlight);
+        const QRectF frame = QRectF(rect()).adjusted(0.75, 0.75, -0.75, -0.75);
+        painter.setPen(isChecked() ? QPen(accent, 1.5) : hasFocus() ? QPen(ngWithAlpha(accent, 0.6), 1) : QPen(Qt::NoPen));
+        painter.setBrush(isChecked() ? ngWithAlpha(accent, 0.18) : ngInk(pal, underMouse() ? 0.10 : 0.055));
+        painter.drawRoundedRect(frame, 10, 10);
+
+        const QFontMetrics metrics(font());
+        const int thumbHeight = m_description.isEmpty() ? 56 : 76;
+        const QRectF thumb(8, 8, width() - 16, thumbHeight);
+        QPainterPath clip;
+        clip.addRoundedRect(thumb, 6, 6);
+        painter.save();
+        painter.setClipPath(clip);
+        painter.fillRect(thumb, QColor(0, 0, 0, pal.color(QPalette::Window).lightness() < 128 ? 70 : 22));
+        ngDrawChoice(painter, thumb, m_key, m_id, pal);
+        painter.restore();
+        painter.setPen(QPen(ngInk(pal, 0.10), 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(thumb.adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
+
+        QFont nameFont = font();
+        nameFont.setWeight(QFont::DemiBold);
+        painter.setFont(nameFont);
+        painter.setPen(pal.color(QPalette::WindowText));
+        const QRectF nameRect(9, thumb.bottom() + 6, width() - 18, m_description.isEmpty() ? 2 * metrics.height() : metrics.height());
+        painter.drawText(nameRect, Qt::AlignLeft | Qt::AlignTop | (m_description.isEmpty() ? Qt::TextWordWrap : Qt::TextSingleLine), ngPlainText(text()));
+        if (!m_description.isEmpty()) {
+            painter.setFont(font());
+            painter.setPen(ngInk(pal, 0.62));
+            painter.drawText(QRectF(9, nameRect.bottom() + 2, width() - 18, 2 * metrics.height()), Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, m_description);
+        }
+    }
+
+private:
+    QString m_key;
+    QString m_id;
+    QString m_description;
+};
+
+}
+
+// A row of tiles, one of which is the current choice
+class NgTileRow : public QWidget
+{
+public:
+    NgTileRow(const QString &key, int columns, QWidget *parent)
+        : QWidget(parent)
+        , m_key(key)
+        , m_columns(columns)
+    {
+        Q_UNUSED(m_columns)
+        m_flow = new NgWrapLayout(this, 8);
+        QSizePolicy policy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+        policy.setHeightForWidth(true);
+        setSizePolicy(policy);
+    }
+    void add(const QString &id, const QString &name, const QString &description = QString())
+    {
+        auto *tile = new NgTile(m_key, id, name, description, this);
+        m_flow->addWidget(tile);
+        m_tiles.append(tile);
+        connect(tile, &QAbstractButton::clicked, this, [this, id] {
+            setCurrent(id);
+            if (picked) {
+                picked(id);
+            }
+        });
+    }
+    void finish()
+    {
+    }
+    void setCurrent(const QString &id)
+    {
+        for (NgTile *tile : std::as_const(m_tiles)) {
+            tile->setChecked(tile->id() == id);
+        }
+    }
+    std::function<void(const QString &)> picked;
+
+private:
+    QString m_key;
+    int m_columns;
+    NgWrapLayout *m_flow;
+    QList<NgTile *> m_tiles;
+};
+
+namespace
+{
+// A check box drawn as a switch
+class NgSwitch : public QCheckBox
+{
+public:
+    using QCheckBox::QCheckBox;
+    QSize sizeHint() const override
+    {
+        const QFontMetrics metrics(font());
+        return QSize(34 + 10 + metrics.horizontalAdvance(text()) + 4, qMax(26, metrics.height() + 8));
+    }
+    QSize minimumSizeHint() const override
+    {
+        return QSize(80, sizeHint().height());
+    }
+
+protected:
+    bool hitButton(const QPoint &pos) const override
+    {
+        return rect().contains(pos);
+    }
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setOpacity(isEnabled() ? 1.0 : 0.45);
+        const QPalette &pal = palette();
+        const QRectF track(0.5, (height() - 20) / 2.0, 34, 20);
+        painter.setPen(hasFocus() ? QPen(ngWithAlpha(pal.color(QPalette::Highlight), 0.8), 1) : QPen(Qt::NoPen));
+        painter.setBrush(isChecked() ? pal.color(QPalette::Highlight) : ngInk(pal, underMouse() ? 0.22 : 0.16));
+        painter.drawRoundedRect(track, 10, 10);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(isChecked() ? QColor(Qt::white) : ngInk(pal, 0.85));
+        painter.drawEllipse(QRectF(track.left() + (isChecked() ? 17 : 3), track.top() + 3, 14, 14));
+        painter.setPen(pal.color(QPalette::WindowText));
+        const QRect textRect(44, 0, width() - 44, height());
+        painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, fontMetrics().elidedText(ngPlainText(text()), Qt::ElideRight, textRect.width()));
+    }
+};
+}
+
+// The miniature of the window: it shows what the choices of the page add up to
+class NgSettingsPreview : public QWidget
+{
+public:
+    explicit NgSettingsPreview(QWidget *parent)
+        : QWidget(parent)
+    {
+        setFixedSize(250, 184);
+    }
+    QString side = QStringLiteral("plain"), rim, rows = QStringLiteral("card"), mark, card = QStringLiteral("a");
+    bool filters = true, twoLines = true, classicIcons = false, stretch = false, typeBackground = false, cardsView = false, quickView = false;
+    QString quickSide;
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QPalette &pal = palette();
+        const QRectF window = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath clip;
+        clip.addRoundedRect(window, 9, 9);
+        painter.save();
+        painter.setClipPath(clip);
+        painter.fillRect(window, pal.color(QPalette::Window).darker(pal.color(QPalette::Window).lightness() < 128 ? 112 : 104));
+        if (side == QLatin1String("live")) {
+            ngWallpaperWedge(painter, window, 0.26);
+        }
+        const qreal barHeight = 18;
+        painter.fillRect(QRectF(window.left(), window.top(), window.width(), barHeight), ngInk(pal, 0.07));
+        for (int i = 0; i < 3; ++i) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(ngInk(pal, 0.3));
+            painter.drawEllipse(QPointF(window.left() + 12 + i * 11, window.top() + barHeight / 2), 3, 3);
+        }
+        // the sidebar card
+        const QRectF panel(window.left() + 6, window.top() + barHeight + 6, window.width() * 0.25, window.height() - barHeight - 12);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(ngBackdropBrush(side, panel, pal));
+        painter.drawRoundedRect(panel, 7, 7);
+        if (side != QLatin1String("plain")) {
+            ngRim(painter, panel, 7, rim, pal);
+        }
+        for (int i = 0; i < 5; ++i) {
+            ngBar(painter, QRectF(panel.left() + 8, panel.top() + 10 + i * 12, panel.width() * (i % 2 ? 0.45 : 0.62), 5), ngInk(pal, i == 1 ? 0.8 : 0.4));
+        }
+        if (filters) {
+            ngBar(painter, QRectF(panel.left() + 8, panel.bottom() - 34, panel.width() * 0.3, 5), ngInk(pal, 0.22));
+            ngBar(painter, QRectF(panel.left() + 8, panel.bottom() - 22, panel.width() * 0.6, 5), ngInk(pal, 0.4));
+            ngBar(painter, QRectF(panel.left() + 8, panel.bottom() - 11, panel.width() * 0.48, 5), ngInk(pal, 0.4));
+        }
+        // the view
+        const QRectF main(panel.right() + 8, panel.top(), window.right() - panel.right() - 14, panel.height());
+        ngBar(painter, QRectF(main.left(), main.top(), main.width() * 0.5, 9), ngInk(pal, 0.10));
+        ngBar(painter, QRectF(main.left() + main.width() * 0.54, main.top(), main.width() * 0.18, 9), ngInk(pal, 0.10));
+        const QRectF items(main.left(), main.top() + 15, main.width(), main.height() - 15);
+        static const QColor kinds[6] = {kindFolder, kindPdf, kindImage, kindSheet, kindDoc, kindCode};
+        if (cardsView) {
+            const int columns = 3, rowsCount = 2;
+            const qreal cellWidth = (items.width() - (columns - 1) * 5) / columns, cellHeight = (items.height() - (rowsCount - 1) * 5) / rowsCount;
+            const qreal cardWidth = stretch ? cellWidth : cellWidth * 0.82;
+            for (int i = 0; i < 6; ++i) {
+                const QRectF cell(items.left() + (i % columns) * (cellWidth + 5), items.top() + (i / columns) * (cellHeight + 5), cellWidth, cellHeight);
+                ngMiniCard(painter, QRectF(cell.center().x() - cardWidth / 2, cell.top(), cardWidth, cell.height()), card, kinds[i], i == 2, typeBackground && i != 2, pal);
+            }
+        } else {
+            const qreal rowHeight = items.height() / 6;
+            for (int i = 0; i < 6; ++i) {
+                ngMiniRow(painter, QRectF(items.left(), items.top() + i * rowHeight, items.width(), rowHeight - (rows == QLatin1String("card") ? 3 : 0)),
+                          twoLines ? rows : QStringLiteral("stripe"), classicIcons ? QStringLiteral("tile") : mark, kinds[i], i % 2, twoLines, twoLines && i == 2, true, pal);
+            }
+        }
+        if (quickView) {
+            const QPointF cursor(items.center().x(), items.center().y());
+            const QSizeF size(items.width() * 0.34, items.height() * 0.46);
+            const QRectF popup = quickSide == QLatin1String("right") ? QRectF(cursor.x() + 10, cursor.y() - size.height() / 2, size.width(), size.height())
+                : quickSide == QLatin1String("auto")                 ? QRectF(cursor.x() - size.width() / 2, cursor.y() - size.height() - 12, size.width(), size.height())
+                                                                      : QRectF(cursor.x() - 10 - size.width(), cursor.y() - size.height() / 2, size.width(), size.height());
+            painter.setPen(QPen(QColor(255, 255, 255, 90), 1));
+            painter.setBrush(ngPictureBrush(popup));
+            painter.drawRoundedRect(popup, 5, 5);
+            QPainterPath arrow;
+            arrow.moveTo(cursor);
+            arrow.lineTo(cursor + QPointF(0, 12));
+            arrow.lineTo(cursor + QPointF(3.5, 9));
+            arrow.lineTo(cursor + QPointF(9, 9));
+            arrow.closeSubpath();
+            painter.setPen(QPen(QColor(0, 0, 0, 170), 1));
+            painter.setBrush(pal.color(QPalette::WindowText));
+            painter.drawPath(arrow);
+        }
+        painter.restore();
+        painter.setPen(QPen(ngInk(pal, 0.14), 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(window, 9, 9);
+    }
+};
 
 NgSettingsPage::NgSettingsPage(QWidget *parent)
     : SettingsPageBase(parent)
 {
-    // the page is long: it scrolls instead of squeezing its rows into the height of the dialog
-    auto *outer = new QVBoxLayout(this);
+    auto *outer = new QHBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
-    auto *scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scroll->viewport()->setAutoFillBackground(false);
-    auto *content = new QWidget(scroll);
-    content->setAutoFillBackground(false);
-    scroll->setWidget(content);
-    outer->addWidget(scroll);
-    auto *layout = new QVBoxLayout(content);
-    layout->setContentsMargins(0, 0, 8, 0);
+    outer->setSpacing(18);
 
-    // ---- Preset: a whole look in one choice, for those who would rather not go through every option --------
+    // ---- left: the miniature ----------------------------------------------------------------------------
+    auto *left = new QVBoxLayout();
+    left->setSpacing(8);
+    auto *previewCaption = new QLabel(ngTr("Preview", "Anteprima"), this);
+    previewCaption->setEnabled(false);
+    left->addWidget(previewCaption);
+    m_preview = new NgSettingsPreview(this);
+    left->addWidget(m_preview);
+    auto *previewNote = new QLabel(ngTr("A sketch of the window with the choices on the right. Nothing changes until you apply.",
+                                        "Uno schizzo della finestra con le scelte fatte a destra. Niente cambia finché non applichi."),
+                                   this);
+    previewNote->setWordWrap(true);
+    previewNote->setEnabled(false);
+    previewNote->setFixedWidth(250);
+    left->addWidget(previewNote);
+    left->addStretch();
+    outer->addLayout(left);
+
+    // ---- right: the tabs, as one pill, and a page of tiles for each ------------------------------------
+    auto *right = new QVBoxLayout();
+    right->setSpacing(12);
+    outer->addLayout(right, 1);
+    auto *tabs = new QWidget(this);
+    tabs->setObjectName(QStringLiteral("ngTabs"));
+    tabs->setAttribute(Qt::WA_StyledBackground);
+    auto *tabsLayout = new QHBoxLayout(tabs);
+    tabsLayout->setContentsMargins(3, 3, 3, 3);
+    tabsLayout->setSpacing(2);
+    right->addWidget(tabs, 0, Qt::AlignLeft);
+    m_pages = new QStackedWidget(this);
+    right->addWidget(m_pages, 1);
     {
-        QFormLayout *presetForm = nullptr;
-        group(ngTr("Look", "Aspetto"), layout, &presetForm);
-        m_preset = new QComboBox(this);
-        m_preset->addItem(ngTr("Pick a preset…", "Scegli un preset…"), QString());
-        m_preset->addItem(ngTr("Classic – like Dolphin: plain panel, columns, icons", "Classico – come Dolphin: pannello normale, colonne, icone"), QStringLiteral("classic"));
-        m_preset->addItem(ngTr("Soft – NG list and cards, panel without glass", "Soft – lista e card NG, pannello senza vetro"), QStringLiteral("soft"));
-        m_preset->addItem(ngTr("Glass – everything: glass panel, NG list and cards", "Glass – tutto: pannello a vetro, lista e card NG"), QStringLiteral("glass"));
-        presetForm->addRow(QStringLiteral("Preset:"), m_preset);
-        auto *presetNote = new QLabel(ngTr("A preset fills in the options below; you can adjust them before applying.", "Un preset compila le opzioni qui sotto; puoi ritoccarle prima di applicare."), this);
-        presetNote->setWordWrap(true);
-        presetNote->setEnabled(false);
-        presetForm->addRow(QString(), presetNote);
-        connect(m_preset, &QComboBox::activated, this, [this](int index) {
-            const QString name = m_preset->itemData(index).toString();
-            if (!name.isEmpty()) {
-                applyPreset(name);
-                Q_EMIT changed();
-            }
-        });
+        const QString ink = palette().color(QPalette::Window).lightness() < 128 ? QStringLiteral("255, 255, 255") : QStringLiteral("0, 0, 0");
+        const int tabHeight = fontMetrics().height() + 12;
+        tabs->setStyleSheet(QStringLiteral("QWidget#ngTabs { background: rgba(%1, 0.05); border: 1px solid rgba(%1, 0.10); border-radius: %2px; }"
+                                           "QToolButton { border: 1px solid transparent; border-radius: %3px; padding: 0 14px; background: transparent; color: palette(window-text); }"
+                                           "QToolButton:hover { background: rgba(%1, 0.08); }"
+                                           "QToolButton:checked { background: rgba(%1, 0.16); border-color: rgba(%1, 0.20); }")
+                                .arg(ink)
+                                .arg((tabHeight + 6) / 2 - 1)
+                                .arg(tabHeight / 2 - 1));
     }
+    auto *tabGroup = new QButtonGroup(this);
+    QVBoxLayout *page = nullptr; // the page being filled
+    auto addPage = [&](const QString &title) {
+        auto *button = new QToolButton(tabs);
+        button->setText(title);
+        button->setCheckable(true);
+        button->setFixedHeight(fontMetrics().height() + 12);
+        button->setMinimumWidth(fontMetrics().horizontalAdvance(title) + 34);
+        tabsLayout->addWidget(button);
+        tabGroup->addButton(button, m_pages->count());
+        auto *scroll = new QScrollArea(m_pages);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scroll->viewport()->setAutoFillBackground(false);
+        auto *content = new QWidget(scroll);
+        content->setAutoFillBackground(false);
+        scroll->setWidget(content);
+        m_pages->addWidget(scroll);
+        page = new QVBoxLayout(content);
+        page->setContentsMargins(0, 0, 10, 0);
+        page->setSpacing(8);
+    };
+    auto heading = [&](const QString &text) {
+        auto *label = new QLabel(text, this);
+        QFont bold = label->font();
+        bold.setWeight(QFont::DemiBold);
+        label->setFont(bold);
+        label->setContentsMargins(0, page->count() ? 8 : 0, 0, 0);
+        page->addWidget(label);
+        return label;
+    };
+    auto note = [&](const QString &text) {
+        auto *label = new QLabel(text, this);
+        label->setWordWrap(true);
+        label->setEnabled(false);
+        page->addWidget(label);
+        return label;
+    };
+    // a row of tiles that drives a (hidden) combo box: one tile per entry, `names` gives each its short name
+    auto tilesFor = [&](QComboBox *combo, const QString &key, const QString &title, const QList<std::pair<QString, QString>> &names, int columns) {
+        combo->hide();
+        QLabel *label = heading(title);
+        auto *row = new NgTileRow(key, columns, this);
+        for (int i = 0; i < combo->count(); ++i) {
+            const QString id = combo->itemData(i).toString();
+            const auto &name = names.value(i);
+            row->add(id, name.first, name.second);
+        }
+        row->finish();
+        page->addWidget(row);
+        row->picked = [combo](const QString &id) {
+            combo->setCurrentIndex(qMax(0, combo->findData(id)));
+        };
+        auto sync = [row, combo] {
+            row->setCurrent(combo->currentData().toString());
+        };
+        connect(combo, &QComboBox::currentIndexChanged, row, sync);
+        m_syncs.append(sync);
+        m_parts.insert(combo, {label, row});
+        m_proxies.append({combo, row});
+        return row;
+    };
+    QFormLayout *form = nullptr; // the form of plain rows (sliders, spin boxes) being filled
+    auto startForm = [&] {
+        form = new QFormLayout();
+        form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+        form->setContentsMargins(0, 0, 0, 0);
+        page->addLayout(form);
+    };
+    auto formRow = [&](const QString &label, QWidget *widget) {
+        form->addRow(label, widget);
+        m_formOf.insert(widget, form);
+    };
+    auto toggle = [&](const QString &text) {
+        auto *box = new NgSwitch(text, this);
+        page->addWidget(box);
+        return box;
+    };
 
-    // ---- Barra laterale ---------------------------------------------------------------------------------
-    group(ngTr("Sidebar", "Barra laterale"), layout, &m_sidebarForm);
-    QFormLayout *form = m_sidebarForm;
+    // ================= Look =================
+    addPage(ngTr("Look", "Aspetto"));
+    m_preset = new QComboBox(this);
+    m_preset->addItem(QString(), QStringLiteral("classic"));
+    m_preset->addItem(QString(), QStringLiteral("soft"));
+    m_preset->addItem(QString(), QStringLiteral("glass"));
+    NgTileRow *presetRow = tilesFor(m_preset, QStringLiteral("preset"), ngTr("Start from a look", "Parti da un aspetto"),
+                                    {{ngTr("Classic", "Classico"), ngTr("Like Dolphin: plain panel, columns, icons", "Come Dolphin: pannello normale, colonne, icone")},
+                                     {QStringLiteral("Soft"), ngTr("NG rows and cards, panel without glass", "Righe e card NG, pannello senza vetro")},
+                                     {QStringLiteral("Glass"), ngTr("Everything: glass panel, NG rows and cards", "Tutto: pannello a vetro, righe e card NG")}},
+                                    3);
+    presetRow->picked = [this](const QString &id) {
+        applyPreset(id);
+        Q_EMIT changed();
+    };
+    note(ngTr("A look fills in the other tabs; you can adjust anything before applying.", "Un aspetto compila le altre schede; puoi ritoccare tutto prima di applicare."));
+    heading(ngTr("Icons view", "Vista a icone"));
+    m_tiles = toggle(ngTr("Dark tiles with rounded previews", "Tessere scure con anteprime arrotondate"));
+    page->addStretch();
+    note(ngTr("Changes take effect as soon as they are applied. A DOLPHIN_NG_… variable set at start-up wins: the matching choice is disabled.",
+              "Le modifiche valgono appena applicate. Una variabile DOLPHIN_NG_… impostata all'avvio ha la precedenza: la scelta corrispondente è disattivata."));
 
-    m_glassPanel = new QCheckBox(ngTr("Glass panel with a backdrop", "Pannello a vetro con sfondo"), this);
-    form->addRow(QString(), m_glassPanel);
-
+    // ================= Sidebar =================
+    addPage(ngTr("Sidebar", "Barra laterale"));
+    m_glassPanel = new QCheckBox(this);
+    m_glassPanel->hide();
     m_backdrop = new QComboBox(this);
-    m_backdrop->addItem(ngTr("Blurred image", "Immagine sfocata"), QString());
-    m_backdrop->addItem(ngTr("Animated gradient", "Gradiente animato"), QStringLiteral("lava"));
-    m_backdrop->addItem(ngTr("Real desktop blur (compositor)", "Blur vero del desktop (compositor)"), QStringLiteral("live"));
-    form->addRow(ngTr("Backdrop:", "Sfondo:"), m_backdrop);
-
-    // picture
+    m_backdrop->addItem(QString(), QString());
+    m_backdrop->addItem(QString(), QStringLiteral("lava"));
+    m_backdrop->addItem(QString(), QStringLiteral("live"));
+    m_backdrop->hide();
+    {
+        // four tiles for two values: the plain panel, or a glass one over one of the three backdrops
+        heading(ngTr("Backdrop of the panel", "Sfondo del pannello"));
+        m_sideRow = new NgTileRow(QStringLiteral("side"), 4, this);
+        m_sideRow->add(QStringLiteral("plain"), ngTr("Plain", "Normale"));
+        m_sideRow->add(QStringLiteral("image"), ngTr("Blurred image", "Immagine sfocata"));
+        m_sideRow->add(QStringLiteral("lava"), ngTr("Animated gradient", "Gradiente animato"));
+        m_sideRow->add(QStringLiteral("live"), ngTr("Real desktop blur", "Blur vero del desktop"));
+        m_sideRow->finish();
+        page->addWidget(m_sideRow);
+        m_sideRow->picked = [this](const QString &id) {
+            m_glassPanel->setChecked(id != QLatin1String("plain"));
+            if (id != QLatin1String("plain")) {
+                m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(id == QLatin1String("image") ? QString() : id)));
+            }
+        };
+        auto sync = [this] {
+            const QString mode = m_backdrop->currentData().toString();
+            m_sideRow->setCurrent(!m_glassPanel->isChecked() ? QStringLiteral("plain") : mode.isEmpty() ? QStringLiteral("image") : mode);
+        };
+        connect(m_glassPanel, &QCheckBox::toggled, m_sideRow, sync);
+        connect(m_backdrop, &QComboBox::currentIndexChanged, m_sideRow, sync);
+        m_syncs.append(sync);
+    }
+    startForm();
     m_image = new KUrlRequester(this);
     m_image->setMode(KFile::File | KFile::ExistingOnly | KFile::LocalOnly);
     m_image->setPlaceholderText(ngTr("Desktop wallpaper", "Sfondo del desktop"));
     m_image->setToolTip(ngTr("Image shown, blurred, behind the sidebar. Empty: the wallpaper of each screen.", "Immagine mostrata, sfocata, dietro la barra laterale. Vuoto: lo sfondo del desktop di ogni schermo."));
-    form->addRow(ngTr("Image:", "Immagine:"), m_image);
+    formRow(ngTr("Image:", "Immagine:"), m_image);
     m_glass = percentSlider(this, 0, 100);
-    form->addRow(ngTr("How much shows:", "Quanto si vede:"), m_glass);
+    formRow(ngTr("How much shows:", "Quanto si vede:"), m_glass);
     m_blur = percentSlider(this, 0, 100);
-    form->addRow(ngTr("Blur:", "Sfocatura:"), m_blur);
+    formRow(ngTr("Blur:", "Sfocatura:"), m_blur);
     m_liveBlur = percentSlider(this, 1, 15);
     m_liveBlur->setPageStep(1);
     m_liveBlur->setToolTip(ngTr("The blur strength of the compositor (KWin's Blur or Better Blur effect). It is a desktop setting: every blurred window changes with it.",
                                 "L'intensità del blur del compositor (effetto Sfocatura di KWin o Better Blur). È un'impostazione del desktop: cambia per tutte le finestre sfocate."));
-    form->addRow(ngTr("Blur (whole desktop):", "Sfocatura (tutto il desktop):"), m_liveBlur);
-    m_motion = new QCheckBox(ngTr("The image moves slowly (zoom and pan)", "L'immagine si muove lentamente (zoom e scorrimento)"), this);
-    form->addRow(QString(), m_motion);
-
-    // animated gradient
+    formRow(ngTr("Blur (whole desktop):", "Sfocatura (tutto il desktop):"), m_liveBlur);
     m_lavaStyle = new QComboBox(this);
     m_lavaStyle->addItem(ngTr("Flowing gradient", "Gradiente che scorre"), QString());
     m_lavaStyle->addItem(ngTr("Blobs (lava lamp)", "Macchie (lava lamp)"), QStringLiteral("blobs"));
-    form->addRow(ngTr("Animation:", "Animazione:"), m_lavaStyle);
+    formRow(ngTr("Animation:", "Animazione:"), m_lavaStyle);
     m_lavaSize = percentSlider(this, 10, 100);
-    form->addRow(ngTr("Size of the colour areas:", "Ampiezza delle zone di colore:"), m_lavaSize);
+    formRow(ngTr("Size of the colour areas:", "Ampiezza delle zone di colore:"), m_lavaSize);
     m_lavaColours = new QComboBox(this);
     m_lavaColours->addItem(ngTr("Teal, amber and indigo", "Petrolio, ambra e indaco"), QString());
     m_lavaColours->addItem(ngTr("From the desktop wallpaper", "Dallo sfondo del desktop"), QStringLiteral("wallpaper"));
     m_lavaColours->addItem(ngTr("Custom", "Personalizzati"), QStringLiteral("custom"));
-    form->addRow(ngTr("Colours:", "Colori:"), m_lavaColours);
+    formRow(ngTr("Colours:", "Colori:"), m_lavaColours);
     m_lavaColourRow = new QWidget(this);
     auto *colourRow = new QHBoxLayout(m_lavaColourRow);
     colourRow->setContentsMargins(0, 0, 0, 0);
@@ -157,133 +998,132 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
         connect(button, &KColorButton::changed, this, &NgSettingsPage::changed);
     }
     colourRow->addStretch();
-    form->addRow(QString(), m_lavaColourRow);
-
-    // shared
+    formRow(QString(), m_lavaColourRow);
     m_lavaSpeed = percentSlider(this, 5, 100);
-    form->addRow(ngTr("Speed of the motion:", "Velocità del movimento:"), m_lavaSpeed);
+    formRow(ngTr("Speed of the motion:", "Velocità del movimento:"), m_lavaSpeed);
+    m_motion = toggle(ngTr("The image moves slowly (zoom and pan)", "L'immagine si muove lentamente (zoom e scorrimento)"));
 
     m_rim = new QComboBox(this);
-    m_rim->addItem(ngTr("None", "Nessuno"), QString());
-    m_rim->addItem(ngTr("Diagonal highlight", "Riflesso in diagonale"), QStringLiteral("diagonal"));
-    m_rim->addItem(ngTr("Thin even line", "Linea sottile uniforme"), QStringLiteral("soft"));
-    m_rim->addItem(ngTr("Bevel (dark outside, light inside)", "Smusso (scuro fuori, chiaro dentro)"), QStringLiteral("bevel"));
-    m_rim->addItem(ngTr("Soft glow", "Alone sfumato"), QStringLiteral("glow"));
-    m_rim->addItem(ngTr("Light from above", "Luce dall'alto"), QStringLiteral("top"));
-    form->addRow(ngTr("Panel edge:", "Bordo del pannello:"), m_rim);
+    for (const char *id : {"", "diagonal", "soft", "bevel", "glow", "top"}) {
+        m_rim->addItem(QString(), QString::fromLatin1(id));
+    }
+    tilesFor(m_rim, QStringLiteral("rim"), ngTr("Edge of the panel", "Bordo del pannello"),
+             {{ngTr("None", "Nessuno"), {}}, {ngTr("Diagonal", "Diagonale"), {}}, {ngTr("Thin line", "Linea sottile"), {}}, {ngTr("Bevel", "Smusso"), {}},
+              {ngTr("Glow", "Alone"), {}}, {ngTr("Light from above", "Luce dall'alto"), {}}},
+             6);
+    heading(ngTr("Sections", "Sezioni"));
+    m_sidebarFilters = toggle(ngTr("Filters, at the bottom of the panel", "Filtri, in fondo al pannello"));
+    m_devices = toggle(ngTr("Devices (otherwise the disk box is shown)", "Dispositivi (altrimenti c'è il riquadro del disco)"));
+    page->addStretch();
 
-    m_devices = new QCheckBox(ngTr("Show the “Devices” section (otherwise the disk box is shown)", "Mostra la sezione «Dispositivi» (altrimenti c'è il riquadro del disco)"), this);
-    form->addRow(QString(), m_devices);
-    m_sidebarFilters = new QCheckBox(ngTr("Show the “Filters” section at the bottom of the panel", "Mostra la sezione «Filtri» in fondo al pannello"), this);
-    form->addRow(QString(), m_sidebarFilters);
-
-    // ---- Elenco dei file --------------------------------------------------------------------------------
-    group(ngTr("File list (details view)", "Elenco dei file (vista dettagli)"), layout, &m_listForm);
-    form = m_listForm;
-
-    m_twoLines = new QCheckBox(ngTr("Two-line rows, without columns", "Righe su due linee, senza colonne"), this);
-    form->addRow(QString(), m_twoLines);
-
+    // ================= Rows =================
+    addPage(ngTr("Rows", "Righe"));
+    m_twoLines = toggle(ngTr("Two-line rows, without columns", "Righe su due linee, senza colonne"));
     m_rows = new QComboBox(this);
-    m_rows->addItem(ngTr("Cards", "Schede"), QStringLiteral("card"));
-    m_rows->addItem(ngTr("Open, without separators", "Aperte, senza separatori"), QStringLiteral("open"));
-    m_rows->addItem(ngTr("Line fading at the sides", "Filo che sfuma ai lati"), QStringLiteral("line"));
-    m_rows->addItem(ngTr("Alternating stripes (stock Dolphin)", "Strisce alternate (Dolphin originale)"), QStringLiteral("stripe"));
-    m_rows->addItem(ngTr("No background", "Nessuno sfondo"), QStringLiteral("none"));
-    form->addRow(ngTr("Row background:", "Sfondo delle righe:"), m_rows);
-
-    m_icons = new QCheckBox(ngTr("Classic icon at the start of the row, instead of the type mark", "Icona classica all'inizio della riga, invece del segno del tipo"), this);
-    form->addRow(QString(), m_icons);
-
+    for (const char *id : {"card", "open", "line", "stripe", "none"}) {
+        m_rows->addItem(QString(), QString::fromLatin1(id));
+    }
+    tilesFor(m_rows, QStringLiteral("rows"), ngTr("Row background", "Sfondo delle righe"),
+             {{ngTr("Cards", "Schede"), {}}, {ngTr("Open", "Aperte"), {}}, {ngTr("Line", "Filo"), {}}, {ngTr("Stripes", "Strisce"), {}}, {ngTr("None", "Nessuno"), {}}}, 5);
     m_mark = new QComboBox(this);
-    m_mark->addItem(ngTr("Watermark: faint icon and large letters", "Filigrana: icona tenue e sigla grande"), QString());
-    m_mark->addItem(ngTr("Tile: glyph and letters in a square", "Tessera: disegno e sigla in un quadrato"), QStringLiteral("tile"));
-    m_mark->addItem(ngTr("Pill: glyph and letters in a label", "Pillola: disegno e sigla in un'etichetta"), QStringLiteral("pill"));
-    m_mark->addItem(ngTr("Marks only: glyph and letters without a container", "Solo segni: disegno e sigla senza contenitore"), QStringLiteral("signs"));
-    m_mark->addItem(ngTr("Header: glyph and letters in the coloured edge", "Testata: disegno e sigla nel bordo colorato"), QStringLiteral("header"));
-    form->addRow(ngTr("File type mark:", "Segno del tipo di file:"), m_mark);
-
+    for (const char *id : {"", "tile", "pill", "signs", "header"}) {
+        m_mark->addItem(QString(), QString::fromLatin1(id));
+    }
+    tilesFor(m_mark, QStringLiteral("mark"), ngTr("File type mark", "Segno del tipo di file"),
+             {{ngTr("Watermark", "Filigrana"), {}}, {ngTr("Tile", "Tessera"), {}}, {ngTr("Pill", "Pillola"), {}}, {ngTr("Marks only", "Solo segni"), {}},
+              {ngTr("Header", "Testata"), {}}},
+             5);
     m_sigla = new QComboBox(this);
-    m_sigla->addItem(ngTr("Filled and faint", "Piena e tenue"), QStringLiteral("fill"));
-    m_sigla->addItem(ngTr("Outline only", "Solo contorno"), QStringLiteral("outline"));
-    m_sigla->addItem(ngTr("Small label", "Etichetta piccola"), QStringLiteral("label"));
-    form->addRow(ngTr("Watermark letters:", "Sigla della filigrana:"), m_sigla);
-
-    m_ago = new QCheckBox(ngTr("Under the date, the days elapsed", "Sotto la data, i giorni trascorsi"), this);
-    form->addRow(QString(), m_ago);
-    m_rowDates = new QCheckBox(ngTr("Under the name: “Created … (days ago) · Modified … (days ago)”", "Sotto il nome: «Creato … (giorni fa) · Modificato … (giorni fa)»"), this);
-    form->addRow(QString(), m_rowDates);
-
-    m_folderSizes = new QCheckBox(ngTr("Folders: space used by the contents and number of items", "Cartelle: spazio occupato dal contenuto e numero di elementi"), this);
+    for (const char *id : {"fill", "outline", "label"}) {
+        m_sigla->addItem(QString(), QString::fromLatin1(id));
+    }
+    tilesFor(m_sigla, QStringLiteral("sigla"), ngTr("Watermark letters", "Sigla della filigrana"),
+             {{ngTr("Filled and faint", "Piena e tenue"), {}}, {ngTr("Outline only", "Solo contorno"), {}}, {ngTr("Small label", "Etichetta piccola"), {}}}, 5);
+    heading(ngTr("What each row shows", "Cosa mostra ogni riga"));
+    m_icons = toggle(ngTr("Classic icon instead of the type mark", "Icona classica invece del segno del tipo"));
+    m_ago = toggle(ngTr("Days elapsed, under the date", "Giorni trascorsi, sotto la data"));
+    m_rowDates = toggle(ngTr("Created and modified, with the days elapsed", "Creato e modificato, con i giorni trascorsi"));
+    m_folderSizes = toggle(ngTr("Folders: space used by the contents", "Cartelle: spazio occupato dal contenuto"));
     m_folderSizes->setToolTip(ngTr("Measures the contents of folders (Dolphin's setting “Folder size: size of contents”, with its depth limit). Otherwise only the number of items.", "Misura il contenuto delle cartelle (impostazione di Dolphin «Dimensione delle cartelle: dimensione del contenuto», con il suo limite di profondità). Altrimenti solo il numero di elementi."));
-    form->addRow(QString(), m_folderSizes);
+    page->addStretch();
 
-    m_hoverPreview = new QCheckBox(ngTr("Open the preview when the mouse rests on the eye of the row", "Apri l'anteprima quando il mouse si ferma sull'occhio della riga"), this);
-    form->addRow(QString(), m_hoverPreview);
-    m_hoverDelay = new QSpinBox(this);
-    m_hoverDelay->setRange(100, 5000);
-    m_hoverDelay->setSingleStep(100);
-    m_hoverDelay->setSuffix(QStringLiteral(" ms"));
-    form->addRow(ngTr("After:", "Dopo:"), m_hoverDelay);
-    m_float = new QCheckBox(ngTr("The preview card floats above the window (it can leave the pane)", "La scheda di anteprima galleggia sopra la finestra (può uscire dal riquadro)"), this);
-    form->addRow(QString(), m_float);
-
-    // ---- Vista a icone ----------------------------------------------------------------------------------
-    QFormLayout *iconsForm = nullptr;
-    group(ngTr("Icons view", "Vista a icone"), layout, &iconsForm);
-    m_tiles = new QCheckBox(ngTr("Dark tiles with rounded previews", "Tessere scure con anteprime arrotondate"), this);
-    iconsForm->addRow(QString(), m_tiles);
-
-    // ---- Vista a card -----------------------------------------------------------------------------------
-    QFormLayout *cardsForm = nullptr;
-    group(ngTr("Cards view", "Vista a card"), layout, &cardsForm);
+    // ================= Cards =================
+    addPage(ngTr("Cards", "Card"));
     m_cards = new QComboBox(this);
-    m_cards->addItem(ngTr("A · Tessera: preview on top, details below", "A · Tessera: anteprima in alto, scheda sotto"), QStringLiteral("a"));
-    m_cards->addItem(ngTr("B · Scheda: icon on the left, everything in three lines", "B · Scheda: icona a sinistra, tutto in tre righe"), QStringLiteral("b"));
-    m_cards->addItem(ngTr("C · Dossier: the folded row, days elapsed on the right", "C · Dossier: la riga ripiegata, giorni trascorsi a destra"), QStringLiteral("c"));
-    cardsForm->addRow(ngTr("Kind of card:", "Tipo di card:"), m_cards);
+    for (const char *id : {"a", "b", "c"}) {
+        m_cards->addItem(QString(), QString::fromLatin1(id));
+    }
+    tilesFor(m_cards, QStringLiteral("cards"), ngTr("Kind of card", "Tipo di card"),
+             {{QStringLiteral("Tessera"), ngTr("Preview on top, details below", "Anteprima in alto, dettagli sotto")},
+              {QStringLiteral("Scheda"), ngTr("Icon on the left, everything in three lines", "Icona a sinistra, tutto in tre righe")},
+              {QStringLiteral("Dossier"), ngTr("The days elapsed, large", "I giorni trascorsi in grande")}},
+             3);
     m_cardsFit = new QComboBox(this);
-    m_cardsFit->addItem(ngTr("Fixed-size cards, space shared between the columns", "Card di misura fissa, spazio distribuito fra le colonne"), QString());
-    m_cardsFit->addItem(ngTr("Cards stretch to fill the row", "Le card si allargano fino a riempire la riga"), QStringLiteral("stretch"));
-    cardsForm->addRow(ngTr("Grid:", "Griglia:"), m_cardsFit);
+    m_cardsFit->addItem(QString(), QString());
+    m_cardsFit->addItem(QString(), QStringLiteral("stretch"));
+    tilesFor(m_cardsFit, QStringLiteral("fit"), ngTr("Grid", "Griglia"), {{ngTr("Fixed size", "Misura fissa"), {}}, {ngTr("Fill the row", "Riempi la riga"), {}}}, 5);
+    m_cardsMark = new QComboBox(this);
+    m_cardsMark->addItem(QString(), QString());
+    m_cardsMark->addItem(QString(), QStringLiteral("type"));
+    tilesFor(m_cardsMark, QStringLiteral("cardsmark"), ngTr("Type mark", "Segno del tipo"),
+             {{ngTr("The type icon", "L'icona del tipo"), {}}, {ngTr("The type as background", "Il tipo come sfondo"), {}}}, 5);
+    startForm();
     m_cardsInfo = new QComboBox(this);
     m_cardsInfo->addItem(ngTr("Created and modified", "Creato e modificato"), QString());
     m_cardsInfo->addItem(ngTr("Type and permissions too", "Anche tipo e permessi"), QStringLiteral("full"));
-    cardsForm->addRow(ngTr("Details in the card:", "Dettagli nella card:"), m_cardsInfo);
-    m_cardsMark = new QComboBox(this);
-    m_cardsMark->addItem(ngTr("The type icon", "L'icona del tipo"), QString());
-    m_cardsMark->addItem(ngTr("The type as background: colour and watermark letters (images keep their preview)", "Il tipo come sfondo: colore e sigla in filigrana (le immagini tengono l'anteprima)"), QStringLiteral("type"));
-    cardsForm->addRow(ngTr("Type mark:", "Segno del tipo:"), m_cardsMark);
-    m_quickView = new QCheckBox(ngTr("Quick view when hovering the picture of a card (images, GIFs, videos, PDFs)", "Anteprima al volo passando sull'immagine della card (immagini, GIF, video, PDF)"), this);
-    cardsForm->addRow(QString(), m_quickView);
+    formRow(ngTr("Details in the card:", "Dettagli nella card:"), m_cardsInfo);
+    page->addStretch();
+    note(ngTr("Switch to the view from the View menu (Cards, Ctrl+4) or with the “Cards” button in the filter bar; zooming changes the size of the cards.", "La vista si attiva dal menu Visualizza (Card, Ctrl+4) o dal pulsante «Card» nella barra dei filtri; lo zoom cambia la misura delle card."));
+
+    // ================= Previews =================
+    addPage(ngTr("Previews", "Anteprime"));
+    heading(ngTr("Quick view", "Anteprima al volo"));
+    note(ngTr("Shown when the pointer rests on the small picture of an image, a GIF, a video or a PDF, on cards and rows.",
+              "Compare fermando il mouse sulla miniatura di immagini, GIF, video e PDF, nelle card e nelle righe."));
+    m_quickView = toggle(ngTr("On", "Attiva"));
+    startForm();
     m_quickDelay = new QSpinBox(this);
     m_quickDelay->setRange(0, 3000);
     m_quickDelay->setSingleStep(50);
     m_quickDelay->setSuffix(QStringLiteral(" ms"));
     m_quickDelay->setSpecialValueText(ngTr("At once", "Subito"));
-    cardsForm->addRow(ngTr("After:", "Dopo:"), m_quickDelay);
+    formRow(ngTr("After:", "Dopo:"), m_quickDelay);
     m_quickSide = new QComboBox(this);
-    m_quickSide->addItem(ngTr("Left of the cursor", "A sinistra del cursore"), QString());
-    m_quickSide->addItem(ngTr("Right of the cursor", "A destra del cursore"), QStringLiteral("right"));
-    m_quickSide->addItem(ngTr("Automatic, next to the card", "Automatica, accanto alla card"), QStringLiteral("auto"));
-    cardsForm->addRow(ngTr("Position:", "Posizione:"), m_quickSide);
+    m_quickSide->addItem(QString(), QString());
+    m_quickSide->addItem(QString(), QStringLiteral("right"));
+    m_quickSide->addItem(QString(), QStringLiteral("auto"));
+    NgTileRow *quickSideRow = tilesFor(m_quickSide, QStringLiteral("quickside"), ngTr("Where it shows", "Dove compare"),
+                                       {{ngTr("Left of the cursor", "A sinistra del cursore"), {}}, {ngTr("Right of the cursor", "A destra del cursore"), {}},
+                                        {ngTr("Next to the card", "Accanto alla card"), {}}},
+                                       5);
     connect(m_quickSide, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
+    connect(m_quickView, &QCheckBox::toggled, quickSideRow, &QWidget::setEnabled);
     connect(m_quickView, &QCheckBox::toggled, m_quickSide, &QWidget::setEnabled);
     connect(m_quickView, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     connect(m_quickView, &QCheckBox::toggled, m_quickDelay, &QWidget::setEnabled);
     connect(m_quickDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
-    auto *cardsNote = new QLabel(ngTr("Switch to the view from the View menu (Cards, Ctrl+4) or with the “Cards” button in the filter bar; zooming changes the size of the cards.", "La vista si attiva dal menu Visualizza (Card, Ctrl+4) o dal pulsante «Card» nella barra dei filtri; lo zoom cambia la misura delle card."), this);
-    cardsNote->setWordWrap(true);
-    cardsNote->setEnabled(false);
-    cardsForm->addRow(QString(), cardsNote);
+    heading(ngTr("Preview card (the eye)", "Scheda di anteprima (l'occhio)"));
+    m_hoverPreview = toggle(ngTr("Opens when the mouse rests on the eye", "Si apre fermando il mouse sull'occhio"));
+    startForm();
+    m_hoverDelay = new QSpinBox(this);
+    m_hoverDelay->setRange(100, 5000);
+    m_hoverDelay->setSingleStep(100);
+    m_hoverDelay->setSuffix(QStringLiteral(" ms"));
+    formRow(ngTr("After:", "Dopo:"), m_hoverDelay);
+    m_float = toggle(ngTr("Floats above the window (it can leave the pane)", "Galleggia sopra la finestra (può uscire dal riquadro)"));
+    page->addStretch();
 
-    auto *note = new QLabel(ngTr("Changes take effect as soon as they are applied. A DOLPHIN_NG_… variable set at start-up wins: the matching entry is disabled.", "Le modifiche valgono appena applicate. Una variabile DOLPHIN_NG_… impostata all'avvio ha la precedenza: la voce corrispondente è disattivata."), this);
-    note->setWordWrap(true);
-    note->setEnabled(false);
-    layout->addWidget(note);
-    layout->addStretch();
+    connect(tabGroup, &QButtonGroup::idClicked, this, [this](int index) {
+        m_pages->setCurrentIndex(index);
+        updatePreview();
+    });
+    tabGroup->button(0)->setChecked(true);
 
     loadSettings();
+    for (const auto &sync : std::as_const(m_syncs)) {
+        sync(); // a value that loads as the first entry changes nothing, so no signal marked its tile
+    }
+    presetRow->setCurrent(QString()); // a look is a starting point, not a stored value: none is marked
 
     // what the environment decides cannot be changed here
     const struct {
@@ -297,6 +1137,11 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     for (const auto &entry : bound) {
         entry.widget->setEnabled(!ngSettingFromEnvironment(entry.name));
     }
+    for (const auto &[model, proxy] : std::as_const(m_proxies)) {
+        proxy->setEnabled(model->isEnabled()); // the tiles follow the value they drive
+    }
+    m_sideRow->setEnabled(m_glassPanel->isEnabled() && m_backdrop->isEnabled());
+    quickSideRow->setEnabled(m_quickView->isChecked());
 
     for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
@@ -316,10 +1161,46 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     for (QComboBox *combo : {m_backdrop, m_lavaColours, m_mark}) {
         connect(combo, &QComboBox::currentIndexChanged, this, &NgSettingsPage::updateDependencies);
     }
+    connect(this, &NgSettingsPage::changed, this, &NgSettingsPage::updatePreview);
     updateDependencies();
+    updatePreview();
 }
 
 NgSettingsPage::~NgSettingsPage() = default;
+
+void NgSettingsPage::showOption(QWidget *option, bool shown)
+{
+    if (QFormLayout *form = m_formOf.value(option)) {
+        form->setRowVisible(option, shown);
+    }
+    for (QWidget *part : m_parts.value(option)) {
+        part->setVisible(shown);
+    }
+    if (!m_formOf.contains(option) && !m_parts.contains(option)) {
+        option->setVisible(shown);
+    }
+}
+
+void NgSettingsPage::updatePreview()
+{
+    const QString mode = m_backdrop->currentData().toString();
+    m_preview->side = !m_glassPanel->isChecked() ? QStringLiteral("plain") : mode.isEmpty() ? QStringLiteral("image") : mode;
+    m_preview->rim = m_rim->currentData().toString();
+    m_preview->filters = m_sidebarFilters->isChecked();
+    m_preview->twoLines = m_twoLines->isChecked();
+    m_preview->rows = m_rows->currentData().toString();
+    m_preview->mark = m_mark->currentData().toString();
+    m_preview->classicIcons = m_icons->isChecked();
+    m_preview->card = m_cards->currentData().toString();
+    m_preview->stretch = m_cardsFit->currentIndex() == 1;
+    m_preview->typeBackground = m_cardsMark->currentIndex() == 1;
+    // the tab decides which view the miniature shows: rows on "Rows", cards on "Cards" and "Previews"
+    const int tab = m_pages->currentIndex();
+    m_preview->cardsView = tab == 3 || tab == 4 || (tab != 2 && m_twoLines->isChecked());
+    m_preview->quickView = tab == 4 && m_quickView->isChecked();
+    m_preview->quickSide = m_quickSide->currentData().toString();
+    m_preview->update();
+}
 
 void NgSettingsPage::updateDependencies()
 {
@@ -328,24 +1209,23 @@ void NgSettingsPage::updateDependencies()
     const bool picture = glass && mode.isEmpty();
     const bool gradient = glass && mode == QLatin1String("lava");
 
-    m_sidebarForm->setRowVisible(m_backdrop, glass);
-    m_sidebarForm->setRowVisible(m_image, picture);
-    m_sidebarForm->setRowVisible(m_glass, picture);
-    m_sidebarForm->setRowVisible(m_blur, picture);
-    m_sidebarForm->setRowVisible(m_liveBlur, glass && mode == QLatin1String("live"));
-    m_sidebarForm->setRowVisible(m_motion, picture);
-    m_sidebarForm->setRowVisible(m_lavaStyle, gradient);
-    m_sidebarForm->setRowVisible(m_lavaSize, gradient);
-    m_sidebarForm->setRowVisible(m_lavaColours, gradient);
-    m_sidebarForm->setRowVisible(m_lavaColourRow, gradient && m_lavaColours->currentIndex() == 2);
-    m_sidebarForm->setRowVisible(m_lavaSpeed, gradient || (picture && m_motion->isChecked()));
-    m_sidebarForm->setRowVisible(m_rim, glass);
-    m_sidebarForm->setRowVisible(m_devices, glass);
+    showOption(m_image, picture);
+    showOption(m_glass, picture);
+    showOption(m_blur, picture);
+    showOption(m_liveBlur, glass && mode == QLatin1String("live"));
+    showOption(m_motion, picture);
+    showOption(m_lavaStyle, gradient);
+    showOption(m_lavaSize, gradient);
+    showOption(m_lavaColours, gradient);
+    showOption(m_lavaColourRow, gradient && m_lavaColours->currentIndex() == 2);
+    showOption(m_lavaSpeed, gradient || (picture && m_motion->isChecked()));
+    showOption(m_rim, glass);
+    showOption(m_devices, glass);
 
     const bool marks = !m_icons->isChecked();
-    m_listForm->setRowVisible(m_mark, marks);
-    m_listForm->setRowVisible(m_sigla, marks && m_mark->currentIndex() == 0);
-    m_listForm->setRowVisible(m_hoverDelay, m_hoverPreview->isChecked());
+    showOption(m_mark, marks);
+    showOption(m_sigla, marks && m_mark->currentIndex() == 0);
+    showOption(m_hoverDelay, m_hoverPreview->isChecked());
 }
 
 void NgSettingsPage::loadSettings()

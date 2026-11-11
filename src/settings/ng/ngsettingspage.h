@@ -7,6 +7,10 @@
 
 #include "settings/settingspagebase.h"
 
+#include <QHash>
+#include <QList>
+#include <functional>
+
 class KColorButton;
 class KUrlRequester;
 class QCheckBox;
@@ -15,6 +19,9 @@ class QFormLayout;
 class QSlider;
 class QSpinBox;
 class QWidget;
+class QStackedWidget;
+class NgSettingsPreview;
+class NgTileRow;
 
 /**
  * dolphin-ng: settings of the fork (sidebar glass, list look). They are stored in dolphinrc,
@@ -37,6 +44,15 @@ private:
     void applyPreset(const QString &name); // classic | soft | glass: fills the page, applied with the dialog
     QComboBox *m_preset;
     void updateDependencies(); // show only the rows the chosen backdrop uses
+    void showOption(QWidget *option, bool shown); // an option with everything that belongs to it (its heading, its form row)
+    void updatePreview(); // the miniature follows the page
+    NgSettingsPreview *m_preview;
+    QStackedWidget *m_pages;
+    NgTileRow *m_sideRow; // plain panel, or glass over one of three backdrops
+    QHash<QWidget *, QList<QWidget *>> m_parts;
+    QHash<QWidget *, QFormLayout *> m_formOf;
+    QList<std::pair<QWidget *, QWidget *>> m_proxies; // a hidden value and the tiles that drive it
+    QList<std::function<void()>> m_syncs;
 
     // sidebar
     QCheckBox *m_glassPanel;
@@ -44,7 +60,6 @@ private:
     QComboBox *m_rim;
     QCheckBox *m_devices;
     QCheckBox *m_sidebarFilters;
-    QFormLayout *m_sidebarForm;
     // sidebar: picture
     KUrlRequester *m_image;
     QSlider *m_glass;
@@ -71,7 +86,6 @@ private:
     QCheckBox *m_folderSizes;
     QSpinBox *m_hoverDelay;
     QCheckBox *m_float;
-    QFormLayout *m_listForm;
     // icons view
     QCheckBox *m_tiles;
     // cards view
