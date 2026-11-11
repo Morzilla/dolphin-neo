@@ -2765,6 +2765,182 @@ void KStandardItemListWidget::drawSiblingsInformation(QPainter *painter)
 //   Dossier   the list row folded: icon and name, chips, the dates on the left, the big "ago" on the right
 // The base class paints the selection and the hover over the sheet drawn by paintNgCardSheet().
 
+namespace
+{
+// dolphin-ng: the band of a card whose file has no preview shows a small drawing of the kind of content: a page of
+// text, a table, lines of code, a waveform... The kind comes from the category of the file and, where the category
+// is too wide (audio or video, text or slides), from its extension.
+void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, const QString &sigla, const QColor &tint, bool dark)
+{
+    painter->setRenderHint(QPainter::Antialiasing);
+    const QString ext = sigla.toLower();
+    static const QSet<QString> audio{QStringLiteral("mp3"), QStringLiteral("flac"), QStringLiteral("ogg"), QStringLiteral("wav"), QStringLiteral("opus"), QStringLiteral("m4a"),
+                                     QStringLiteral("aac"), QStringLiteral("wma")};
+    static const QSet<QString> slides{QStringLiteral("ppt"), QStringLiteral("pptx"), QStringLiteral("odp"), QStringLiteral("key")};
+    const qreal u = band.height() / 100.0; // the drawing is laid out for a band 100 high
+    const QColor paper = dark ? QColor(232, 234, 238) : QColor(255, 255, 255);
+    const QColor paperEdge = dark ? QColor(0, 0, 0, 0) : QColor(0, 0, 0, 40);
+    const QColor grey(150, 156, 166);
+    const QColor faint(198, 202, 209);
+    auto bar = [painter](qreal x, qreal y, qreal width, qreal height, const QColor &colour) {
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(colour);
+        painter->drawRoundedRect(QRectF(x, y, width, height), height / 2.0, height / 2.0);
+    };
+    // a sheet of paper in the middle of the band, running off its bottom edge
+    auto sheet = [&](qreal widthFactor) {
+        const qreal width = qMin(band.width() * widthFactor, band.height() * 2.1);
+        const QRectF page(band.center().x() - width / 2.0, band.top() + 12 * u, width, band.height());
+        painter->setPen(paperEdge.alpha() ? QPen(paperEdge, 1) : QPen(Qt::NoPen));
+        painter->setBrush(paper);
+        painter->drawRoundedRect(page, 5 * u, 5 * u);
+        return page;
+    };
+
+    if (category == int(NgKind::Sheet)) {
+        const QRectF page = sheet(0.62);
+        const qreal left = page.left() + 9 * u, right = page.right() - 9 * u, top = page.top() + 10 * u, rowHeight = 15 * u;
+        QColor head = tint;
+        head.setAlphaF(0.55);
+        painter->fillRect(QRectF(left, top, right - left, rowHeight), head);
+        painter->setPen(QPen(faint, 1));
+        for (int row = 0; row <= 6; ++row) {
+            painter->drawLine(QPointF(left, top + row * rowHeight), QPointF(right, top + row * rowHeight));
+        }
+        for (int column = 0; column <= 4; ++column) {
+            const qreal x = left + (right - left) * column / 4.0;
+            painter->drawLine(QPointF(x, top), QPointF(x, page.bottom()));
+        }
+        for (int row = 1; row < 6; ++row) {
+            for (int column = 0; column < 4; ++column) {
+                const qreal x = left + (right - left) * column / 4.0;
+                bar(x + 4 * u, top + row * rowHeight + 5.5 * u, (right - left) / 4.0 * (0.35 + 0.12 * ((row * 3 + column) % 4)), 4 * u, column == 0 ? grey : faint);
+            }
+        }
+    } else if (category == int(NgKind::Data)) {
+        // lines of code on a dark editor
+        const qreal width = qMin(band.width() * 0.7, band.height() * 2.4);
+        const QRectF editor(band.center().x() - width / 2.0, band.top() + 12 * u, width, band.height());
+        painter->setPen(QPen(QColor(255, 255, 255, 28), 1));
+        painter->setBrush(QColor(20, 22, 27));
+        painter->drawRoundedRect(editor, 5 * u, 5 * u);
+        static const qreal indent[] = {0, 1, 1, 2, 2, 1, 0}, length[] = {0.34, 0.52, 0.30, 0.44, 0.26, 0.38, 0.2};
+        QColor bright = tint.lighter(125), soft(120, 128, 140);
+        for (int i = 0; i < 7; ++i) {
+            const qreal x = editor.left() + 10 * u + indent[i] * 12 * u, y = editor.top() + 11 * u + i * 12 * u;
+            bar(x, y, editor.width() * 0.16, 4.5 * u, i % 3 == 0 ? bright : soft);
+            bar(x + editor.width() * 0.16 + 5 * u, y, editor.width() * length[i], 4.5 * u, i % 2 ? QColor(170, 178, 190) : soft);
+        }
+    } else if (category == int(NgKind::Media) && audio.contains(ext)) {
+        // a waveform across the band
+        const int count = 34;
+        const qreal step = band.width() * 0.8 / count, x0 = band.left() + band.width() * 0.1;
+        QColor wave = tint.lighter(120);
+        for (int i = 0; i < count; ++i) {
+            const qreal amount = 0.18 + 0.82 * qAbs(std::sin(i * 0.55) * std::cos(i * 0.23 + 1.0));
+            const qreal height = band.height() * 0.62 * amount;
+            wave.setAlphaF(0.55 + 0.4 * amount);
+            bar(x0 + i * step, band.center().y() - height / 2.0, qMax(2.0, step * 0.55), height, wave);
+        }
+    } else if (category == int(NgKind::Media)) {
+        // a frame of film with the play mark
+        const qreal width = qMin(band.width() * 0.56, band.height() * 1.5), height = band.height() * 0.72;
+        const QRectF frame(band.center().x() - width / 2.0, band.center().y() - height / 2.0, width, height);
+        painter->setPen(QPen(QColor(255, 255, 255, 40), 1));
+        painter->setBrush(QColor(14, 15, 19));
+        painter->drawRoundedRect(frame, 6 * u, 6 * u);
+        for (int i = 0; i < 5; ++i) {
+            const qreal y = frame.top() + frame.height() * (i + 0.5) / 5.0 - 3 * u;
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(255, 255, 255, 60));
+            painter->drawRoundedRect(QRectF(frame.left() + 5 * u, y, 6 * u, 6 * u), 1.5 * u, 1.5 * u);
+            painter->drawRoundedRect(QRectF(frame.right() - 11 * u, y, 6 * u, 6 * u), 1.5 * u, 1.5 * u);
+        }
+        QPainterPath play;
+        const qreal side = height * 0.36;
+        play.moveTo(frame.center().x() - side * 0.38, frame.center().y() - side / 2.0);
+        play.lineTo(frame.center().x() + side * 0.55, frame.center().y());
+        play.lineTo(frame.center().x() - side * 0.38, frame.center().y() + side / 2.0);
+        play.closeSubpath();
+        painter->setPen(QPen(tint.lighter(125), 2 * u, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter->setBrush(tint.lighter(125));
+        painter->drawPath(play);
+    } else if (category == int(NgKind::Archive) || category == int(NgKind::Package)) {
+        // a parcel: a box with its tape and a label
+        const qreal width = qMin(band.width() * 0.46, band.height() * 1.3);
+        const QRectF box(band.center().x() - width / 2.0, band.top() + 18 * u, width, band.height());
+        QColor card = tint;
+        card.setAlphaF(1.0);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(card.darker(dark ? 135 : 110));
+        painter->drawRoundedRect(box, 5 * u, 5 * u);
+        painter->setBrush(card.lighter(118));
+        painter->drawRoundedRect(QRectF(box.left() - 4 * u, box.top() - 6 * u, box.width() + 8 * u, 15 * u), 4 * u, 4 * u);
+        if (category == int(NgKind::Archive)) {
+            // the zip: teeth down the middle
+            for (int i = 0; i < 7; ++i) {
+                bar(box.center().x() - (i % 2 ? 0 : 5 * u), box.top() + 14 * u + i * 8 * u, 5 * u, 4.5 * u, QColor(255, 255, 255, 190));
+            }
+        } else {
+            painter->setBrush(QColor(255, 255, 255, 70));
+            painter->drawRect(QRectF(box.center().x() - 5 * u, box.top() - 6 * u, 10 * u, band.height()));
+            painter->setBrush(paper);
+            painter->drawRoundedRect(QRectF(box.left() + 8 * u, box.top() + 22 * u, box.width() * 0.34, 20 * u), 2 * u, 2 * u);
+        }
+    } else if (category == int(NgKind::Image)) {
+        // a picture that could not be previewed: sky, sun and hills
+        const QRectF page = sheet(0.6);
+        const QRectF view = page.adjusted(7 * u, 7 * u, -7 * u, 0);
+        QColor sky = tint;
+        sky.setAlphaF(0.30);
+        painter->fillRect(view, sky);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(240, 196, 92));
+        painter->drawEllipse(QPointF(view.right() - 22 * u, view.top() + 20 * u), 8 * u, 8 * u);
+        QPainterPath hills;
+        hills.moveTo(view.left(), view.bottom());
+        hills.lineTo(view.left(), view.top() + 62 * u);
+        hills.lineTo(view.left() + view.width() * 0.3, view.top() + 34 * u);
+        hills.lineTo(view.left() + view.width() * 0.52, view.top() + 58 * u);
+        hills.lineTo(view.left() + view.width() * 0.7, view.top() + 44 * u);
+        hills.lineTo(view.right(), view.top() + 68 * u);
+        hills.lineTo(view.right(), view.bottom());
+        hills.closeSubpath();
+        painter->setClipRect(view, Qt::IntersectClip);
+        painter->fillPath(hills, tint.darker(115));
+    } else if (slides.contains(ext)) {
+        // a slide: a title and a small chart
+        const qreal width = qMin(band.width() * 0.66, band.height() * 2.2);
+        const QRectF slide(band.center().x() - width / 2.0, band.top() + 14 * u, width, band.height());
+        painter->setPen(paperEdge.alpha() ? QPen(paperEdge, 1) : QPen(Qt::NoPen));
+        painter->setBrush(paper);
+        painter->drawRoundedRect(slide, 5 * u, 5 * u);
+        bar(slide.left() + 10 * u, slide.top() + 11 * u, slide.width() * 0.42, 6 * u, tint);
+        bar(slide.left() + 10 * u, slide.top() + 24 * u, slide.width() * 0.30, 4 * u, faint);
+        static const qreal heights[] = {0.30, 0.52, 0.40, 0.70};
+        for (int i = 0; i < 4; ++i) {
+            const qreal h = band.height() * heights[i] * 0.7;
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(i == 3 ? tint : faint);
+            painter->drawRoundedRect(QRectF(slide.right() - (4 - i) * 16 * u - 6 * u, slide.bottom() - h, 11 * u, h + 4 * u), 2 * u, 2 * u);
+        }
+        bar(slide.left() + 10 * u, slide.top() + 40 * u, slide.width() * 0.26, 4 * u, faint);
+        bar(slide.left() + 10 * u, slide.top() + 52 * u, slide.width() * 0.20, 4 * u, faint);
+    } else {
+        // a page of text: a heading in the colour of the type, then lines
+        const QRectF page = sheet(0.56);
+        const qreal left = page.left() + 11 * u, width = page.width() - 22 * u;
+        bar(left, page.top() + 14 * u, width * 0.62, 5 * u, tint);
+        static const qreal lines[] = {1.0, 1.0, 0.82, 0.0, 1.0, 0.94, 0.6};
+        for (int i = 0; i < 7; ++i) {
+            if (lines[i] > 0) {
+                bar(left, page.top() + 30 * u + i * 10 * u, width * lines[i], 4 * u, i < 3 ? grey : faint);
+            }
+        }
+    }
+}
+}
+
 // dolphin-ng: lays out the pill of quick actions (cards and two-line rows). With alignRight the pill ends at
 // `right` and `x` is the leftmost place it may start from.
 qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
@@ -3479,7 +3655,13 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             wash.setAlphaF(dark ? 0.16 : 0.14);
             painter->fillPath(band, wash);
         }
-        if (!m_pixmap.isNull()) {
+        if (!m_ngCardPreview && m_ngCategory != int(NgKind::Folder)) {
+            // no preview: a sketch of what a file of this kind holds, instead of its icon
+            painter->save();
+            painter->setClipPath(band, Qt::IntersectClip);
+            ngPaintContentSketch(painter, m_ngCardThumb, m_ngCategory, m_ngSigla, m_ngTint, dark);
+            painter->restore();
+        } else if (!m_pixmap.isNull()) {
             painter->save();
             painter->setClipPath(band, Qt::IntersectClip);
             drawPixmap(painter, m_pixmap);
