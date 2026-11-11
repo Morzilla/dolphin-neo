@@ -428,11 +428,12 @@ QColor ngCategoryTint(NgKind::Category category)
 NgKind ngKindFor(const QString &name, bool isDir)
 {
     auto kind = [](const QString &sigla, NgKind::Category category) {
-        // a few types have a colour everybody knows them by, whatever their category: PDF red, slides orange
+        // a few types have a colour everybody knows them by, whatever their category: PDF red, slides orange, RPM crimson
         static const QHash<QString, QColor> own{{QStringLiteral("PDF"), QColor(238, 108, 98)},
                                                 {QStringLiteral("PPT"), QColor(238, 150, 104)},
                                                 {QStringLiteral("PPTX"), QColor(238, 150, 104)},
-                                                {QStringLiteral("ODP"), QColor(238, 150, 104)}};
+                                                {QStringLiteral("ODP"), QColor(238, 150, 104)},
+                                                {QStringLiteral("RPM"), QColor(214, 72, 104)}}; // a crimson: red, but not the PDF red
         const auto colour = own.constFind(sigla);
         return NgKind{sigla, colour != own.constEnd() ? *colour : ngCategoryTint(category), category};
     };
