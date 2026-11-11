@@ -182,9 +182,11 @@ void PlacesPanel::ngPaintPills()
         painter.save();
         painter.setClipRect(rect);
         // 1. the glass backdrop, exactly what lies behind the row
-        // (with the live blur the glass is translucent: clear first, or the veil piles up over what was painted)
+        // (with the live blur the glass is translucent: start again from the window colour, which is what the main
+        // window paints under the panel before the glass thins it out. Starting from nothing left these rows fully
+        // see-through, a bright band over a light desktop)
         painter.setCompositionMode(QPainter::CompositionMode_Source);
-        painter.fillRect(rect, Qt::transparent);
+        painter.fillRect(rect, window()->palette().color(QPalette::Window));
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
         painter.save();
         painter.translate(-offset);
@@ -332,9 +334,10 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
         const QPoint offset = viewport()->mapTo(dock, QPoint(0, 0));
         painter.save();
         painter.setClipRegion(headers);
-        // with the live blur the glass is translucent: clear the title areas first, or the old text shows through
+        // with the live blur the glass is translucent: put the window colour back under the title areas first (the
+        // old text would show through otherwise), then the glass thins it out as everywhere else
         painter.setCompositionMode(QPainter::CompositionMode_Source);
-        painter.fillRect(headers.boundingRect(), Qt::transparent);
+        painter.fillRect(headers.boundingRect(), window()->palette().color(QPalette::Window));
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
         painter.translate(-offset);
         dock->paintNgGlass(painter);
