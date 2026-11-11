@@ -231,6 +231,17 @@ public:
         setAttribute(Qt::WA_TransparentForMouseEvents);
         setAttribute(Qt::WA_NoSystemBackground);
         hide();
+        // The view says when the pointer leaves the picture, but only while the pointer moves over the view: leaving
+        // towards a panel or the bar, a list that changes under a still pointer, a switch to another window say
+        // nothing, and the quick view stayed open. So while it is up it checks for itself that the pointer is still
+        // on the item it was opened for.
+        m_watch.setInterval(140);
+        connect(&m_watch, &QTimer::timeout, this, [this] {
+            const QPoint pointer = m_host->mapFromGlobal(QCursor::pos());
+            if (m_url.isEmpty() || !m_host->isVisible() || !m_host->window()->isActiveWindow() || !m_anchor.adjusted(-2, -2, 2, 2).contains(pointer)) {
+                end();
+            }
+        });
     }
 
     void showFor(const KFileItem &item, const QRect &itemRectGlobal)
@@ -238,6 +249,7 @@ public:
         if (item.isNull() || !item.isLocalFile()) {
             return;
         }
+        m_watch.start();
         m_url = item.url();
         m_anchor = QRect(m_host->mapFromGlobal(itemRectGlobal.topLeft()), itemRectGlobal.size());
         const QSize limit(qMin(560, m_host->width() - 40), qMin(480, m_host->height() - 40));
@@ -296,6 +308,7 @@ public:
 
     void end()
     {
+        m_watch.stop();
         m_url.clear();
         stopMotion();
         hide();
@@ -421,6 +434,7 @@ protected:
 private:
     QWidget *m_host;
     QUrl m_url;
+    QTimer m_watch;
     QRect m_anchor;
     QPixmap m_pixmap;
     QMovie *m_movie = nullptr;
