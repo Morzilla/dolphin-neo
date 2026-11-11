@@ -9,5 +9,10 @@ if [ -r "$HOME/.config/dolphin-ng.conf" ]; then
     done < "$HOME/.config/dolphin-ng.conf"
 fi
 export XDG_DATA_DIRS="$P/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export QT_PLUGIN_PATH="$P/lib64/plugins:$P/lib64/qt6/plugins:$P/lib/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+# (the library folder is lib64, lib or lib/<architecture> depending on the distribution)
+PLUGINS="$P/lib64/plugins:$P/lib64/qt6/plugins:$P/lib/plugins:$P/lib/qt6/plugins"
+for candidate in "$P"/lib/*/plugins "$P"/lib/*/qt6/plugins; do
+    [ -d "$candidate" ] && PLUGINS="$PLUGINS:$candidate"
+done
+export QT_PLUGIN_PATH="$PLUGINS${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
 exec "$P/bin/dolphin" "$@"

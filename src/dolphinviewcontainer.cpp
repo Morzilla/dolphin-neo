@@ -50,6 +50,7 @@
 #include <QGraphicsView>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <memory>
 #include <QLabel>
 #include <QLineEdit>
 #include <QActionGroup>
@@ -2217,27 +2218,43 @@ DolphinViewContainer::DolphinViewContainer(const QUrl &url, QWidget *parent)
     m_topLayout->addWidget(m_messageWidget, positionFor.messageWidget, 0);
     {
         // dolphin-ng: the preview card (the sort/filter bar is the window's, above the tabs: ngCreateSortBar)
-        auto *previewCard = new NgPreviewCard(m_view, this);
-        connect(m_view, &DolphinView::ngPreviewRequested, previewCard, [this, previewCard](const KFileItem &item, const QRect &rowRect) {
+        // It is made the first time it is asked for, not with the view: its media player sets up the video
+        // decoders of the system when it is created, and that was about a third of the time a window took to open.
+        auto holder = std::make_shared<QPointer<NgPreviewCard>>();
+        auto card = [this, holder]() -> NgPreviewCard * {
+            if (!*holder) {
+                *holder = new NgPreviewCard(m_view, this);
+            }
+            return holder->data();
+        };
+        connect(m_view, &DolphinView::ngPreviewRequested, this, [this, holder, card](const KFileItem &item, const QRect &rowRect) {
             // in the cards view the eye of a picture opens the lightbox: the picture alone, large
             if (m_view->viewMode() == DolphinView::CardsView && !item.isDir() && item.isLocalFile() && item.mimetype().startsWith(QLatin1String("image/"))
                 && ngSetting("CARDS_LIGHTBOX").toLower() != QLatin1String("off")) {
-                previewCard->hide();
+                if (*holder) {
+                    (*holder)->hide();
+                }
                 ngOpenLightbox(m_view, item);
                 return;
             }
-            previewCard->showFor(item, rowRect);
+            card()->showFor(item, rowRect);
         });
-        connect(m_view, &DolphinView::ngHoverPreviewRequested, previewCard, [previewCard](const KFileItem &item, const QRect &rowRect) {
-            previewCard->showForHover(item, rowRect);
+        connect(m_view, &DolphinView::ngHoverPreviewRequested, this, [card](const KFileItem &item, const QRect &rowRect) {
+            card()->showForHover(item, rowRect);
         });
-        connect(m_view, &DolphinView::ngHoverPreviewEnded, previewCard, [previewCard] {
-            previewCard->hoverEnded();
+        connect(m_view, &DolphinView::ngHoverPreviewEnded, this, [holder] {
+            if (*holder) {
+                (*holder)->hoverEnded();
+            }
         });
-        connect(m_view, &DolphinView::urlChanged, previewCard, &QWidget::hide);
+        connect(m_view, &DolphinView::urlChanged, this, [holder] {
+            if (*holder) {
+                (*holder)->hide();
+            }
+        });
         auto *quickView = new NgQuickView(this);
-        connect(m_view, &DolphinView::ngQuickViewRequested, quickView, [quickView, previewCard](const KFileItem &item, const QRect &itemRect) {
-            if (!previewCard->isVisible()) {
+        connect(m_view, &DolphinView::ngQuickViewRequested, quickView, [quickView, holder](const KFileItem &item, const QRect &itemRect) {
+            if (!*holder || !(*holder)->isVisible()) {
                 quickView->showFor(item, itemRect);
             }
         });
