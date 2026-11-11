@@ -70,8 +70,9 @@ public:
     bool contains(const QUrl &url) const;
     Entry entry(const QUrl &url) const;
     bool isEmpty() const;
-    /** busy until the process \a pid ends (checked twice a second; it may outlive Dolphin) */
-    void setUntilProcessEnds(const QUrl &url, qint64 pid, const QString &text);
+    /** busy until the process \a pid ends (checked twice a second; it may outlive Dolphin). If the process
+     *  writes a percentage (one number) to \a progressFile, that is shown; the file is removed at the end. */
+    void setUntilProcessEnds(const QUrl &url, qint64 pid, const QString &text, const QString &progressFile = QString());
     /** 0..1, turns while anything is busy without a figure: the angle of the turning arc */
     qreal phase() const;
 
@@ -84,6 +85,7 @@ private:
     void tick();
     QHash<QString, Entry> m_entries;
     QHash<QString, qint64> m_pids;
+    QHash<QString, QString> m_progressFiles;
     QTimer m_timer;
     qreal m_phase = 0;
 };

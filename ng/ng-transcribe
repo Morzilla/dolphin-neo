@@ -7,6 +7,7 @@
 # model in $NG_WHISPER_MODEL or ~/.local/share/ng-transcribe/ggml-*.bin. First time:
 #   ng-transcribe --setup      builds whisper.cpp in ~/.local/src and downloads the model (about 550 MB)
 # The work runs at low priority on half of the processors, so the desktop stays smooth.
+# If NG_PROGRESS_FILE is set (Dolphin NG sets it), the percentage done is written there, one number, while it works.
 set -uo pipefail
 MODELDIR="${XDG_DATA_HOME:-$HOME/.local/share}/ng-transcribe"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin"
@@ -54,8 +55,35 @@ nice -n 15 ffmpeg -nostdin -loglevel error -y -i "$IN" -vn -ac 1 -ar 16000 -c:a 
 threads=$(( ($(nproc) + 1) / 2 ))
 outputs=(-otxt); case "$(file -b --mime-type "$IN")" in video/*) outputs+=(-osrt) ;; esac
 start=$(date +%s)
-if nice -n 15 "$W" -m "$M" -f "$tmp" -l auto -t "$threads" -np "${outputs[@]}" -of "$dir/$base" >/dev/null 2>&1; then
+P="${NG_PROGRESS_FILE:-}"; real=/dev/null
+# whisper tells how far it is only once per 30 s of audio, so between those steps the figure is estimated
+# from the time taken so far and how fast the last transcriptions went (seconds of work per second of audio)
+SPEED="${XDG_CACHE_HOME:-$HOME/.cache}/ng-transcribe/speed"
+audio=$(( $(stat -c %s "$tmp") / 32000 + 1 ))   # 16 kHz, 16 bit, mono
+ratio=$(cat "$SPEED" 2>/dev/null | grep -E '^[0-9.]+$' || echo 1.1)
+if [ -n "$P" ]; then
+    echo 0 > "$P"
+    real="$P.whisper"; echo 0 > "$real"
+    (
+        while sleep 1; do
+            r=$(cat "$real" 2>/dev/null); r=${r:-0}
+            guess=$(awk -v e=$(( $(date +%s) - start )) -v a="$audio" -v k="$ratio" 'BEGIN { g = int(100 * e / (a * k)); print (g > 95 ? 95 : g) }')
+            echo $(( r > guess ? r : guess )) > "$P"
+        done
+    ) &
+    ticker=$!
+    trap 'rm -f "$tmp" "$real"; kill $ticker 2>/dev/null' EXIT
+    progress=(-pp)
+else
+    progress=()
+fi
+if nice -n 15 "$W" -m "$M" -f "$tmp" -l auto -t "$threads" -np "${progress[@]}" "${outputs[@]}" -of "$dir/$base" 2> >(
+        while IFS= read -r line; do
+            case "$line" in *"progress ="*) n=${line##*= }; n=${n%%%*}; echo $(( ${n// /} )) > "$real" ;; esac
+        done) >/dev/null; then
     secs=$(( $(date +%s) - start ))
+    [ -n "$P" ] && echo 100 > "$P"
+    mkdir -p "$(dirname "$SPEED")"; awk -v s="$secs" -v a="$audio" 'BEGIN { if (a >= 10) printf "%.2f\n", s / a }' > "$SPEED.new" && [ -s "$SPEED.new" ] && mv "$SPEED.new" "$SPEED"; rm -f "$SPEED.new"
     note "$(say 'Transcribed' 'Trascritto')" "$base.txt · ${secs} s" text-plain
 else
     note "$(say 'Transcription failed' 'Trascrizione non riuscita')" "$name" dialog-error; exit 1

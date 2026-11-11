@@ -25,6 +25,7 @@
 #include <KService>
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
 #include <QStandardPaths>
 #include <signal.h>
 #include <tuple>
@@ -275,10 +276,13 @@ bool NgActivity::isEmpty() const
     return m_entries.isEmpty();
 }
 
-void NgActivity::setUntilProcessEnds(const QUrl &url, qint64 pid, const QString &text)
+void NgActivity::setUntilProcessEnds(const QUrl &url, qint64 pid, const QString &text, const QString &progressFile)
 {
     set(url, -1, text);
     m_pids.insert(key(url), pid);
+    if (!progressFile.isEmpty()) {
+        m_progressFiles.insert(key(url), progressFile);
+    }
 }
 
 qreal NgActivity::phase() const
@@ -295,8 +299,23 @@ void NgActivity::tick()
         for (auto it = m_pids.begin(); it != m_pids.end();) {
             if (::kill(static_cast<pid_t>(it.value()), 0) != 0) {
                 m_entries.remove(it.key());
+                if (m_progressFiles.contains(it.key())) {
+                    QFile::remove(m_progressFiles.take(it.key()));
+                }
                 it = m_pids.erase(it);
             } else {
+                // how far it is, if the program says so
+                const QString progressFile = m_progressFiles.value(it.key());
+                QFile file(progressFile);
+                if (!progressFile.isEmpty() && file.open(QIODevice::ReadOnly)) {
+                    bool ok = false;
+                    const int percent = QString::fromLatin1(file.read(16)).trimmed().toInt(&ok);
+                    auto entry = m_entries.find(it.key());
+                    if (ok && percent >= 0 && percent <= 100 && entry != m_entries.end() && entry->percent != percent) {
+                        entry->percent = percent;
+                        Q_EMIT changed();
+                    }
+                }
                 ++it;
             }
         }

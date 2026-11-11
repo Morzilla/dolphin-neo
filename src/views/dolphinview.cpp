@@ -2800,9 +2800,20 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
         }
         // detached, so a long job (a transcription) goes on if Dolphin is closed; the file shows it is busy
         // with this action until the process is gone
+        // a program that knows how far it is can write the percentage to $NG_PROGRESS_FILE (ng-transcribe does)
+        static int count = 0;
+        const QString progressFile = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation)
+            + QStringLiteral("/dolphin-ng-progress-%1-%2").arg(QCoreApplication::applicationPid()).arg(++count);
+        QProcess process;
+        process.setProgram(program);
+        process.setArguments(arguments);
+        process.setWorkingDirectory(folder);
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(QStringLiteral("NG_PROGRESS_FILE"), progressFile);
+        process.setProcessEnvironment(environment);
         qint64 pid = 0;
-        if (QProcess::startDetached(program, arguments, folder, &pid)) {
-            NgActivity::self()->setUntilProcessEnds(itemUrl, pid, label + QStringLiteral("…"));
+        if (process.startDetached(&pid)) {
+            NgActivity::self()->setUntilProcessEnds(itemUrl, pid, label + QStringLiteral("…"), progressFile);
         } else {
             KMessageBox::error(window(), ngTr("“%1” could not be started.", "Impossibile avviare «%1».").arg(program));
         }

@@ -3817,17 +3817,31 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
         QPainterPath clip;
         clip.addRoundedRect(card, 12, 12);
         painter->setClipPath(clip, Qt::IntersectClip);
-        painter->fillRect(area, QColor(10, 11, 14, 140));
-        const qreal radius = qBound<qreal>(16, qMin(area.width(), area.height()) * 0.22, 36);
-        ring(area.center() - QPointF(0, e.text.isEmpty() ? 0 : radius * 0.35), radius, qMax<qreal>(3, radius * 0.16));
+        painter->fillRect(area, QColor(10, 11, 14, 165));
+        // the ring and, under it, what is going on: both above the type and size badges at the foot of the band
+        QFont labelFont(m_customizedFont);
+        labelFont.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.62)));
+        labelFont.setWeight(QFont::DemiBold);
+        const QFontMetricsF fm(labelFont);
+        const qreal labelHeight = e.text.isEmpty() ? 0 : fm.height() + 6;
+        const qreal room = area.height() - (area.height() > 110 ? 36 : 30) - 8; // the badges take the foot
+        qreal radius = qBound<qreal>(16, qMin(area.width(), area.height()) * 0.22, 36);
+        radius = qMax<qreal>(12, qMin(radius, (room - labelHeight - 6) / 2.0 - qMax<qreal>(3, radius * 0.16)));
+        const qreal width = qMax<qreal>(3, radius * 0.16);
+        const qreal block = 2 * (radius + width) + (labelHeight > 0 ? labelHeight + 4 : 0);
+        const qreal top = area.top() + 6 + qMax<qreal>(0, (room - block) / 2.0);
+        ring(QPointF(area.center().x(), top + width + radius), radius, width);
         if (!e.text.isEmpty()) {
-            QFont f(m_customizedFont);
-            f.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.62)));
-            f.setWeight(QFont::DemiBold);
-            painter->setFont(f);
-            const QRectF label(area.left() + 6, area.center().y() + radius * 0.85, area.width() - 12, QFontMetricsF(f).height() + 2);
+            // on a solid pill of its own
+            const QString shown = fm.elidedText(e.text, Qt::ElideRight, area.width() - 28);
+            const qreal w = fm.horizontalAdvance(shown) + 18;
+            const QRectF label(area.center().x() - w / 2, top + 2 * (radius + width) + 4, w, labelHeight);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(18, 20, 24, 235));
+            painter->drawRoundedRect(label, label.height() / 2, label.height() / 2);
+            painter->setFont(labelFont);
             painter->setPen(QColor(235, 238, 242));
-            painter->drawText(label, Qt::AlignHCenter | Qt::AlignVCenter, QFontMetricsF(f).elidedText(e.text, Qt::ElideRight, label.width()));
+            painter->drawText(label, Qt::AlignCenter, shown);
         }
         // and a line of the same colour along the bottom edge of the preview
         if (!busy) {
