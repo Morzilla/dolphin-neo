@@ -340,6 +340,9 @@ private:
     QList<QPixmap> m_ngCardActionIcons; // one per entry of m_ngCardActions
     QList<qreal> m_ngCardActionSeps; // x of the hairlines between the groups
     QRectF m_ngCardActionsPill;
+    QRectF m_ngRowThumb; // two-line rows: where the small preview is drawn (empty: the type mark is shown)
+    QPixmap m_ngRowThumbPixmap;
+    qint64 m_ngRowThumbKey = 0;
     QList<NgChip> m_ngCardActions; // quick actions of the file's kind, see ngQuickActionsFor(); clicked through ngActionAt() (10 + n)
 
     QList<QByteArray> m_sortedVisibleRoles;

@@ -374,7 +374,12 @@ protected:
         const QString side = ngSetting("CARDS_QUICKVIEW_SIDE", QStringLiteral("left")).toLower();
         if (side != QLatin1String("auto")) {
             const QPoint pointer = m_host->mapFromGlobal(QCursor::pos());
-            x = side == QLatin1String("right") ? pointer.x() + 18 : pointer.x() - 18 - size.width();
+            // on the chosen side of the pointer; when it does not fit there, on the other one, so that it never
+            // covers what the pointer is on (the small previews of the rows sit at the very left of the view)
+            const int leftX = pointer.x() - 18 - size.width(), rightX = pointer.x() + 18;
+            const bool fitsLeft = leftX >= 6, fitsRight = rightX + size.width() <= m_host->width() - 6;
+            const bool wantRight = side == QLatin1String("right");
+            x = (wantRight ? (fitsRight || !fitsLeft) : !(fitsLeft || !fitsRight)) ? rightX : leftX;
             x = qBound(6, x, qMax(6, m_host->width() - 6 - size.width()));
             y = pointer.y() - size.height() / 2;
         }

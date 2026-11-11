@@ -685,8 +685,48 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
                           QBrush(ngDitheredWash(m_ngTint, washWidth, openRows ? 0.14 : 0.22, openRows ? 0.05 : 0.06, 0.55)));
         painter->setBrushOrigin(QPointF(0, 0));
 
+        // a file with a preview (pictures, PDFs, videos) shows it, small, where the mark of its type would be;
+        // resting on it opens the quick view, as on the cards
+        m_ngRowThumb = QRectF();
+        const QPixmap preview = data().value("isDir").toBool() ? QPixmap() : data().value("iconPixmap").value<QPixmap>();
+        if (!preview.isNull()) {
+            const qreal rowHeight = size().height();
+            const TextInfo *nameInfo = m_textInfo.value("text");
+            const qreal room = (nameInfo ? nameInfo->pos.x() : x0 + 96) - x0 - 16;
+            const qreal thumbHeight = rowHeight - 14;
+            const qreal thumbWidth = qMin(thumbHeight * 1.35, room);
+            if (thumbWidth >= 24 && thumbHeight >= 16) {
+                m_ngRowThumb = QRectF(x0 + 6, (rowHeight - thumbHeight) / 2.0, thumbWidth, thumbHeight);
+                const qreal dpr = KItemViewsUtils::devicePixelRatio(this);
+                const QSize wanted = (m_ngRowThumb.size() * dpr).toSize();
+                if (m_ngRowThumbKey != preview.cacheKey() || m_ngRowThumbPixmap.size() != wanted) {
+                    // scaled to cover the frame, cut to it, once per picture
+                    const QPixmap scaled = preview.scaled(wanted, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+                    m_ngRowThumbPixmap = scaled.copy((scaled.width() - wanted.width()) / 2, (scaled.height() - wanted.height()) / 2, wanted.width(), wanted.height());
+                    m_ngRowThumbPixmap.setDevicePixelRatio(dpr);
+                    m_ngRowThumbKey = preview.cacheKey();
+                }
+                painter->save();
+                painter->setRenderHint(QPainter::Antialiasing);
+                QPainterPath frame;
+                frame.addRoundedRect(m_ngRowThumb, 7, 7);
+                painter->setClipPath(frame, Qt::IntersectClip);
+                painter->drawPixmap(m_ngRowThumb.topLeft(), m_ngRowThumbPixmap);
+                painter->restore();
+                painter->save();
+                painter->setRenderHint(QPainter::Antialiasing);
+                QColor rim = m_ngTint;
+                rim.setAlphaF(0.45);
+                painter->setPen(QPen(rim, 1));
+                painter->setBrush(Qt::NoBrush);
+                painter->drawRoundedRect(m_ngRowThumb.adjusted(0.5, 0.5, -0.5, -0.5), 7, 7);
+                painter->restore();
+            }
+        }
         const NgMark mark = ngMark();
-        if (mark != NgMark::Watermark) {
+        if (!m_ngRowThumb.isEmpty()) {
+            // the picture stands for the mark
+        } else if (mark != NgMark::Watermark) {
             // Glyph and abbreviation as one mark, in the colour of the file's kind.
             const qreal h = size().height();
             const qreal fontPx = m_customizedFontMetrics.height();
@@ -1062,6 +1102,9 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
             }
         }
         return 0; // on the pill, between two buttons: not the row's own buttons
+    }
+    if (m_layout == DetailsLayout && ngTwoLineList() && m_ngRowThumb.contains(pos)) {
+        return 4; // the small preview of the row: quick view on hover, never a click
     }
     if (m_layout == CardsLayout) {
         const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
