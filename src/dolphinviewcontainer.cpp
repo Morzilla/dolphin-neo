@@ -431,10 +431,10 @@ public:
 
         // instant filter of the current folder: what you type narrows the list as you type
         m_filter = new QLineEdit(this);
-        m_filter->setPlaceholderText(QStringLiteral("Cerca nella cartella"));
+        m_filter->setPlaceholderText(ngTr("Search in folder", "Cerca nella cartella"));
         m_filter->setClearButtonEnabled(true);
         m_filter->setFixedWidth(210);
-        m_filter->setToolTip(QStringLiteral("Mostra solo gli elementi il cui nome contiene il testo. Esc svuota il campo."));
+        m_filter->setToolTip(ngTr("Show only the items whose name contains the text. Esc clears the field.", "Mostra solo gli elementi il cui nome contiene il testo. Esc svuota il campo."));
         row->addWidget(m_filter, 0, Qt::AlignTop);
         connect(m_filter, &QLineEdit::textChanged, this, [this](const QString &text) {
             if (m_view) {
@@ -568,16 +568,16 @@ public:
         if (!m_view || m_total == 0 || m_total > 4000) {
             return entries;
         }
-        static const char *const labels[NgKind::CategoryCount] = {"Cartelle", "Immagini", "Documenti", "Fogli", "Archivi", "Audio e video", "Codice e dati", "Pacchetti", "Altro"};
+        const QString labels[NgKind::CategoryCount] = {ngTr("Folders", "Cartelle"), ngTr("Images", "Immagini"), ngTr("Documents", "Documenti"), ngTr("Spreadsheets", "Fogli"), ngTr("Archives", "Archivi"), ngTr("Audio and video", "Audio e video"), ngTr("Code and data", "Codice e dati"), ngTr("Packages", "Pacchetti"), ngTr("Other", "Altro")};
         static const char *const icons[NgKind::CategoryCount] = {"folder", "image-x-generic", "x-office-document", "x-office-spreadsheet", "application-zip", "video-x-generic", "application-json", "application-x-rpm", "unknown"};
-        entries.append({QStringLiteral("Tutti"), m_total, All, m_active == All, QStringLiteral("view-grid")});
+        entries.append({ngTr("All", "Tutti"), m_total, All, m_active == All, QStringLiteral("view-grid")});
         const int folders = m_counts[NgKind::Folder];
         if (folders > 0 && folders < m_total) {
-            entries.append({QStringLiteral("File"), m_total - folders, FilesOnly, m_active == FilesOnly, QStringLiteral("text-plain")});
+            entries.append({ngTr("Files", "File"), m_total - folders, FilesOnly, m_active == FilesOnly, QStringLiteral("text-plain")});
         }
         for (int i = 0; i < NgKind::CategoryCount; ++i) {
             if (m_counts[i] > 0) {
-                entries.append({QString::fromUtf8(labels[i]), m_counts[i], i, m_active == i, QString::fromLatin1(icons[i])});
+                entries.append({labels[i], m_counts[i], i, m_active == i, QString::fromLatin1(icons[i])});
             }
         }
         return entries;
@@ -642,6 +642,14 @@ private:
         }
         const QList<KFileItemModel::RoleInfo> rolesInfo = KFileItemModel::rolesInformation();
         const QByteArray sortRole = m_view->sortRole();
+        // one pill holding every choice, the current one raised inside it (a segmented control)
+        auto *pill = new QWidget(this);
+        pill->setObjectName(QStringLiteral("sortPill"));
+        pill->setAttribute(Qt::WA_StyledBackground);
+        auto *segments = new QHBoxLayout(pill);
+        segments->setContentsMargins(3, 3, 3, 3);
+        segments->setSpacing(1);
+        m_flow->addWidget(pill);
         for (const QByteArray &role : std::as_const(roles)) {
             QString text = QString::fromLatin1(role);
             for (const KFileItemModel::RoleInfo &info : rolesInfo) {
@@ -651,6 +659,9 @@ private:
                 }
             }
             QToolButton *button = chip(text, role == sortRole);
+            m_flow->removeWidget(button);
+            button->setParent(pill);
+            segments->addWidget(button);
             if (role == sortRole) {
                 button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
                 const bool ascending = m_view->sortOrder() == Qt::AscendingOrder;
@@ -663,6 +674,17 @@ private:
                     m_view->setSortRole(role);
                 }
             });
+        }
+
+        {
+            // fully rounded ends: the radius is half the height (a larger one would switch the rounding off)
+            const QString ink = ngIsDark(palette()) ? QStringLiteral("255, 255, 255") : QStringLiteral("0, 0, 0");
+            const int inner = pill->findChild<QToolButton *>() ? pill->findChild<QToolButton *>()->sizeHint().height() : 24;
+            pill->setStyleSheet(QStringLiteral("QWidget#sortPill { background: rgba(%1, 0.05); border: 1px solid rgba(%1, 0.09); border-radius: %2px; }"
+                                               "QToolButton { border-radius: %3px; padding: 3px 11px; }")
+                                    .arg(ink)
+                                    .arg(inner / 2 + 2) // the pill is the button plus 3 px of margin and the border on each side
+                                    .arg(inner / 2 - 1));
         }
 
         // ---- the cards view: the button switches it on and off, its menu picks the look
@@ -679,8 +701,8 @@ private:
             cards->setCheckable(true);
             cards->setChecked(cardsOn);
             cards->setPopupMode(QToolButton::MenuButtonPopup);
-            cards->setText(cardsOn ? QStringLiteral("Card: %1").arg(QLatin1String(looks[int(ngCardStyle())])) : QStringLiteral("Card"));
-            cards->setToolTip(QStringLiteral("Vista a card: ogni elemento è una scheda con tutti i dettagli. La freccia sceglie il tipo di card."));
+            cards->setText(cardsOn ? ngTr("Cards: %1", "Card: %1").arg(QLatin1String(looks[int(ngCardStyle())])) : ngTr("Cards", "Card"));
+            cards->setToolTip(ngTr("Cards view: every item is a card with all its details. The arrow picks the kind of card.", "Vista a card: ogni elemento è una scheda con tutti i dettagli. La freccia sceglie il tipo di card."));
             auto *menu = new QMenu(cards);
             auto *group = new QActionGroup(menu);
             for (int i = 0; i < 3; ++i) {
@@ -702,9 +724,9 @@ private:
             }
             menu->addSeparator();
             auto *fit = new QActionGroup(menu);
-            const char *const fits[] = {"Card di misura fissa", "Riempi la riga"};
+            const QString fits[] = {ngTr("Fixed-size cards", "Card di misura fissa"), ngTr("Fill the row", "Riempi la riga")};
             for (int i = 0; i < 2; ++i) {
-                QAction *action = menu->addAction(QLatin1String(fits[i]));
+                QAction *action = menu->addAction(fits[i]);
                 action->setCheckable(true);
                 action->setChecked(ngCardsStretch() == (i == 1));
                 fit->addAction(action);
@@ -745,7 +767,7 @@ private:
         button->setChecked(m_active != All); // highlighted while something is filtered out
         auto *menu = new QMenu(button);
         auto *group = new QActionGroup(menu);
-        QString current = QStringLiteral("Tutti");
+        QString current = ngTr("All", "Tutti");
         auto entry = [&](const QString &label, int number, int what) {
             QAction *action = menu->addAction(QStringLiteral("%1\t%2").arg(label).arg(number));
             action->setCheckable(true);
@@ -767,7 +789,7 @@ private:
         }
         button->setMenu(menu);
         menuButton(button);
-        button->setText(QStringLiteral("Filtri: %1").arg(current));
+        button->setText(ngTr("Filters: %1", "Filtri: %1").arg(current));
         m_flow->addWidget(button);
 
         if (!list) {
@@ -780,7 +802,7 @@ private:
         rows->setAutoRaise(true);
         rows->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         rows->setIcon(QIcon::fromTheme(open ? QStringLiteral("view-list-text") : QStringLiteral("view-list-details")));
-        rows->setText(open ? QStringLiteral("Righe: aperte") : QStringLiteral("Righe: schede"));
+        rows->setText(open ? ngTr("Rows: open", "Righe: aperte") : ngTr("Rows: cards", "Righe: schede"));
         connect(rows, &QToolButton::clicked, this, [this, open] {
             setNgRowStyle(open ? NgRowStyle::Card : NgRowStyle::Open);
             const QList<QGraphicsView *> graphicsViews = m_view->findChildren<QGraphicsView *>();
@@ -1026,13 +1048,13 @@ public:
             zoomLayout->addWidget(button);
             return button;
         };
-        overlayButton(QStringLiteral("−"), QStringLiteral("Riduci"), [this] {
+        overlayButton(QStringLiteral("−"), ngTr("Zoom out", "Riduci"), [this] {
             m_image->zoomBy(1 / 1.25);
         });
-        overlayButton(QStringLiteral("+"), QStringLiteral("Ingrandisci (anche con la rotellina)"), [this] {
+        overlayButton(QStringLiteral("+"), ngTr("Zoom in (also with the mouse wheel)", "Ingrandisci (anche con la rotellina)"), [this] {
             m_image->zoomBy(1.25);
         });
-        overlayButton(QStringLiteral("⤢"), QStringLiteral("Adatta"), [this] {
+        overlayButton(QStringLiteral("⤢"), ngTr("Fit", "Adatta"), [this] {
             m_image->resetZoom();
         });
 
@@ -1130,19 +1152,19 @@ public:
             actions->addWidget(button, 1);
             return button;
         };
-        action(QStringLiteral("Apri"), QStringLiteral("document-open"), true, [this] {
+        action(ngTr("Open", "Apri"), QStringLiteral("document-open"), true, [this] {
             Q_EMIT m_view->itemActivated(m_item);
         });
-        action(QStringLiteral("Apri con"), QStringLiteral("system-run"), false, [this] {
+        action(ngTr("Open with", "Apri con"), QStringLiteral("system-run"), false, [this] {
             auto *job = new KIO::ApplicationLauncherJob(); // no application given: asks which one
             job->setUrls({m_item.url()});
             job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
             job->start();
         });
-        action(QStringLiteral("Rinomina"), QStringLiteral("edit-rename"), false, [this] {
+        action(ngTr("Rename", "Rinomina"), QStringLiteral("edit-rename"), false, [this] {
             m_view->renameSelectedItems(); // the controller selected the item before asking for the preview
         });
-        action(QStringLiteral("Percorso"), QStringLiteral("edit-copy"), false, [this] {
+        action(ngTr("Path", "Percorso"), QStringLiteral("edit-copy"), false, [this] {
             QGuiApplication::clipboard()->setText(m_item.isLocalFile() ? m_item.localPath() : m_item.url().toDisplayString());
         });
 
@@ -1555,7 +1577,7 @@ private:
         }
         const QDateTime modified = m_item.time(KFileItem::ModificationTime);
         if (modified.isValid()) {
-            chip(QStringLiteral("Modificato %1 · %2").arg(QLocale().toString(modified.date(), QLocale::ShortFormat), ngAgoText(modified)));
+            chip(ngTr("Modified %1 · %2", "Modificato %1 · %2").arg(QLocale().toString(modified.date(), QLocale::ShortFormat), ngAgoText(modified)));
         }
     }
 
@@ -1563,7 +1585,7 @@ private:
     void run(const QString &program, const QStringList &arguments)
     {
         if (QStandardPaths::findExecutable(program).isEmpty()) {
-            KMessageBox::error(window(), QStringLiteral("Serve il programma «%1», che non è installato.").arg(program));
+            KMessageBox::error(window(), ngTr("This needs the program “%1”, which is not installed.", "Serve il programma «%1», che non è installato.").arg(program));
             return;
         }
         auto *job = new KIO::CommandLauncherJob(program, arguments);
@@ -1643,28 +1665,28 @@ private:
                                             QStringLiteral("application/x-xz"),
                                             QStringLiteral("application/zstd")};
         if (isImage) {
-            addTypeMenu(QStringLiteral("Ridimensiona…"),
+            addTypeMenu(ngTr("Resize…", "Ridimensiona…"),
                         QStringLiteral("magick"),
                         {{QStringLiteral("75 %"), {path, QStringLiteral("-resize"), QStringLiteral("75%"), QStringLiteral("%1-75.%2").arg(base, suffix)}},
                          {QStringLiteral("50 %"), {path, QStringLiteral("-resize"), QStringLiteral("50%"), QStringLiteral("%1-50.%2").arg(base, suffix)}},
                          {QStringLiteral("25 %"), {path, QStringLiteral("-resize"), QStringLiteral("25%"), QStringLiteral("%1-25.%2").arg(base, suffix)}},
-                         {QStringLiteral("Larghezza 1920"), {path, QStringLiteral("-resize"), QStringLiteral("1920x>"), QStringLiteral("%1-1920.%2").arg(base, suffix)}},
-                         {QStringLiteral("Larghezza 1280"), {path, QStringLiteral("-resize"), QStringLiteral("1280x>"), QStringLiteral("%1-1280.%2").arg(base, suffix)}},
-                         {QStringLiteral("Larghezza 800"), {path, QStringLiteral("-resize"), QStringLiteral("800x>"), QStringLiteral("%1-800.%2").arg(base, suffix)}}});
+                         {ngTr("Width 1920", "Larghezza 1920"), {path, QStringLiteral("-resize"), QStringLiteral("1920x>"), QStringLiteral("%1-1920.%2").arg(base, suffix)}},
+                         {ngTr("Width 1280", "Larghezza 1280"), {path, QStringLiteral("-resize"), QStringLiteral("1280x>"), QStringLiteral("%1-1280.%2").arg(base, suffix)}},
+                         {ngTr("Width 800", "Larghezza 800"), {path, QStringLiteral("-resize"), QStringLiteral("800x>"), QStringLiteral("%1-800.%2").arg(base, suffix)}}});
             QList<std::pair<QString, QStringList>> formats;
             for (const char *format : {"png", "jpg", "webp", "avif", "tiff", "bmp"}) {
                 if (QString::fromLatin1(format) != suffix.toLower() && !(suffix.toLower() == QLatin1String("jpeg") && QLatin1String(format) == QLatin1String("jpg"))) {
                     formats.append({QString::fromLatin1(format).toUpper(), {path, QStringLiteral("%1.%2").arg(base, QString::fromLatin1(format))}});
                 }
             }
-            addTypeMenu(QStringLiteral("Converti in…"), QStringLiteral("magick"), formats);
+            addTypeMenu(ngTr("Convert to…", "Converti in…"), QStringLiteral("magick"), formats);
             if (mime == QLatin1String("image/gif")) {
-                addTypeButton(QStringLiteral("In MP4"), [this, path, base] {
+                addTypeButton(ngTr("To MP4", "In MP4"), [this, path, base] {
                     run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-movflags"), QStringLiteral("faststart"), QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"), QStringLiteral("-vf"), QStringLiteral("scale=trunc(iw/2)*2:trunc(ih/2)*2"), QStringLiteral("%1.mp4").arg(base)});
                 });
             }
         } else if (archives.contains(mime)) {
-            addTypeButton(QStringLiteral("Estrai qui in sottocartella"), [this, path] {
+            addTypeButton(ngTr("Extract here into a subfolder", "Estrai qui in sottocartella"), [this, path] {
                 if (!QStandardPaths::findExecutable(QStringLiteral("ark")).isEmpty()) {
                     run(QStringLiteral("ark"), {QStringLiteral("--batch"), QStringLiteral("--autosubfolder"), path});
                 } else {
@@ -1674,29 +1696,29 @@ private:
                 }
             });
         } else if (mime == QLatin1String("application/pdf")) {
-            addTypeButton(QStringLiteral("Estrai il testo"), [this, path, base] {
+            addTypeButton(ngTr("Extract the text", "Estrai il testo"), [this, path, base] {
                 run(QStringLiteral("pdftotext"), {QStringLiteral("-layout"), path, QStringLiteral("%1.txt").arg(base)});
             });
-            addTypeButton(QStringLiteral("Pagine in PNG"), [this, path, base] {
+            addTypeButton(ngTr("Pages to PNG", "Pagine in PNG"), [this, path, base] {
                 run(QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), path, base});
             });
         } else if (mime.startsWith(QLatin1String("audio/"))) {
             if (suffix.toLower() != QLatin1String("mp3")) {
-                addTypeButton(QStringLiteral("In MP3"), [this, path, base] {
+                addTypeButton(ngTr("To MP3", "In MP3"), [this, path, base] {
                     run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
                 });
             }
-            addTypeButton(QStringLiteral("In FLAC"), [this, path, base] {
+            addTypeButton(ngTr("To FLAC", "In FLAC"), [this, path, base] {
                 run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("%1.flac").arg(base)});
             });
         } else if (mime.startsWith(QLatin1String("video/"))) {
-            addTypeButton(QStringLiteral("In MP4 (H.264)"), [this, path, base] {
+            addTypeButton(ngTr("To MP4 (H.264)", "In MP4 (H.264)"), [this, path, base] {
                 run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
             });
-            addTypeButton(QStringLiteral("Estrai l'audio (MP3)"), [this, path, base] {
+            addTypeButton(ngTr("Extract the audio (MP3)", "Estrai l'audio (MP3)"), [this, path, base] {
                 run(QStringLiteral("ffmpeg"), {QStringLiteral("-i"), path, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
             });
-            addTypeButton(QStringLiteral("Fotogramma in PNG"), [this, path, base] {
+            addTypeButton(ngTr("Frame to PNG", "Fotogramma in PNG"), [this, path, base] {
                 const qint64 at = m_player->position() / 1000;
                 run(QStringLiteral("ffmpeg"), {QStringLiteral("-ss"), QString::number(at), QStringLiteral("-i"), path, QStringLiteral("-frames:v"), QStringLiteral("1"), QStringLiteral("%1-%2s.png").arg(base).arg(at)});
             }, true);
@@ -1802,9 +1824,9 @@ private:
             const QStringList entries = QDir(path).entryList(QDir::AllEntries | QDir::NoDotAndDotDot, QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
             QStringList lines = entries.mid(0, 9);
             if (entries.size() > lines.size()) {
-                lines.append(QStringLiteral("… altri %1").arg(entries.size() - lines.size()));
+                lines.append(ngTr("… %1 more", "… altri %1").arg(entries.size() - lines.size()));
             }
-            m_preview->setText(lines.isEmpty() ? QStringLiteral("(cartella vuota)") : lines.join(QLatin1Char('\n')));
+            m_preview->setText(lines.isEmpty() ? ngTr("(empty folder)", "(cartella vuota)") : lines.join(QLatin1Char('\n')));
             updateVideoBar();
             return;
         }
@@ -3289,7 +3311,7 @@ protected:
         QFont titleFont = font();
         titleFont.setPointSizeF(titleFont.pointSizeF() * 0.86);
         titleFont.setBold(true);
-        const QString title = QStringLiteral("Filtri");
+        const QString title = ngTr("Filters", "Filtri");
         const QFontMetrics titleMetrics(titleFont);
         const QRectF pill(0, 0, titleMetrics.horizontalAdvance(title) + 20, titleHeight());
         painter.setPen(QPen(edge, 1));
@@ -3316,9 +3338,13 @@ protected:
             const int side = qMin(16, int(row.height()) - 6);
             QIcon::fromTheme(entry.icon).paint(&painter, QRect(int(row.left()) + 12, int(row.center().y() - side / 2.0) + 1, side, side));
             painter.setPen(text);
-            painter.drawText(row.adjusted(12 + side + 8, 0, -14, 0), Qt::AlignLeft | Qt::AlignVCenter, entry.label);
+            // the count keeps its place on the right; the label gets what is left and is cut with an ellipsis
+            const QString count = QString::number(entry.count);
+            const int countWidth = painter.fontMetrics().horizontalAdvance(count);
+            const QRectF labelRect = row.adjusted(12 + side + 8, 0, -14 - countWidth - 8, 0);
+            painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter, painter.fontMetrics().elidedText(entry.label, Qt::ElideRight, qMax(0, int(labelRect.width()))));
             painter.setPen(dim);
-            painter.drawText(row.adjusted(14, 0, -14, 0), Qt::AlignRight | Qt::AlignVCenter, QString::number(entry.count));
+            painter.drawText(row.adjusted(14, 0, -14, 0), Qt::AlignRight | Qt::AlignVCenter, count);
         }
     }
     void mouseMoveEvent(QMouseEvent *event) override

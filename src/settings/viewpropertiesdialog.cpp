@@ -6,6 +6,7 @@
  */
 
 #include "viewpropertiesdialog.h"
+#include "kitemviews/kitemlistwidget.h"
 
 #include "dolphin_generalsettings.h"
 #include "global.h"
@@ -71,7 +72,7 @@ ViewPropertiesDialog::ViewPropertiesDialog(DolphinView *dolphinView)
     m_viewMode->addItem(QIcon::fromTheme(QStringLiteral("view-list-icons")), i18nc("@item:inlistbox", "Icons"), DolphinView::IconsView);
     m_viewMode->addItem(QIcon::fromTheme(QStringLiteral("view-list-details")), i18nc("@item:inlistbox", "Compact"), DolphinView::CompactView);
     m_viewMode->addItem(QIcon::fromTheme(QStringLiteral("view-list-tree")), i18nc("@item:inlistbox", "Details"), DolphinView::DetailsView);
-    m_viewMode->addItem(QIcon::fromTheme(QStringLiteral("view-grid"), QIcon::fromTheme(QStringLiteral("view-list-icons"))), QStringLiteral("Card"), DolphinView::CardsView);
+    m_viewMode->addItem(QIcon::fromTheme(QStringLiteral("view-grid"), QIcon::fromTheme(QStringLiteral("view-list-icons"))), ngTr("Cards", "Card"), DolphinView::CardsView);
 
     m_sortOrder = new QComboBox();
     m_sortOrder->addItem(i18nc("@item:inlistbox Sort", "Ascending"));

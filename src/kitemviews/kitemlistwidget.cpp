@@ -12,6 +12,7 @@
 #include "private/kitemlistselectiontoggle.h"
 
 #include <KConfigGroup>
+#include <KLocalizedString>
 #include <KSharedConfig>
 
 #include <QDateTime>
@@ -142,6 +143,12 @@ int ngSettingsGeneration()
     return ngGeneration;
 }
 
+QString ngTr(const char *english, const char *italian)
+{
+    static const bool useItalian = KLocalizedString::languages().value(0).startsWith(QLatin1String("it"));
+    return QString::fromUtf8(useItalian ? italian : english);
+}
+
 // Values are cached: the row painting asks for them many times per frame. ngSettingsInvalidate() clears the cache.
 QString ngSetting(const char *name, const QString &fallback)
 {
@@ -254,52 +261,52 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
     };
     if (isImage) {
         NgQuickAction resize;
-        resize.label = QStringLiteral("Ridimensiona");
+        resize.label = ngTr("Resize", "Ridimensiona");
         resize.program = QStringLiteral("magick");
         for (const auto &[label, spec, tag] : {std::make_tuple(QStringLiteral("75 %"), QStringLiteral("75%"), QStringLiteral("75")),
                                                std::make_tuple(QStringLiteral("50 %"), QStringLiteral("50%"), QStringLiteral("50")),
                                                std::make_tuple(QStringLiteral("25 %"), QStringLiteral("25%"), QStringLiteral("25")),
-                                               std::make_tuple(QStringLiteral("Larghezza 1920"), QStringLiteral("1920x>"), QStringLiteral("1920")),
-                                               std::make_tuple(QStringLiteral("Larghezza 1280"), QStringLiteral("1280x>"), QStringLiteral("1280")),
-                                               std::make_tuple(QStringLiteral("Larghezza 800"), QStringLiteral("800x>"), QStringLiteral("800"))}) {
+                                               std::make_tuple(ngTr("Width 1920", "Larghezza 1920"), QStringLiteral("1920x>"), QStringLiteral("1920")),
+                                               std::make_tuple(ngTr("Width 1280", "Larghezza 1280"), QStringLiteral("1280x>"), QStringLiteral("1280")),
+                                               std::make_tuple(ngTr("Width 800", "Larghezza 800"), QStringLiteral("800x>"), QStringLiteral("800"))}) {
             resize.choices.append({label, {localPath, QStringLiteral("-resize"), spec, QStringLiteral("%1-%2.%3").arg(base, tag, suffix)}});
         }
         actions.append(resize);
         if (mime == QLatin1String("image/gif")) {
-            simple(QStringLiteral("In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-movflags"), QStringLiteral("faststart"), QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"), QStringLiteral("-vf"), QStringLiteral("scale=trunc(iw/2)*2:trunc(ih/2)*2"), QStringLiteral("%1.mp4").arg(base)});
+            simple(ngTr("To MP4", "In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-movflags"), QStringLiteral("faststart"), QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"), QStringLiteral("-vf"), QStringLiteral("scale=trunc(iw/2)*2:trunc(ih/2)*2"), QStringLiteral("%1.mp4").arg(base)});
         }
     } else if (archives.contains(mime)) {
         static const bool hasArk = !QStandardPaths::findExecutable(QStringLiteral("ark")).isEmpty();
         if (hasArk) {
-            simple(QStringLiteral("Estrai qui"), QStringLiteral("ark"), {QStringLiteral("--batch"), QStringLiteral("--autosubfolder"), localPath});
+            simple(ngTr("Extract here", "Estrai qui"), QStringLiteral("ark"), {QStringLiteral("--batch"), QStringLiteral("--autosubfolder"), localPath});
         } else {
-            simple(QStringLiteral("Estrai qui"), QStringLiteral("bsdtar"), {QStringLiteral("-xf"), localPath, QStringLiteral("--one-top-level=%1").arg(base)});
+            simple(ngTr("Extract here", "Estrai qui"), QStringLiteral("bsdtar"), {QStringLiteral("-xf"), localPath, QStringLiteral("--one-top-level=%1").arg(base)});
         }
     } else if (mime == QLatin1String("application/pdf")) {
-        simple(QStringLiteral("In PNG"), QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), localPath, base});
-        simple(QStringLiteral("Estrai il testo"), QStringLiteral("pdftotext"), {QStringLiteral("-layout"), localPath, QStringLiteral("%1.txt").arg(base)});
+        simple(ngTr("To PNG", "In PNG"), QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), localPath, base});
+        simple(ngTr("Extract the text", "Estrai il testo"), QStringLiteral("pdftotext"), {QStringLiteral("-layout"), localPath, QStringLiteral("%1.txt").arg(base)});
     } else if (mime.startsWith(QLatin1String("audio/"))) {
         if (lowerSuffix != QLatin1String("mp3")) {
-            simple(QStringLiteral("In MP3"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+            simple(ngTr("To MP3", "In MP3"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
         }
         if (lowerSuffix != QLatin1String("flac")) {
-            simple(QStringLiteral("In FLAC"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("%1.flac").arg(base)});
+            simple(ngTr("To FLAC", "In FLAC"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("%1.flac").arg(base)});
         }
     } else if (mime.startsWith(QLatin1String("video/"))) {
-        simple(QStringLiteral("In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
-        simple(QStringLiteral("Estrai l'audio (MP3)"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
-        simple(QStringLiteral("Fotogramma in PNG"), QStringLiteral("ffmpeg"), {QStringLiteral("-ss"), QStringLiteral("1"), QStringLiteral("-i"), localPath, QStringLiteral("-frames:v"), QStringLiteral("1"), QStringLiteral("%1-1s.png").arg(base)});
+        simple(ngTr("To MP4", "In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
+        simple(ngTr("Extract the audio (MP3)", "Estrai l'audio (MP3)"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+        simple(ngTr("Frame to PNG", "Fotogramma in PNG"), QStringLiteral("ffmpeg"), {QStringLiteral("-ss"), QStringLiteral("1"), QStringLiteral("-i"), localPath, QStringLiteral("-frames:v"), QStringLiteral("1"), QStringLiteral("%1-1s.png").arg(base)});
     }
     // icons; the first action of the kind is the main one
-    static const QHash<QString, QString> icons{{QStringLiteral("Ridimensiona"), QStringLiteral("view-fullscreen")},
-                                               {QStringLiteral("In MP4"), QStringLiteral("video-x-generic")},
-                                               {QStringLiteral("Estrai qui"), QStringLiteral("folder-download")},
-                                               {QStringLiteral("In PNG"), QStringLiteral("image-x-generic")},
-                                               {QStringLiteral("Estrai il testo"), QStringLiteral("text-plain")},
-                                               {QStringLiteral("In MP3"), QStringLiteral("audio-x-generic")},
-                                               {QStringLiteral("In FLAC"), QStringLiteral("audio-x-generic")},
-                                               {QStringLiteral("Estrai l'audio (MP3)"), QStringLiteral("audio-x-generic")},
-                                               {QStringLiteral("Fotogramma in PNG"), QStringLiteral("camera-photo")}};
+    static const QHash<QString, QString> icons{{ngTr("Resize", "Ridimensiona"), QStringLiteral("view-fullscreen")},
+                                               {ngTr("To MP4", "In MP4"), QStringLiteral("video-x-generic")},
+                                               {ngTr("Extract here", "Estrai qui"), QStringLiteral("folder-download")},
+                                               {ngTr("To PNG", "In PNG"), QStringLiteral("image-x-generic")},
+                                               {ngTr("Extract the text", "Estrai il testo"), QStringLiteral("text-plain")},
+                                               {ngTr("To MP3", "In MP3"), QStringLiteral("audio-x-generic")},
+                                               {ngTr("To FLAC", "In FLAC"), QStringLiteral("audio-x-generic")},
+                                               {ngTr("Extract the audio (MP3)", "Estrai l'audio (MP3)"), QStringLiteral("audio-x-generic")},
+                                               {ngTr("Frame to PNG", "Fotogramma in PNG"), QStringLiteral("camera-photo")}};
     for (NgQuickAction &action : actions) {
         action.icon = icons.value(action.label, QStringLiteral("system-run"));
     }
@@ -323,14 +330,14 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
             }
             seenIcons.insert(services.at(n)->icon());
             NgQuickAction action;
-            action.label = QStringLiteral("Apri con %1").arg(services.at(n)->name());
+            action.label = ngTr("Open with %1", "Apri con %1").arg(services.at(n)->name());
             action.program = QStringLiteral("@app");
             action.arguments = {services.at(n)->storageId()};
             action.icon = services.at(n)->icon();
             list.append(action);
         }
         NgQuickAction openWith;
-        openWith.label = QStringLiteral("Apri con…");
+        openWith.label = ngTr("Open with…", "Apri con…");
         openWith.program = QStringLiteral("@openwith");
         openWith.icon = QStringLiteral("overflow-menu");
         list.append(openWith);
@@ -441,16 +448,16 @@ QString ngAgoText(const QDateTime &when)
 {
     const qint64 days = when.date().daysTo(QDate::currentDate());
     if (days <= 0) {
-        return QStringLiteral("oggi");
+        return ngTr("today", "oggi");
     }
     if (days == 1) {
-        return QStringLiteral("ieri");
+        return ngTr("yesterday", "ieri");
     }
     if (days < 365) {
-        return QStringLiteral("%1 giorni fa").arg(days);
+        return ngTr("%1 days ago", "%1 giorni fa").arg(days);
     }
     const qint64 years = days / 365;
-    return years == 1 ? QStringLiteral("1 anno fa") : QStringLiteral("%1 anni fa").arg(years);
+    return years == 1 ? ngTr("1 year ago", "1 anno fa") : ngTr("%1 years ago", "%1 anni fa").arg(years);
 }
 
 void KItemListWidget::ngSettingsChanged()

@@ -100,6 +100,9 @@ DolphinSettingsDialog::DolphinSettingsDialog(const QUrl &url, QWidget *parent, K
     ngSettingsFrame->setIcon(QIcon::fromTheme(QStringLiteral("preferences-desktop-theme")));
     connect(ngSettingsPage, &NgSettingsPage::changed, this, &DolphinSettingsDialog::enableApply);
     m_pages.append(ngSettingsPage);
+    if (qEnvironmentVariable("DOLPHIN_NG_OPEN_SETTINGS") == QLatin1String("ng")) {
+        setCurrentPage(ngSettingsFrame); // for screenshots and for the installer
+    }
 
     m_pages.append(interfaceSettingsPage);
     m_pages.append(viewSettingsPage);

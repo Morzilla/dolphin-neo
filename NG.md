@@ -40,7 +40,17 @@ gradient, or the real blur of the desktop behind the window, done by the composi
 - [NeoLine](https://github.com/Morzilla/neoline-icons) – the outline icon theme in the screenshots ([KDE Store](https://store.kde.org/p/2381562/))
 - Dolphin NG on the KDE Store: https://store.kde.org/p/2381561/
 
-One installer sets up all three: `bash <(curl -fsSL https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/install-desktop.sh)`
+One installer sets up all three. It builds from source, asks which parts you want and which look to start from
+(Classic, Soft or Glass), and can switch the desktop to it at the end:
+
+```sh
+bash <(curl -fsSL https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/install-gui.sh)      # graphical
+bash <(curl -fsSL https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/install-desktop.sh)  # in the terminal
+```
+
+![The graphical installer: choosing the look and the icons](https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/screenshots/06-installer.png)
+
+The interface of Dolphin NG is in English, and in Italian on an Italian desktop.
 
 ## What is different
 

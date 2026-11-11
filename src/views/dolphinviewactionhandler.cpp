@@ -6,6 +6,7 @@
  */
 
 #include "dolphinviewactionhandler.h"
+#include "kitemviews/kitemlistwidget.h"
 
 #include "kitemviews/kfileitemlisttostring.h"
 #include "kitemviews/kfileitemmodel.h"
@@ -818,8 +819,8 @@ KToggleAction *DolphinViewActionHandler::cardsModeAction()
 {
     // dolphin-ng: every item is a card with all its details, in a grid
     KToggleAction *cardsView = m_actionCollection->add<KToggleAction>(QStringLiteral("cards"));
-    cardsView->setText(QStringLiteral("Card"));
-    cardsView->setToolTip(QStringLiteral("Vista a card: ogni elemento è una scheda con tutti i dettagli"));
+    cardsView->setText(ngTr("Cards", "Card"));
+    cardsView->setToolTip(ngTr("Cards view: every item is a card with all its details", "Vista a card: ogni elemento è una scheda con tutti i dettagli"));
     m_actionCollection->setDefaultShortcut(cardsView, Qt::CTRL | Qt::Key_4);
     cardsView->setIcon(QIcon::fromTheme(QStringLiteral("view-grid"), QIcon::fromTheme(QStringLiteral("view-list-icons"))));
     cardsView->setData(QVariant::fromValue(DolphinView::CardsView));

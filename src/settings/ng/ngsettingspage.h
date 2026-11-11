@@ -49,6 +49,7 @@ private:
     KUrlRequester *m_image;
     QSlider *m_glass;
     QSlider *m_blur;
+    QSlider *m_liveBlur; // the compositor's own blur strength, for the live backdrop
     QCheckBox *m_motion;
     // sidebar: animated gradient
     QComboBox *m_lavaStyle;

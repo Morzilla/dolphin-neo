@@ -5,6 +5,7 @@
  */
 
 #include "kstandarditemlistwidget.h"
+#include "kitemviews/kitemlistwidget.h"
 
 #include "dolphin_contentdisplaysettings.h"
 #include "kfileitemlistview.h"
@@ -2402,10 +2403,10 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             if (wantDates && m_ngTime.isEmpty()) {
                 // no time column: the dates become chips
                 if (modified.isValid()) {
-                    chip(QStringLiteral("modificato %1").arg(ngAgoText(modified)), false);
+                    chip(ngTr("modified %1", "modificato %1").arg(ngAgoText(modified)), false);
                 }
                 if (created.isValid()) {
-                    chip(QStringLiteral("creato %1").arg(ngAgoText(created)), false);
+                    chip(ngTr("created %1", "creato %1").arg(ngAgoText(created)), false);
                 }
             }
             if (measured && !roomForSize) {
@@ -2947,15 +2948,15 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         };
         QList<Line> lines;
         if (created.isValid()) {
-            lines.append({QStringLiteral("Creato"), dateLine(created), false});
+            lines.append({ngTr("Created", "Creato"), dateLine(created), false});
         }
         if (modified.isValid()) {
-            lines.append({QStringLiteral("Modificato"), dateLine(modified), false});
+            lines.append({ngTr("Modified", "Modificato"), dateLine(modified), false});
         }
         if (fullInfo) {
-            lines.append({QStringLiteral("Tipo"), typeText, false});
+            lines.append({ngTr("Type", "Tipo"), typeText, false});
             if (!permissions.isEmpty()) {
-                lines.append({QStringLiteral("Permessi"), joined({permissions, owner}), true});
+                lines.append({ngTr("Permissions", "Permessi"), joined({permissions, owner}), true});
             }
         }
         const qreal lineHeight = smallFm.height() + 2;
@@ -3007,10 +3008,10 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         y += smallFm.height() + 2;
         QStringList when;
         if (created.isValid()) {
-            when << QStringLiteral("Creato %1").arg(dateLine(created));
+            when << ngTr("Created %1", "Creato %1").arg(dateLine(created));
         }
         if (modified.isValid()) {
-            when << QStringLiteral("Modificato %1").arg(dateLine(modified));
+            when << ngTr("Modified %1", "Modificato %1").arg(dateLine(modified));
         }
         if (quickActions.isEmpty() && !fullInfo) {
             // nothing in the foot (folders, files without quick actions): each date gets its own line
@@ -3059,11 +3060,6 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         y += lineHeightC + 8;
         actionsAt(right, y - 1);
         y = chipRow(x0, y, right, {m_ngSigla, sizeText, countText, fullInfo ? permissions : QString()}, 1) + 4;
-        if (!quickActions.isEmpty()) {
-            y = actionRow(x0, y, right) + 4;
-        }
-        y += 4;
-
         QFont bigFont = m_customizedFont;
         bigFont.setPointSizeF(bigFont.pointSizeF() * 1.45);
         bigFont.setWeight(QFont::DemiBold);
@@ -3074,6 +3070,18 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         const QFontMetricsF tinyFm(tiny);
         const qreal bottom = card.bottom() - pad;
         const qreal blockHeight = tinyFm.height() + bigFm.height() + smallFm.height();
+        const QString modifiedLabel = ngTr("MODIFIED", "MODIFICATO");
+        if (!quickActions.isEmpty()) {
+            // the pill stops before the block of the date when it reaches down to it
+            qreal actionRight = right;
+            if (modified.isValid() && y + actionHeight > bottom - blockHeight) {
+                const bool reachesBig = y + actionHeight > bottom - blockHeight + tinyFm.height();
+                actionRight -= qMax(tinyFm.horizontalAdvance(modifiedLabel), reachesBig ? bigFm.horizontalAdvance(ngAgoText(modified)) : 0.0) + 12;
+            }
+            y = actionRow(x0, y, actionRight) + 4;
+        }
+        y += 4;
+
 
         if (!isDir && bytes > 0 && bottom - blockHeight - y >= 12) {
             m_ngBarFraction = qBound(0.03, (std::log10(double(bytes)) - 3.0) / 7.0, 1.0);
@@ -3083,9 +3091,9 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         // the right block: when it was modified, big
         qreal rightBlockWidth = 0;
         if (modified.isValid()) {
-            const QString label = QStringLiteral("MODIFICATO");
+            const QString label = modifiedLabel;
             const QString ago = ngAgoText(modified);
-            const QString createdText = created.isValid() ? QStringLiteral("creato %1").arg(ngAgoText(created)) : QString();
+            const QString createdText = created.isValid() ? ngTr("created %1", "creato %1").arg(ngAgoText(created)) : QString();
             rightBlockWidth = qMax(bigFm.horizontalAdvance(ago), qMax(tinyFm.horizontalAdvance(label), smallFm.horizontalAdvance(createdText)));
             qreal by = bottom - blockHeight;
             putText(label, QPointF(right - tinyFm.horizontalAdvance(label), by + tinyFm.ascent()), tiny, 2);

@@ -46,6 +46,8 @@ class QDateTime;
 DOLPHIN_EXPORT QString ngAgoText(const QDateTime &when);
 DOLPHIN_EXPORT QString ngSetting(const char *name, const QString &fallback = QString());
 DOLPHIN_EXPORT int ngSettingInt(const char *name, int fallback);
+/** dolphin-ng: the interface text, in Italian when the desktop language is Italian and in English otherwise. */
+DOLPHIN_EXPORT QString ngTr(const char *english, const char *italian);
 /** Store a value in dolphinrc; an empty value removes it. */
 DOLPHIN_EXPORT void setNgSetting(const char *name, const QString &value);
 /** True if the environment decides this setting, so the stored value is ignored. */

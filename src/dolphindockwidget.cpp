@@ -678,8 +678,14 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
             painter.setFont(small);
             painter.setPen(palette().color(QPalette::WindowText));
             const QRectF textRect = box.adjusted(10, 8, -10, -24);
-            painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, KIO::convertSize(storage.bytesTotal()));
-            painter.drawText(textRect, Qt::AlignRight | Qt::AlignVCenter, i18nc("@info:status Free disk space", "%1 free", KIO::convertSize(storage.bytesAvailable())));
+            // a narrow panel has no room for both figures: the free space stays, the total goes
+            const QString total = KIO::convertSize(storage.bytesTotal());
+            const QString free = i18nc("@info:status Free disk space", "%1 free", KIO::convertSize(storage.bytesAvailable()));
+            const bool both = painter.fontMetrics().horizontalAdvance(total) + painter.fontMetrics().horizontalAdvance(free) + 12 <= textRect.width();
+            if (both) {
+                painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, total);
+            }
+            painter.drawText(textRect, (both ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter, painter.fontMetrics().elidedText(free, Qt::ElideRight, int(textRect.width())));
 
             const QRectF groove(box.left() + 10, box.bottom() - 16, box.width() - 20, 6);
             painter.setPen(Qt::NoPen);

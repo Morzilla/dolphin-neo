@@ -2674,7 +2674,7 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
     const QString folder = item.url().adjusted(QUrl::RemoveFilename).toLocalFile();
     auto run = [this, folder](const QString &program, const QStringList &arguments) {
         if (QStandardPaths::findExecutable(program).isEmpty()) {
-            KMessageBox::error(window(), QStringLiteral("Serve il programma «%1», che non è installato.").arg(program));
+            KMessageBox::error(window(), ngTr("This needs the program “%1”, which is not installed.", "Serve il programma «%1», che non è installato.").arg(program));
             return;
         }
         auto *job = new KIO::CommandLauncherJob(program, arguments);
@@ -2711,7 +2711,7 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
         if (!services.isEmpty()) {
             menu.addSeparator();
         }
-        menu.addAction(QStringLiteral("Altra applicazione…"), this, [launch] {
+        menu.addAction(ngTr("Other application…", "Altra applicazione…"), this, [launch] {
             launch(KService::Ptr());
         });
         menu.exec(QCursor::pos());
