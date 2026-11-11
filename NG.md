@@ -17,15 +17,30 @@ it installs into your home directory next to it.
 
 ## Cards view
 
-A fourth view mode (Ctrl+4, or the "Card" button in the sort bar): every item is a card of a fixed size with its
-details, in a grid that re-flows with the window. Three looks, quick actions by kind of file (resize, extract,
-convert, open with), a lightbox for pictures, and the type either as an icon or as the background of the card.
+A fourth view mode (Ctrl+4, or the "Cards" button in the sort bar): every item is a card with its details, in a
+grid that re-flows with the window. Three looks:
 
-![Cards, the Scheda look](ng/screenshots/cards-scheda.png)
+- **Tessera** – the preview across the top. A file without a preview gets a sketch of what it holds (a page, a
+  table, lines of code, a waveform…), a folder shows its first pictures or lists its first entries. Type and size
+  are one badge on the picture; the actions are a pill that fades in on hover.
+- **Scheda** – the picture on the left, everything in three lines.
+- **Dossier** – the days elapsed, large.
 
-| Tessera | Dossier |
+Quick actions by kind of file (resize, extract, convert, open with the next application, cut, copy), a quick view
+on hover, a preview card with zoom.
+
+![Cards, the Tessera look](ng/screenshots/cards-tessera.png)
+
+| Scheda | Dossier |
 |---|---|
-| ![Tessera](ng/screenshots/cards-tessera.png) | ![Dossier](ng/screenshots/cards-dossier.png) |
+| ![Scheda](ng/screenshots/cards-scheda.png) | ![Dossier](ng/screenshots/cards-dossier.png) |
+
+## Settings
+
+Everything is a setting, on a graphical page: tabs, a tile with a drawing of each choice, switches, and a sketch of
+the window that follows what you pick.
+
+![The NG settings page, on the Rows tab](ng/screenshots/settings.png)
 
 ## Glass sidebar
 

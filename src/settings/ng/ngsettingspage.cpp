@@ -1109,7 +1109,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_cardsMark->addItem(QString(), QString());
     m_cardsMark->addItem(QString(), QStringLiteral("type"));
     tilesFor(m_cardsMark, QStringLiteral("cardsmark"), ngTr("Type mark", "Segno del tipo"),
-             {{ngTr("The type icon", "L'icona del tipo"), {}}, {ngTr("The type as background", "Il tipo come sfondo"), {}}}, 5);
+             {{ngTr("Type icon", "Icona del tipo"), {}}, {ngTr("Type as background", "Tipo come sfondo"), {}}}, 5);
     m_cardsBadge = new QComboBox(this);
     m_cardsBadge->addItem(QString(), QString());
     m_cardsBadge->addItem(QString(), QStringLiteral("glass"));
