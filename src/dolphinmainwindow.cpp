@@ -198,6 +198,7 @@ DolphinMainWindow::DolphinMainWindow()
         m_ngSortBar->setVisible(ngTwoLineList());
         connect(NgSettings::instance(), &NgSettings::changed, m_ngSortBar, [this] {
             m_ngSortBar->setVisible(ngTwoLineList());
+            ngMoveToolbarButtons();
         });
         centralLayout->addWidget(m_ngSortBar);
         centralLayout->addWidget(m_tabWidget, 1);
@@ -249,6 +250,7 @@ DolphinMainWindow::DolphinMainWindow()
 
     const bool usePhoneUi{KRuntimePlatform::runtimePlatform().contains(QLatin1String("phone"))};
     setupGUI(Save | Create | ToolBar, usePhoneUi ? QStringLiteral("dolphinuiforphones.rc") : QString() /* load the default dolphinui.rc file */);
+    QTimer::singleShot(0, this, &DolphinMainWindow::ngMoveToolbarButtons); // dolphin-ng
     stateChanged(QStringLiteral("new_file"));
 
     QClipboard *clipboard = QApplication::clipboard();
@@ -3198,6 +3200,50 @@ QSize DolphinMainWindow::sizeHint() const
     return KXmlGuiWindow::sizeHint().expandedTo(QSize(760, 550));
 }
 
+// dolphin-ng: with the sort bar shown, the buttons that the toolbar has before the location bar (back, forward, up
+// and whatever the user put there) go to the start of the sort bar, next to the sorting and the filters, and the
+// space above the panels stays empty. The view mode button is dropped: the sort bar has the cards button, the
+// menu has the rest. Without the sort bar (classic list) they go back where they were.
+void DolphinMainWindow::ngMoveToolbarButtons()
+{
+    KToolBar *bar = toolBar(QStringLiteral("mainToolBar"));
+    QAction *navigator = actionCollection()->action(QStringLiteral("url_navigators"));
+    if (!m_ngSortBar || !bar || !navigator || !bar->actions().contains(navigator)) {
+        return;
+    }
+    if (!ngTwoLineList()) {
+        if (!m_ngMovedActions.isEmpty()) {
+            bar->insertActions(navigator, m_ngMovedActions);
+            m_ngMovedActions.clear();
+            ngSortBarSetLeadingActions(m_ngSortBar, {});
+        }
+        return;
+    }
+    QList<QAction *> leading;
+    const QList<QAction *> actions = bar->actions();
+    for (QAction *action : actions) {
+        if (action == navigator) {
+            break;
+        }
+        leading.append(action);
+    }
+    if (leading.isEmpty()) {
+        return;
+    }
+    for (QAction *action : std::as_const(leading)) {
+        bar->removeAction(action);
+    }
+    m_ngMovedActions += leading;
+    QList<QAction *> shown;
+    QAction *viewSettings = actionCollection()->action(QStringLiteral("view_settings"));
+    for (QAction *action : std::as_const(m_ngMovedActions)) {
+        if (action != viewSettings && !action->isSeparator()) {
+            shown.append(action);
+        }
+    }
+    ngSortBarSetLeadingActions(m_ngSortBar, shown);
+}
+
 void DolphinMainWindow::saveNewToolbarConfig()
 {
     KXmlGuiWindow::saveNewToolbarConfig(); // Applies the new config. This has to be called first
@@ -3210,6 +3256,8 @@ void DolphinMainWindow::saveNewToolbarConfig()
     updateAllowedToolbarAreas();
     updateNavigatorsBackground();
     (static_cast<KHamburgerMenu *>(actionCollection()->action(KStandardAction::name(KStandardAction::HamburgerMenu))))->hideActionsOf(toolBar());
+    m_ngMovedActions.clear(); // the toolbar was built anew
+    ngMoveToolbarButtons();
 }
 
 void DolphinMainWindow::toggleTerminalPanelFocus()

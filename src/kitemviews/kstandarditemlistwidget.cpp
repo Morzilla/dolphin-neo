@@ -40,6 +40,9 @@
 #include <QStyleOption>
 #include <QTextBoundaryFinder>
 #include <QVariantAnimation>
+#include <QPointer>
+#include <KFileItem>
+#include <KIO/PreviewJob>
 #include <QFileInfo>
 #include <QDirIterator>
 #include <QCollator>
@@ -2802,6 +2805,7 @@ namespace
 // per folder and kept until the folder changes (its modification time). A huge folder is not read to the end.
 struct NgFolderPeek {
     QStringList names; // a trailing "/" marks a folder
+    QStringList pictures; // the first files that have a picture to show (images, PDFs, videos)
     int more = 0; // entries beyond `names`; -1: many, not counted
 };
 NgFolderPeek ngFolderPeek(const QString &path)
@@ -2843,10 +2847,48 @@ NgFolderPeek ngFolderPeek(const QString &path)
         if (peek.names.count() < 5) {
             peek.names.append(name);
         }
+        static const QSet<QString> moving{QStringLiteral("PDF"), QStringLiteral("MP4"), QStringLiteral("MKV"), QStringLiteral("WEBM"), QStringLiteral("MOV"), QStringLiteral("AVI")};
+        const NgKind kind = ngKindFor(name, false);
+        if (peek.pictures.count() < 4 && (kind.category == NgKind::Image || moving.contains(kind.sigla))) {
+            peek.pictures.append(name);
+        }
     }
     peek.more = it.hasNext() ? -1 : seen - int(peek.names.count());
     cache.insert(path, {modified, peek});
     return peek;
+}
+
+// dolphin-ng: the pictures of a folder, for the band of its card: previews of its first few pictures, asked for
+// once per folder and kept. Until they arrive the list is empty; `waiting` is repainted when one does.
+QList<QPixmap> ngFolderPictures(const QString &folder, const QStringList &names, QGraphicsWidget *waiting)
+{
+    static QHash<QString, QList<QPixmap>> cache;
+    static QSet<QString> asked;
+    const QString key = folder + QLatin1Char('|') + names.join(QLatin1Char('|'));
+    if (names.isEmpty()) {
+        return {};
+    }
+    if (!asked.contains(key)) {
+        if (asked.size() > 800) {
+            asked.clear();
+            cache.clear();
+        }
+        asked.insert(key);
+        KFileItemList items;
+        for (const QString &name : names) {
+            items.append(KFileItem(QUrl::fromLocalFile(folder + QLatin1Char('/') + name)));
+        }
+        auto *job = new KIO::PreviewJob(items, QSize(512, 512));
+        job->setIgnoreMaximumSize(false);
+        const QPointer<QGraphicsWidget> widget(waiting);
+        QObject::connect(job, &KIO::PreviewJob::gotPreview, qApp, [key, widget](const KFileItem &, const QPixmap &pixmap) {
+            cache[key].append(pixmap);
+            if (widget) {
+                widget->update();
+            }
+        });
+    }
+    return cache.value(key);
 }
 
 // dolphin-ng: the band of a card whose file has no preview shows a small drawing of the kind of content: a page of
@@ -3311,10 +3353,14 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
                 }
                 m_ngCardPeek.clear();
                 m_ngCardPeekMore = 0;
+                m_ngCardFolderPath.clear();
+                m_ngCardFolderPictures.clear();
                 if (fileItem.isDir() && fileItem.isLocalFile() && ngCardStyle() == NgCardStyle::Tessera) {
                     const NgFolderPeek peek = ngFolderPeek(fileItem.localPath());
                     m_ngCardPeek = peek.names;
                     m_ngCardPeekMore = peek.more;
+                    m_ngCardFolderPath = fileItem.localPath();
+                    m_ngCardFolderPictures = peek.pictures;
                 }
             }
         }
@@ -3672,6 +3718,9 @@ void KStandardItemListWidget::ngPlaceCardPixmap()
     }
     m_scaledPixmapSize = pixelSize / dpr;
     m_pixmapPos = QPointF(area.center().x() - m_scaledPixmapSize.width() / 2.0, area.center().y() - m_scaledPixmapSize.height() / 2.0);
+    if (ngCardStyle() == NgCardStyle::Tessera && m_ngCardPreview && m_scaledPixmapSize.height() > area.height() * 1.6) {
+        m_pixmapPos.setY(area.top()); // a page: the band shows its top, where the heading is, not its middle
+    }
     m_iconRect = QRectF(m_pixmapPos, QSizeF(m_scaledPixmapSize)).intersected(area);
 }
 
@@ -3779,7 +3828,28 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             wash.setAlphaF(dark ? 0.16 : 0.14);
             painter->fillPath(band, wash);
         }
-        if (!m_ngCardPreview) {
+        // a folder: its own pictures side by side when it has some (the folder preview of the system is a small
+        // collage inside a folder shape, of which the band would show a slice), else the folder and its first entries
+        const QList<QPixmap> folderPictures =
+            m_ngCategory == int(NgKind::Folder) ? ngFolderPictures(m_ngCardFolderPath, m_ngCardFolderPictures, this) : QList<QPixmap>();
+        if (!folderPictures.isEmpty()) {
+            painter->save();
+            painter->setClipPath(band, Qt::IntersectClip);
+            painter->setRenderHint(QPainter::SmoothPixmapTransform);
+            const int count = folderPictures.count();
+            const qreal gap = 3, tileWidth = (m_ngCardThumb.width() - (count - 1) * gap) / count;
+            for (int i = 0; i < count; ++i) {
+                const QPixmap &picture = folderPictures.at(i);
+                const QRectF tile(m_ngCardThumb.left() + i * (tileWidth + gap), m_ngCardThumb.top(), tileWidth, m_ngCardThumb.height());
+                // cover the tile: the middle of a wide picture, the top of a tall one
+                const qreal scale = qMax(tile.width() / picture.width(), tile.height() / picture.height());
+                const QSizeF part(tile.width() / scale, tile.height() / scale);
+                const QRectF source((picture.width() - part.width()) / 2.0, picture.height() > picture.width() * 1.3 ? 0 : (picture.height() - part.height()) / 2.0,
+                                    part.width(), part.height());
+                painter->drawPixmap(tile, picture, source);
+            }
+            painter->restore();
+        } else if (m_ngCategory == int(NgKind::Folder) || !m_ngCardPreview) {
             // no preview: a sketch of what a file of this kind holds (or of the folder), instead of its icon
             painter->save();
             painter->setClipPath(band, Qt::IntersectClip);

@@ -533,6 +533,8 @@ private:
 // dolphin-ng: the sort/filter bar of the window, placed above the tabs; ngSortBarFollow() points it at the active view
 QWidget *ngCreateSortBar(QWidget *parent);
 void ngSortBarFollow(QWidget *bar, DolphinView *view);
+// buttons shown at the start of the bar, before the sorting (the navigation buttons of the window)
+void ngSortBarSetLeadingActions(QWidget *bar, const QList<QAction *> &actions);
 /** dolphin-ng: the filters of that bar as a section for the sidebar (rows with counts; a click filters). */
 QWidget *ngCreateFilterPanel(QWidget *sortBar, QWidget *parent);
 

@@ -1038,7 +1038,10 @@ QSize KFileItemModelRolesUpdater::cacheSize()
     // by PreviewJob if a smaller size is requested. For images KFileItemModelRolesUpdater must
     // do a downscaling anyhow because of the frame, so in this case only the provided
     // cache sizes are requested.
-    return (m_iconSize.width() > 128) || (m_iconSize.height() > 128) ? QSize(256, 256) : QSize(128, 128);
+    // dolphin-ng: the cards show previews much larger than 256 px (the band of a Tessera is as wide as the card),
+    // and a 256 px thumbnail stretched over them is blurred: the larger sizes of the thumbnail cache are used then
+    const int side = qMax(m_iconSize.width(), m_iconSize.height());
+    return side > 512 ? QSize(1024, 1024) : side > 256 ? QSize(512, 512) : side > 128 ? QSize(256, 256) : QSize(128, 128);
 }
 
 void KFileItemModelRolesUpdater::loadNextHoverSequencePreview()

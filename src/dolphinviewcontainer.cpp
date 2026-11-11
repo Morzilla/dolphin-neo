@@ -442,6 +442,13 @@ public:
         auto *row = new QHBoxLayout(this);
         row->setContentsMargins(14, 4, 14, 6);
         row->setSpacing(10);
+        // the navigation buttons of the window, moved here from the toolbar (see setLeadingActions)
+        m_leading = new QWidget(this);
+        auto *leading = new QHBoxLayout(m_leading);
+        leading->setContentsMargins(0, 0, 4, 0);
+        leading->setSpacing(2);
+        m_leading->hide();
+        row->addWidget(m_leading, 0, Qt::AlignTop);
         m_flow = new NgFlowLayout(nullptr, 4, 4);
         m_flow->setContentsMargins(0, 0, 0, 0);
         row->addLayout(m_flow, 1);
@@ -631,6 +638,34 @@ private:
         });
     }
 
+public:
+    void setLeadingActions(const QList<QAction *> &actions)
+    {
+        QLayout *layout = m_leading->layout();
+        while (QLayoutItem *item = layout->takeAt(0)) {
+            if (item->widget()) {
+                item->widget()->deleteLater();
+            }
+            delete item;
+        }
+        for (QAction *action : actions) {
+            if (action->isSeparator()) {
+                continue;
+            }
+            auto *button = new QToolButton(m_leading);
+            button->setDefaultAction(action);
+            button->setAutoRaise(true);
+            button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+            button->setIconSize(QSize(20, 20));
+            if (action->menu()) {
+                button->setPopupMode(QToolButton::DelayedPopup); // back and forward: hold for the history
+            }
+            layout->addWidget(button);
+        }
+        m_leading->setVisible(!actions.isEmpty());
+    }
+
+private:
     void rebuild()
     {
         while (QLayoutItem *item = m_flow->takeAt(0)) {
@@ -879,6 +914,7 @@ private:
     }
 
     DolphinView *m_view;
+    QWidget *m_leading;
     NgFlowLayout *m_flow;
     DolphinView::Mode m_modeBeforeCards = DolphinView::DetailsView; // the cards button goes back to this
     QLineEdit *m_filter;
@@ -3453,6 +3489,13 @@ QWidget *ngCreateFilterPanel(QWidget *sortBar, QWidget *parent)
 {
     auto *bar = dynamic_cast<NgSortBar *>(sortBar);
     return bar ? new NgFilterPanel(bar, parent) : nullptr;
+}
+
+void ngSortBarSetLeadingActions(QWidget *bar, const QList<QAction *> &actions)
+{
+    if (auto *sortBar = dynamic_cast<NgSortBar *>(bar)) {
+        sortBar->setLeadingActions(actions);
+    }
 }
 
 // dolphin-ng: the sort/filter bar of the window (see NgSortBar); it follows the active view
