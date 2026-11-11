@@ -249,7 +249,14 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
             Q_EMIT ngQuickViewEnded();
         }
         // a quick action of a card: say what it does (they are icons)
-        if (action >= 10) {
+        if (action == 5) {
+            // a name that did not fit: the whole of it
+            const KFileItem item = m_model->fileItem(index);
+            if (!item.isNull()) {
+                QToolTip::showText(QCursor::pos() + QPoint(0, 18), item.text(), this);
+                m_ngActionTip = true;
+            }
+        } else if (action >= 10) {
             const KFileItem item = m_model->fileItem(index);
             const QList<NgQuickAction> actions = item.isNull() ? QList<NgQuickAction>() : ngQuickActionsFor(item.localPath(), item.mimetype());
             if (action - 10 < actions.count()) {

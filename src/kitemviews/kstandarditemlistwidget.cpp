@@ -1097,6 +1097,15 @@ QRectF KStandardItemListWidget::textFocusRect() const
 
 int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
 {
+    // 5: the pointer is on a name that was shortened to fit (hover only: the full name is shown as a tip)
+    auto onShortenedName = [this, &pos] {
+        const TextInfo *name = m_textInfo.value("text");
+        if (!name || !QRectF(name->pos, name->staticText.size()).contains(pos)) {
+            return false;
+        }
+        const QChar ellipsis(0x2026);
+        return name->staticText.text().contains(ellipsis) && !data().value("text").toString().contains(ellipsis);
+    };
     if (m_layout == DetailsLayout && ngTwoLineList() && m_ngCardActionsPill.contains(pos)) {
         for (int i = 0; i < m_ngCardActions.count(); ++i) {
             if (m_ngCardActions.at(i).rect.contains(pos)) {
@@ -1136,10 +1145,10 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
                 return 4;
             }
         }
-        return 0;
+        return onShortenedName() ? 5 : 0;
     }
     if (!m_ngActions || !m_ngActions->isVisible() || !m_ngActionsRect.contains(pos)) {
-        return 0;
+        return m_layout == DetailsLayout && ngTwoLineList() && onShortenedName() ? 5 : 0;
     }
     // same split as NgRowActions: "Open", then two square buttons: preview and menu
     const qreal side = m_ngActionsRect.height();
@@ -3041,14 +3050,18 @@ void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor 
     painter->setRenderHint(QPainter::Antialiasing);
     // ---- the quick actions: icons in one pill, the main one with its label on a tint of the type
     if (!m_ngCardActions.isEmpty()) {
-        const bool pillShown = !m_ngCardActionsPill.isEmpty() && (!m_ngCardHoverPill || isHovered());
+        // the pill of a Tessera comes in and goes out with the hover animation of the card
+        const qreal reveal = m_ngCardHoverPill ? qBound(0.0, hoverOpacity(), 1.0) : 1.0;
+        const bool pillShown = !m_ngCardActionsPill.isEmpty() && reveal > 0.01;
+        painter->setOpacity(reveal);
         const QRectF pill = m_ngCardActionsPill.adjusted(0.5, 0.5, -0.5, -0.5);
         QColor edge = text;
         edge.setAlphaF(m_ngCardHoverPill ? 0.22 : 0.13);
         if (pillShown) {
             painter->setPen(QPen(edge, 1));
             // over a picture the pill needs a darker ground than over the sheet of the card
-            painter->setBrush(m_ngCardHoverPill ? (dark ? QColor(12, 13, 16, 190) : QColor(250, 250, 250, 215)) : (dark ? QColor(0, 0, 0, 72) : QColor(255, 255, 255, 130)));
+            // (nearly opaque: over a light picture a see-through black reads as grey)
+            painter->setBrush(m_ngCardHoverPill ? (dark ? QColor(10, 11, 13, 238) : QColor(252, 252, 252, 240)) : (dark ? QColor(0, 0, 0, 72) : QColor(255, 255, 255, 130)));
             painter->drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0);
             QColor hairline = text;
             hairline.setAlphaF(0.18);
@@ -3069,7 +3082,7 @@ void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor 
         QFont chipFont = m_customizedFont;
         chipFont.setPointSizeF(chipFont.pointSizeF() * 0.88);
         painter->setFont(chipFont);
-        painter->setOpacity(isHovered() ? 1.0 : 0.82);
+        painter->setOpacity(m_ngCardHoverPill ? reveal : isHovered() ? 1.0 : 0.82);
         for (int i = 0; i < m_ngCardActions.count(); ++i) {
             const NgChip &chip = m_ngCardActions.at(i);
             const QPixmap &icon = m_ngCardActionIcons.at(i);
@@ -3649,6 +3662,14 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
         QPainterPath box;
         box.addRect(m_ngCardThumb);
         const QPainterPath band = rounded.intersected(box);
+        {
+            // the whole card takes the colour of the type, faintly; the band (below) a little more
+            QPainterPath sheet;
+            sheet.addRoundedRect(rect(), 12, 12);
+            QColor body = m_ngTint;
+            body.setAlphaF(dark ? 0.12 : 0.10);
+            painter->fillPath(sheet, body);
+        }
         if (!m_ngCardPreview) {
             QColor wash = m_ngTint;
             wash.setAlphaF(dark ? 0.16 : 0.14);
@@ -3748,6 +3769,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
 
     // ---- the preview eye, on a dark disc so that it reads over a picture too
     if (isHovered() && !m_ngCardEye.isEmpty()) {
+        painter->setOpacity(m_ngCardEyeInPill ? qBound(0.0, hoverOpacity(), 1.0) : 1.0);
         if (!m_ngCardEyeInPill) {
             painter->setPen(Qt::NoPen);
             painter->setBrush(QColor(0, 0, 0, 130));

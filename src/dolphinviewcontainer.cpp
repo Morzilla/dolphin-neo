@@ -372,7 +372,19 @@ protected:
         }
         // CARDS_QUICKVIEW_SIDE: left (default) or right of the pointer, or "auto": beside the card, as computed above
         const QString side = ngSetting("CARDS_QUICKVIEW_SIDE", QStringLiteral("left")).toLower();
-        if (side != QLatin1String("auto")) {
+        const bool wideAnchor = m_anchor.width() > m_host->width() * 0.6; // a row, not a card
+        if (side != QLatin1String("auto") && !wideAnchor) {
+            // a card: on the chosen side of the card itself, never over it. Its actions and its eye are on the picture,
+            // and a view that opened at the pointer covered them
+            const QPoint pointer = m_host->mapFromGlobal(QCursor::pos());
+            const int leftX = m_anchor.left() - 10 - size.width(), rightX = m_anchor.right() + 10;
+            const bool fitsLeft = leftX >= 6, fitsRight = rightX + size.width() <= m_host->width() - 6;
+            const bool wantRight = side == QLatin1String("right");
+            if (fitsLeft || fitsRight) {
+                x = (wantRight ? fitsRight : !fitsLeft) ? rightX : leftX;
+                y = pointer.y() - size.height() / 2;
+            } // neither side has room: below or above the card, as computed above
+        } else if (side != QLatin1String("auto")) {
             const QPoint pointer = m_host->mapFromGlobal(QCursor::pos());
             // on the chosen side of the pointer; when it does not fit there, on the other one, so that it never
             // covers what the pointer is on (the small previews of the rows sit at the very left of the view)

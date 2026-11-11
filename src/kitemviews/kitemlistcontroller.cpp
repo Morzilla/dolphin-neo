@@ -1655,7 +1655,7 @@ bool KItemListController::onPress(const QPointF &pos, const Qt::KeyboardModifier
 
     // dolphin-ng: a press on an inline row action only arms it; it fires on release
     m_ngActionPressed = (buttons & Qt::LeftButton) ? m_view->ngActionAt(m_pressedIndex.value_or(-1), pressedMousePos) : 0;
-    if (m_ngActionPressed == 4) {
+    if (m_ngActionPressed == 4 || m_ngActionPressed == 5) { // the hover-only areas: quick view, shortened name
         m_ngActionPressed = 0; // the quick view area is not a button: the click selects or opens as usual
     }
     if (m_ngActionPressed) {
