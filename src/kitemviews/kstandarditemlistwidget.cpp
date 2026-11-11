@@ -1819,7 +1819,21 @@ void KStandardItemListWidget::updatePixmapCache()
                                      m_layout != IconsLayout && isActiveWindow() && isPressed() && hasFocus ? QIcon::Selected : QIcon::Normal);
 
         } else {
-            if (m_pixmap.width() / m_pixmap.devicePixelRatio() != maxIconWidth || m_pixmap.height() / m_pixmap.devicePixelRatio() != maxIconHeight) {
+            // dolphin-ng: the preview of a card is scaled once to the place it is shown in (the band of a Tessera, the
+            // column of a Scheda), not down to the icon size and up again when painted
+            QSizeF cardPicture;
+            if (m_layout == CardsLayout && ngCardStyle() == NgCardStyle::Tessera) {
+                cardPicture = QSizeF(widgetSize.width(), qRound(qMin(widgetSize.height() * 0.37, 120.0)));
+            } else if (m_layout == CardsLayout && ngCardStyle() == NgCardStyle::Scheda) {
+                const qreal side = qBound(44.0, widgetSize.height() * 0.66, qMax(64.0, widgetSize.width() * 0.30));
+                cardPicture = QSizeF(side, side);
+            }
+            if (cardPicture.isValid()) {
+                const QSize target = (cardPicture * dpr).toSize();
+                const Qt::AspectRatioMode mode = ngCardStyle() == NgCardStyle::Tessera ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio;
+                m_pixmap = m_pixmap.scaled(target, mode, Qt::SmoothTransformation);
+                m_pixmap.setDevicePixelRatio(dpr);
+            } else if (m_pixmap.width() / m_pixmap.devicePixelRatio() != maxIconWidth || m_pixmap.height() / m_pixmap.devicePixelRatio() != maxIconHeight) {
                 // A custom pixmap has been applied. Assure that the pixmap
                 // is scaled to the maximum available size.
                 KPixmapModifier::scale(m_pixmap, QSize(maxIconWidth, maxIconHeight) * dpr);

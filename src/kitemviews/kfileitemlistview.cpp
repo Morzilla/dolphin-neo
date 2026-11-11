@@ -5,6 +5,7 @@
  */
 
 #include "kfileitemlistview.h"
+#include "kitemlistwidget.h"
 
 #include "kfileitemlistwidget.h"
 #include "kfileitemmodel.h"
@@ -475,6 +476,18 @@ QSize KFileItemListView::availableIconSize() const
     if (itemLayout() == IconsLayout) {
         const int maxIconWidth = itemSize().width() - 2 * option.padding;
         return QSize(maxIconWidth, iconSize);
+    }
+    if (itemLayout() == CardsLayout) {
+        // dolphin-ng: a card shows its preview much larger than an icon: across the band on top (Tessera) or in the
+        // column on the left (Scheda). Asked at the icon size, it was stretched to fit and came out blurred.
+        const QSizeF card = itemSize();
+        if (ngCardStyle() == NgCardStyle::Tessera) {
+            return QSize(qRound(card.width()), qRound(card.width() * 0.75)); // enough to cover the band whatever the proportions
+        }
+        if (ngCardStyle() == NgCardStyle::Scheda) {
+            const int side = qRound(qBound(44.0, card.height() * 0.66, qMax(64.0, card.width() * 0.30)));
+            return QSize(side, side);
+        }
     }
 
     return QSize(iconSize, iconSize);
