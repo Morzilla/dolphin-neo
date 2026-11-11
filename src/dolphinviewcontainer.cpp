@@ -904,10 +904,31 @@ public:
         stopMovie();
         m_pixmap = pixmap;
         if (!keepView) {
-            m_zoom = 1.0;
-            m_offset = QPointF();
+            applyWantedZoom();
         }
         update();
+    }
+
+    // a picture that is not the content (the type icon of a file without a preview): never zoomed
+    void setPlainPixmap(const QPixmap &pixmap)
+    {
+        stopMovie();
+        m_pixmap = pixmap;
+        m_zoom = 1.0;
+        m_offset = QPointF();
+        update();
+    }
+
+    // The zoom chosen on the last item is kept for the next ones (in this session, in every window): who enlarges
+    // one PDF to read it wants the next one enlarged too. A page taller than wide starts from its top.
+    void applyWantedZoom()
+    {
+        m_zoom = s_wantedZoom;
+        m_offset = QPointF();
+        if (m_zoom > 1.0 && !m_pixmap.isNull() && m_pixmap.height() > m_pixmap.width() * 1.15) {
+            m_offset = QPointF(0, 1e6);
+        }
+        clampOffset();
     }
 
     // an animated picture (GIF, APNG, WebP): plays in a loop, zoom and pan work on the running frames
@@ -920,9 +941,9 @@ public:
             m_pixmap = m_movie->currentPixmap();
             update();
         });
-        m_zoom = 1.0;
-        m_offset = QPointF();
         m_movie->start();
+        m_pixmap = m_movie->currentPixmap();
+        applyWantedZoom();
     }
 
     void stopMovie()
@@ -937,6 +958,7 @@ public:
     void zoomBy(qreal factor)
     {
         m_zoom = qBound(1.0, m_zoom * factor, 12.0);
+        s_wantedZoom = m_zoom;
         clampOffset();
         update();
     }
@@ -944,6 +966,7 @@ public:
     void resetZoom()
     {
         m_zoom = 1.0;
+        s_wantedZoom = 1.0;
         m_offset = QPointF();
         update();
     }
@@ -967,6 +990,7 @@ protected:
         }
         const qreal oldZoom = m_zoom;
         m_zoom = qBound(1.0, m_zoom * std::pow(1.2, event->angleDelta().y() / 120.0), 12.0);
+        s_wantedZoom = m_zoom;
         // keep the point under the pointer where it is
         const QPointF fromCentre = event->position() - QPointF(width(), height()) / 2.0;
         m_offset = fromCentre - (fromCentre - m_offset) * (m_zoom / oldZoom);
@@ -1012,6 +1036,7 @@ private:
     QPixmap m_pixmap;
     QMovie *m_movie = nullptr;
     qreal m_zoom = 1.0;
+    static inline qreal s_wantedZoom = 1.0; // see applyWantedZoom()
     QPointF m_offset;
     QPointF m_dragFrom;
 };
@@ -1888,7 +1913,7 @@ private:
 
         if ((m_kind == Video || m_kind == Audio) && !path.isEmpty()) {
             m_stack->setCurrentWidget(m_image);
-            m_image->setPixmap(m_kind == Audio ? QIcon::fromTheme(m_item.iconName()).pixmap(40, 40) : QPixmap());
+            m_image->setPlainPixmap(m_kind == Audio ? QIcon::fromTheme(m_item.iconName()).pixmap(40, 40) : QPixmap());
             m_player->setSource(QUrl::fromLocalFile(path));
             m_player->play();
             updateVideoBar();
@@ -1906,7 +1931,7 @@ private:
             QPainter iconPainter(&canvas);
             QIcon::fromTheme(m_item.iconName()).paint(&iconPainter, QRect((canvas.width() - 144) / 2, (canvas.height() - 144) / 2, 144, 144));
             iconPainter.end();
-            m_image->setPixmap(canvas);
+            m_image->setPlainPixmap(canvas);
         }
         updateVideoBar();
         const QUrl url = m_item.url();

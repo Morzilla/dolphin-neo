@@ -344,6 +344,10 @@ private:
     QList<qreal> m_ngCardActionSeps; // x of the hairlines between the groups
     QRectF m_ngCardActionsPill;
     QRectF m_ngCardFab; // Tessera: the main action on its own, astride the bottom edge of the picture band
+    qreal m_ngReveal = 0.0; // Tessera: how far the hover pill has faded in (0..1)
+    QPointer<QVariantAnimation> m_ngRevealAnimation;
+    QStringList m_ngCardPeek; // Tessera, folders: the first entries of the folder; a trailing "/" marks a folder
+    int m_ngCardPeekMore = 0; // how many more there are (-1: many, not counted)
     bool m_ngCardEyeInPill = false; // Tessera: the preview eye is the last button of the pill
     bool m_ngCardHoverPill = false; // Tessera: the pill (everything but the main action) shows only while hovered
     QList<int> m_ngCardActionIndex; // one per entry of m_ngCardActions: which quick action of the file it is

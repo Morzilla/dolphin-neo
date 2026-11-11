@@ -40,6 +40,9 @@
 #include <QStyleOption>
 #include <QTextBoundaryFinder>
 #include <QVariantAnimation>
+#include <QFileInfo>
+#include <QDirIterator>
+#include <QCollator>
 
 #include <cmath>
 #include <functional>
@@ -1468,6 +1471,22 @@ void KStandardItemListWidget::styleOptionChanged(const KItemListStyleOption &cur
 
 void KStandardItemListWidget::hoveredChanged(bool hovered)
 {
+    if (m_layout == CardsLayout) {
+        // dolphin-ng: the pill of actions fades in and out with the hover
+        if (!m_ngRevealAnimation) {
+            m_ngRevealAnimation = new QVariantAnimation(this);
+            m_ngRevealAnimation->setEasingCurve(QEasingCurve::OutCubic);
+            connect(m_ngRevealAnimation, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+                m_ngReveal = value.toReal();
+                update();
+            });
+        }
+        m_ngRevealAnimation->stop();
+        m_ngRevealAnimation->setDuration(hovered ? 180 : 220);
+        m_ngRevealAnimation->setStartValue(m_ngReveal);
+        m_ngRevealAnimation->setEndValue(hovered ? 1.0 : 0.0);
+        m_ngRevealAnimation->start();
+    }
     if (!hovered && m_activateSoonAnimation) {
         m_activateSoonAnimation->stop(); // automatically DeleteWhenStopped
     }
@@ -2779,10 +2798,61 @@ void KStandardItemListWidget::drawSiblingsInformation(QPainter *painter)
 
 namespace
 {
+// dolphin-ng: the first entries of a folder, for its card: folders first, then by name; hidden ones left out. Read once
+// per folder and kept until the folder changes (its modification time). A huge folder is not read to the end.
+struct NgFolderPeek {
+    QStringList names; // a trailing "/" marks a folder
+    int more = 0; // entries beyond `names`; -1: many, not counted
+};
+NgFolderPeek ngFolderPeek(const QString &path)
+{
+    struct Cached {
+        qint64 modified;
+        NgFolderPeek peek;
+    };
+    static QHash<QString, Cached> cache;
+    const qint64 modified = QFileInfo(path).lastModified().toMSecsSinceEpoch();
+    const auto found = cache.constFind(path);
+    if (found != cache.constEnd() && found->modified == modified) {
+        return found->peek;
+    }
+    if (cache.size() > 600) {
+        cache.clear();
+    }
+    const int limit = 400;
+    QStringList folders, files;
+    QDirIterator it(path, QDir::AllEntries | QDir::NoDotAndDotDot);
+    int seen = 0;
+    while (it.hasNext() && seen < limit) {
+        it.next();
+        ++seen;
+        (it.fileInfo().isDir() ? folders : files).append(it.fileName());
+    }
+    QCollator collator;
+    collator.setNumericMode(true);
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    std::sort(folders.begin(), folders.end(), collator);
+    std::sort(files.begin(), files.end(), collator);
+    NgFolderPeek peek;
+    for (const QString &name : std::as_const(folders)) {
+        if (peek.names.count() < 5) {
+            peek.names.append(name + QLatin1Char('/'));
+        }
+    }
+    for (const QString &name : std::as_const(files)) {
+        if (peek.names.count() < 5) {
+            peek.names.append(name);
+        }
+    }
+    peek.more = it.hasNext() ? -1 : seen - int(peek.names.count());
+    cache.insert(path, {modified, peek});
+    return peek;
+}
+
 // dolphin-ng: the band of a card whose file has no preview shows a small drawing of the kind of content: a page of
 // text, a table, lines of code, a waveform... The kind comes from the category of the file and, where the category
 // is too wide (audio or video, text or slides), from its extension.
-void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, const QString &sigla, const QColor &tint, bool dark)
+void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, const QString &sigla, const QColor &tint, bool dark, int count = -1)
 {
     painter->setRenderHint(QPainter::Antialiasing);
     const QString ext = sigla.toLower();
@@ -2809,7 +2879,31 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         return page;
     };
 
-    if (category == int(NgKind::Sheet)) {
+    if (category == int(NgKind::Folder)) {
+        // a folder: the back with its tab, the papers it holds (none when it is empty), the front
+        const qreal width = qMin(band.width() * 0.8, 118 * u), height = 70 * u;
+        const QRectF body(band.center().x() - width / 2.0, band.center().y() - height / 2.0 + 3 * u, width, height);
+        const QColor back = tint.darker(dark ? 165 : 125), front = tint.darker(dark ? 112 : 104);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(back);
+        painter->drawRoundedRect(QRectF(body.left(), body.top(), body.width() * 0.44, 24 * u), 6 * u, 6 * u);
+        painter->drawRoundedRect(body.adjusted(0, 10 * u, 0, 0), 7 * u, 7 * u);
+        if (count != 0) {
+            painter->setBrush(QColor(255, 255, 255, 150));
+            painter->drawRoundedRect(QRectF(body.left() + 13 * u, body.top() + 15 * u, body.width() - 26 * u, height), 3 * u, 3 * u);
+            painter->setBrush(paper);
+            painter->drawRoundedRect(QRectF(body.left() + 8 * u, body.top() + 21 * u, body.width() - 16 * u, height), 3 * u, 3 * u);
+            if (count > 3 || count < 0) {
+                bar(body.left() + 15 * u, body.top() + 27 * u, body.width() * 0.4, 3.5 * u, faint);
+            }
+        }
+        const QRectF cover = body.adjusted(0, 31 * u, 0, 0);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(front);
+        painter->drawRoundedRect(cover, 7 * u, 7 * u);
+        painter->setPen(QPen(QColor(255, 255, 255, dark ? 60 : 150), 1));
+        painter->drawLine(QPointF(cover.left() + 7 * u, cover.top() + 0.5), QPointF(cover.right() - 7 * u, cover.top() + 0.5));
+    } else if (category == int(NgKind::Sheet)) {
         const QRectF page = sheet(0.62);
         const qreal left = page.left() + 9 * u, right = page.right() - 9 * u, top = page.top() + 10 * u, rowHeight = 15 * u;
         QColor head = tint;
@@ -3054,7 +3148,7 @@ void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor 
     // ---- the quick actions: icons in one pill, the main one with its label on a tint of the type
     if (!m_ngCardActions.isEmpty()) {
         // the pill of a Tessera comes in and goes out with the hover animation of the card
-        const qreal reveal = m_ngCardHoverPill ? qBound(0.0, hoverOpacity(), 1.0) : 1.0;
+        const qreal reveal = m_ngCardHoverPill ? qBound(0.0, m_ngReveal, 1.0) : 1.0;
         const bool pillShown = !m_ngCardActionsPill.isEmpty() && reveal > 0.01;
         painter->setOpacity(reveal);
         const QRectF pill = m_ngCardActionsPill.adjusted(0.5, 0.5, -0.5, -0.5);
@@ -3215,6 +3309,13 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
                 if (fileItem.isLocalFile()) {
                     quickActions = ngQuickActionsFor(fileItem.localPath(), fileItem.mimetype());
                 }
+                m_ngCardPeek.clear();
+                m_ngCardPeekMore = 0;
+                if (fileItem.isDir() && fileItem.isLocalFile() && ngCardStyle() == NgCardStyle::Tessera) {
+                    const NgFolderPeek peek = ngFolderPeek(fileItem.localPath());
+                    m_ngCardPeek = peek.names;
+                    m_ngCardPeekMore = peek.more;
+                }
             }
         }
     }
@@ -3352,9 +3453,9 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         // first, with its label on the colour of the type; the preview eye is the last button of the same pill.
         if (!quickActions.isEmpty()) {
             const qreal eyeSide = actionHeight - 6;
-            ngLayoutActionPill(quickActions, card.left() + 8, card.top() + 8, card.right() - 8 - (hovered ? eyeSide + 9 : 0), actionHeight, chipFm, false);
+            ngLayoutActionPill(quickActions, card.left() + 8, card.top() + 8, card.right() - 8 - (eyeSide + 9), actionHeight, chipFm, false);
             m_ngCardHoverPill = true;
-            if (hovered && !m_ngCardActionsPill.isEmpty()) {
+            if (!m_ngCardActionsPill.isEmpty()) { // (also while not hovered: the pill keeps its width as it fades out)
                 m_ngCardActionSeps.append(m_ngCardActionsPill.right() + 0.5);
                 m_ngCardEye = QRectF(m_ngCardActionsPill.right() + 4, m_ngCardActionsPill.top() + 3, eyeSide, eyeSide);
                 m_ngCardActionsPill.setRight(m_ngCardEye.right() + 3);
@@ -3678,11 +3779,56 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             wash.setAlphaF(dark ? 0.16 : 0.14);
             painter->fillPath(band, wash);
         }
-        if (!m_ngCardPreview && m_ngCategory != int(NgKind::Folder)) {
-            // no preview: a sketch of what a file of this kind holds, instead of its icon
+        if (!m_ngCardPreview) {
+            // no preview: a sketch of what a file of this kind holds (or of the folder), instead of its icon
             painter->save();
             painter->setClipPath(band, Qt::IntersectClip);
-            ngPaintContentSketch(painter, m_ngCardThumb, m_ngCategory, m_ngSigla, m_ngTint, dark);
+            const QVariant items = data().value("count");
+            int itemCount = items.isValid() && items.typeId() != QMetaType::QString ? items.toInt() : -1;
+            if (itemCount < 0 && m_ngCategory == int(NgKind::Folder) && m_ngCardPeek.isEmpty() && m_ngCardPeekMore == 0) {
+                itemCount = 0; // nothing was found in it: drawn as an empty folder
+            }
+            if (m_ngCategory == int(NgKind::Folder) && !m_ngCardPeek.isEmpty()) {
+                // a folder with something in it: the folder on the left, its first entries listed beside it
+                const QRectF left(m_ngCardThumb.left(), m_ngCardThumb.top(), m_ngCardThumb.width() * 0.40, m_ngCardThumb.height());
+                ngPaintContentSketch(painter, left, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount);
+                QFont peekFont = m_customizedFont;
+                peekFont.setPointSizeF(peekFont.pointSizeF() * 0.84);
+                const QFontMetricsF peekFm(peekFont);
+                const qreal rowHeight = peekFm.height() + 3;
+                const int room = qMax(1, int((m_ngCardThumb.height() - 12) / rowHeight));
+                const bool more = m_ngCardPeekMore != 0 || m_ngCardPeek.count() > room;
+                const int shown = qMin<int>(m_ngCardPeek.count(), more ? room - 1 : room);
+                const qreal x = left.right() + 2, right = m_ngCardThumb.right() - 10;
+                qreal y = m_ngCardThumb.center().y() - (shown + (more ? 1 : 0)) * rowHeight / 2.0;
+                painter->setFont(peekFont);
+                for (int i = 0; i < shown; ++i) {
+                    QString name = m_ngCardPeek.at(i);
+                    const bool folder = name.endsWith(QLatin1Char('/'));
+                    if (folder) {
+                        name.chop(1);
+                    }
+                    const NgKind kind = ngKindFor(name, folder);
+                    painter->setPen(Qt::NoPen);
+                    painter->setBrush(kind.tint);
+                    painter->drawRoundedRect(QRectF(x, y + rowHeight / 2.0 - 3.5, 7, 7), folder ? 2 : 3.5, folder ? 2 : 3.5);
+                    QColor ink = styleOption().palette.color(QPalette::Text);
+                    ink.setAlphaF(0.82);
+                    painter->setPen(ink);
+                    painter->drawText(QRectF(x + 13, y, right - x - 13, rowHeight), Qt::AlignLeft | Qt::AlignVCenter, peekFm.elidedText(name, Qt::ElideMiddle, right - x - 13));
+                    y += rowHeight;
+                }
+                if (more) {
+                    QColor dim = styleOption().palette.color(QPalette::Text);
+                    dim.setAlphaF(0.5);
+                    painter->setPen(dim);
+                    const int rest = itemCount > shown ? itemCount - shown : m_ngCardPeekMore > 0 ? m_ngCardPeekMore + m_ngCardPeek.count() - shown : 0;
+                    painter->drawText(QRectF(x + 13, y, right - x - 13, rowHeight), Qt::AlignLeft | Qt::AlignVCenter,
+                                      rest > 0 ? ngTr("+ %1 more", "+ altri %1").arg(rest) : QStringLiteral("…"));
+                }
+            } else {
+                ngPaintContentSketch(painter, m_ngCardThumb, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount);
+            }
             painter->restore();
         } else if (!m_pixmap.isNull()) {
             painter->save();
@@ -3771,8 +3917,8 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
     }
 
     // ---- the preview eye, on a dark disc so that it reads over a picture too
-    if (isHovered() && !m_ngCardEye.isEmpty()) {
-        painter->setOpacity(m_ngCardEyeInPill ? qBound(0.0, hoverOpacity(), 1.0) : 1.0);
+    if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? m_ngReveal > 0.01 : isHovered())) {
+        painter->setOpacity(m_ngCardEyeInPill ? qBound(0.0, m_ngReveal, 1.0) : 1.0);
         if (!m_ngCardEyeInPill) {
             painter->setPen(Qt::NoPen);
             painter->setBrush(QColor(0, 0, 0, 130));
