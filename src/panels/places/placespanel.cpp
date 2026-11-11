@@ -565,6 +565,59 @@ void PlacesPanel::ngSetBottomWidget(QWidget *widget)
 
 // dolphin-ng: when there are more places below (or above) than fit, the list fades out at that edge instead of
 // ending on a row cut in half
+namespace
+{
+// dolphin-ng: with the compositor's blur the glass is see-through, so the list cannot fade "to a colour". This strip
+// lies over one end of the list and blends what is under it into the bare glass: the list is thinned out by a
+// gradient and the glass ground (the window colour, thinned by the dock exactly as around the list) is added back
+// by the same gradient.
+class NgListFade : public QWidget
+{
+public:
+    NgListFade(QWidget *parent, bool top)
+        : QWidget(parent)
+        , m_top(top)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        auto *dock = parentWidget() ? qobject_cast<DolphinDockWidget *>(parentWidget()->parentWidget()) : nullptr;
+        if (!dock) {
+            return;
+        }
+        QLinearGradient mask(0, 0, 0, height());
+        mask.setColorAt(m_top ? 0.0 : 1.0, QColor(0, 0, 0, 255));
+        mask.setColorAt(m_top ? 0.35 : 0.65, QColor(0, 0, 0, 150));
+        mask.setColorAt(m_top ? 1.0 : 0.0, QColor(0, 0, 0, 0));
+        const qreal dpr = devicePixelRatioF();
+        QImage ground((QSizeF(size()) * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+        ground.setDevicePixelRatio(dpr);
+        ground.fill(window()->palette().color(QPalette::Window));
+        {
+            QPainter painter(&ground);
+            painter.save();
+            painter.translate(-mapTo(dock, QPoint(0, 0)));
+            dock->paintNgGlass(painter);
+            painter.restore();
+            painter.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+            painter.fillRect(rect(), mask);
+        }
+        QPainter painter(this);
+        painter.setCompositionMode(QPainter::CompositionMode_DestinationOut);
+        painter.fillRect(rect(), mask);
+        painter.setCompositionMode(QPainter::CompositionMode_Plus);
+        painter.drawImage(QPointF(0, 0), ground);
+    }
+
+private:
+    bool m_top;
+};
+}
+
 void PlacesPanel::ngUpdateFade()
 {
     QScrollBar *bar = verticalScrollBar();
@@ -572,7 +625,29 @@ void PlacesPanel::ngUpdateFade()
     const bool above = bar->value() > bar->minimum();
     // (the effect renders the list off screen at every repaint; with the compositor's blur the window is
     // translucent and that is too slow, so there the list simply ends)
-    if ((!below && !above) || ngSetting("GLASS_MODE").toLower() == QLatin1String("live")) {
+    const bool live = ngSetting("GLASS_MODE").toLower() == QLatin1String("live") && ngSetting("SIDEBAR").toLower() != QLatin1String("plain");
+    if (live) {
+        // two strips over the ends of the list do the fading (cheap: they repaint only their own few rows)
+        if (!m_ngFadeTop) {
+            m_ngFadeTop = new NgListFade(this, true);
+            m_ngFadeBottom = new NgListFade(this, false);
+        }
+        const QRect list = viewport()->geometry();
+        const int strip = qMin(30, list.height() / 3);
+        m_ngFadeTop->setGeometry(list.left(), list.top(), list.width(), strip);
+        m_ngFadeBottom->setGeometry(list.left(), list.bottom() + 1 - strip, list.width(), strip);
+        m_ngFadeTop->setVisible(above);
+        m_ngFadeBottom->setVisible(below);
+        m_ngFadeTop->raise();
+        m_ngFadeBottom->raise();
+        if (m_ngOverlayBar) {
+            m_ngOverlayBar->raise();
+        }
+    } else if (m_ngFadeTop) {
+        m_ngFadeTop->hide();
+        m_ngFadeBottom->hide();
+    }
+    if ((!below && !above) || live) {
         if (viewport()->graphicsEffect()) {
             viewport()->setGraphicsEffect(nullptr);
         }

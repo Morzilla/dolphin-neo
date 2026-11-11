@@ -44,6 +44,8 @@ private:
     void ngPlaceScrollBar();
     class QScrollBar *m_ngOverlayBar = nullptr;
     bool m_ngFadeWatched = false;
+    QWidget *m_ngFadeTop = nullptr; // live blur: the list fades into the glass where it continues, see ngUpdateFade()
+    QWidget *m_ngFadeBottom = nullptr;
     QWidget *m_ngBottom = nullptr;
     bool m_ngLayouting = false;
     bool m_ngDevicesPending = false;
