@@ -67,7 +67,9 @@ if [ "$DEPS" = 1 ]; then
     say "installing the build dependencies (sudo)"
     if command -v dnf >/dev/null; then
         # A partly updated system can end up with mixed KDE Frameworks versions: update first if in doubt.
-        sudo dnf install -y git cmake gcc-c++ extra-cmake-modules 'dnf-command(builddep)' poppler-utils qt6-qtmultimedia-devel ImageMagick ffmpeg-free
+        sudo dnf install -y git cmake gcc-c++ extra-cmake-modules 'dnf-command(builddep)' poppler-utils qt6-qtmultimedia-devel ImageMagick
+        # ffmpeg-free conflicts with the RPM Fusion ffmpeg many people have
+        command -v ffmpeg >/dev/null || sudo dnf install -y ffmpeg-free || true
         sudo dnf builddep -y dolphin
         [ "$THEME" = 1 ] && sudo dnf install -y kvantum || true
     elif command -v apt-get >/dev/null; then
