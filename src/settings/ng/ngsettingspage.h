@@ -82,6 +82,7 @@ private:
     QCheckBox *m_icons;
     QCheckBox *m_ago;
     QCheckBox *m_rowDates;
+    QCheckBox *m_rowWash; // the colour of the type fading into the row
     QCheckBox *m_hoverPreview;
     QCheckBox *m_folderSizes;
     QSpinBox *m_hoverDelay;

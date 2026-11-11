@@ -184,9 +184,11 @@ void ngGlyph(QPainter &painter, const QRectF &rect, const QColor &colour, qreal 
 }
 
 // One row of the miniature list: `background` is card | open | line | stripe | none
-void ngMiniRow(QPainter &painter, const QRectF &row, const QString &background, const QString &mark, const QColor &kind, bool odd, bool twoLines, bool thumb,
-               bool actions, const QPalette &palette)
+// (`washKind` invalid: no colour wash; the mark and the chip keep the colour of the type, `markKind`)
+void ngMiniRow(QPainter &painter, const QRectF &row, const QString &background, const QString &mark, const QColor &washKind, bool odd, bool twoLines, bool thumb,
+               bool actions, const QPalette &palette, const QColor &markKind = QColor())
 {
+    const QColor kind = markKind.isValid() ? markKind : washKind;
     painter.setPen(Qt::NoPen);
     if (background == QLatin1String("card")) {
         painter.setBrush(ngInk(palette, 0.06));
@@ -194,7 +196,7 @@ void ngMiniRow(QPainter &painter, const QRectF &row, const QString &background, 
     } else if (background == QLatin1String("stripe") && odd) {
         painter.fillRect(row, ngInk(palette, 0.07));
     }
-    if (background == QLatin1String("card") || background == QLatin1String("open") || background == QLatin1String("line")) {
+    if (washKind.isValid() && (background == QLatin1String("card") || background == QLatin1String("open") || background == QLatin1String("line"))) {
         QLinearGradient wash(row.left(), 0, row.left() + row.width() * 0.5, 0);
         wash.setColorAt(0.0, ngWithAlpha(kind, 0.26));
         wash.setColorAt(1.0, ngWithAlpha(kind, 0.0));
@@ -691,6 +693,7 @@ public:
         setFixedSize(250, 184);
     }
     QString side = QStringLiteral("plain"), rim, rows = QStringLiteral("card"), mark, card = QStringLiteral("a");
+    bool wash = true;
     bool filters = true, twoLines = true, classicIcons = false, stretch = false, typeBackground = false, cardsView = false, quickView = false;
     QString quickSide;
 
@@ -750,7 +753,8 @@ protected:
             const qreal rowHeight = items.height() / 6;
             for (int i = 0; i < 6; ++i) {
                 ngMiniRow(painter, QRectF(items.left(), items.top() + i * rowHeight, items.width(), rowHeight - (rows == QLatin1String("card") ? 3 : 0)),
-                          twoLines ? rows : QStringLiteral("stripe"), classicIcons ? QStringLiteral("tile") : mark, kinds[i], i % 2, twoLines, twoLines && i == 2, true, pal);
+                          twoLines ? rows : QStringLiteral("stripe"), classicIcons ? QStringLiteral("tile") : mark, wash ? kinds[i] : QColor(), i % 2, twoLines,
+                          twoLines && i == 2, true, pal, kinds[i]);
             }
         }
         if (quickView) {
@@ -1040,6 +1044,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     tilesFor(m_sigla, QStringLiteral("sigla"), ngTr("Watermark letters", "Sigla della filigrana"),
              {{ngTr("Filled and faint", "Piena e tenue"), {}}, {ngTr("Outline only", "Solo contorno"), {}}, {ngTr("Small label", "Etichetta piccola"), {}}}, 5);
     heading(ngTr("What each row shows", "Cosa mostra ogni riga"));
+    m_rowWash = toggle(ngTr("The colour of the type fades into the row", "Il colore del tipo sfuma nella riga"));
     m_icons = toggle(ngTr("Classic icon instead of the type mark", "Icona classica invece del segno del tipo"));
     m_ago = toggle(ngTr("Days elapsed, under the date", "Giorni trascorsi, sotto la data"));
     m_rowDates = toggle(ngTr("Created and modified, with the days elapsed", "Creato e modificato, con i giorni trascorsi"));
@@ -1133,7 +1138,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
                  {m_motion, "GLASS_MOTION"}, {m_lavaStyle, "LAVA_STYLE"}, {m_lavaSize, "LAVA_SIZE"}, {m_lavaColours, "LAVA_COLORS"}, {m_lavaSpeed, "LAVA_SPEED"},
                  {m_rim, "GLASS_RIM"},      {m_devices, "DEVICES"},     {m_twoLines, "LIST"},        {m_rows, "ROWS"},        {m_icons, "ICONS"},
                  {m_mark, "MARK"},          {m_sigla, "SIGLA"},         {m_ago, "DATE_AGO"},         {m_tiles, "TILES"},          {m_rowDates, "ROW_DATES"},
-                 {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}, {m_cardsInfo, "CARDS_INFO"}, {m_cardsMark, "CARDS_MARK"}, {m_sidebarFilters, "SIDEBAR_FILTERS"}};
+                 {m_rowWash, "ROW_WASH"}, {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}, {m_cardsInfo, "CARDS_INFO"}, {m_cardsMark, "CARDS_MARK"}, {m_sidebarFilters, "SIDEBAR_FILTERS"}};
     for (const auto &entry : bound) {
         entry.widget->setEnabled(!ngSettingFromEnvironment(entry.name));
     }
@@ -1143,7 +1148,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_sideRow->setEnabled(m_glassPanel->isEnabled() && m_backdrop->isEnabled());
     quickSideRow->setEnabled(m_quickView->isChecked());
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters}) {
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters, m_rowWash}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
@@ -1191,6 +1196,7 @@ void NgSettingsPage::updatePreview()
     m_preview->rows = m_rows->currentData().toString();
     m_preview->mark = m_mark->currentData().toString();
     m_preview->classicIcons = m_icons->isChecked();
+    m_preview->wash = m_rowWash->isChecked();
     m_preview->card = m_cards->currentData().toString();
     m_preview->stretch = m_cardsFit->currentIndex() == 1;
     m_preview->typeBackground = m_cardsMark->currentIndex() == 1;
@@ -1268,6 +1274,7 @@ void NgSettingsPage::loadSettings()
     m_sigla->setCurrentIndex(qMax(0, m_sigla->findData(ngSetting("SIGLA", QStringLiteral("fill")).toLower())));
     m_ago->setChecked(ngSetting("DATE_AGO").toLower() != QLatin1String("hide"));
     m_rowDates->setChecked(ngSetting("ROW_DATES").toLower() != QLatin1String("hide"));
+    m_rowWash->setChecked(ngSetting("ROW_WASH").toLower() != QLatin1String("hide"));
     m_folderSizes->setChecked(ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentSize);
     const int hover = ngSettingInt("PREVIEW_HOVER", 0);
     m_hoverPreview->setChecked(hover > 0);
@@ -1324,6 +1331,7 @@ void NgSettingsPage::applySettings()
     setNgSetting("SIGLA", m_sigla->currentData().toString());
     setNgSetting("DATE_AGO", m_ago->isChecked() ? QString() : QStringLiteral("hide"));
     setNgSetting("ROW_DATES", m_rowDates->isChecked() ? QString() : QStringLiteral("hide"));
+    setNgSetting("ROW_WASH", m_rowWash->isChecked() ? QString() : QStringLiteral("hide"));
     if (m_folderSizes->isChecked() != (ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentSize)) {
         ContentDisplaySettings::setDirectorySizeMode(m_folderSizes->isChecked() ? ContentDisplaySettings::EnumDirectorySizeMode::ContentSize
                                                                                 : ContentDisplaySettings::EnumDirectorySizeMode::ContentCount);
@@ -1363,6 +1371,7 @@ void NgSettingsPage::restoreDefaults()
     m_sigla->setCurrentIndex(0);
     m_ago->setChecked(true);
     m_rowDates->setChecked(true);
+    m_rowWash->setChecked(true);
     m_hoverPreview->setChecked(false);
     m_hoverDelay->setValue(700);
     m_float->setChecked(false);

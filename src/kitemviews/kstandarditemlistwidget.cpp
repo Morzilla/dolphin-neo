@@ -680,10 +680,12 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         // the row takes the colour of the file's category, strongest at the start and gone by the middle
         // (dithered: so faint a gradient over so many pixels shows as bands when it is drawn plain)
         const int washWidth = qMax(8, qRound(rowRect.width() * (openRows ? 0.40 : 0.62)));
-        painter->setBrushOrigin(rowRect.topLeft());
-        painter->fillRect(QRectF(rowRect.left(), rowRect.top(), washWidth, rowRect.height()),
-                          QBrush(ngDitheredWash(m_ngTint, washWidth, openRows ? 0.14 : 0.22, openRows ? 0.05 : 0.06, 0.55)));
-        painter->setBrushOrigin(QPointF(0, 0));
+        if (ngSetting("ROW_WASH").toLower() != QLatin1String("hide")) {
+            painter->setBrushOrigin(rowRect.topLeft());
+            painter->fillRect(QRectF(rowRect.left(), rowRect.top(), washWidth, rowRect.height()),
+                              QBrush(ngDitheredWash(m_ngTint, washWidth, openRows ? 0.14 : 0.22, openRows ? 0.05 : 0.06, 0.55)));
+            painter->setBrushOrigin(QPointF(0, 0));
+        }
 
         // a file with a preview (pictures, PDFs, videos) shows it, small, where the mark of its type would be;
         // resting on it opens the quick view, as on the cards
