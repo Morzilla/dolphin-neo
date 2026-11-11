@@ -1122,7 +1122,12 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
         m_pages->setCurrentIndex(index);
         updatePreview();
     });
-    tabGroup->button(0)->setChecked(true);
+    {
+        // DOLPHIN_NG_SETTINGS_TAB=0..4 opens the page on that tab (screenshots, links from elsewhere)
+        const int first = qBound(0, qEnvironmentVariableIntValue("DOLPHIN_NG_SETTINGS_TAB"), m_pages->count() - 1);
+        tabGroup->button(first)->setChecked(true);
+        m_pages->setCurrentIndex(first);
+    }
 
     loadSettings();
     for (const auto &sync : std::as_const(m_syncs)) {
