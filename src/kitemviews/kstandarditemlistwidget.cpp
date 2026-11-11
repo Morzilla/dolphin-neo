@@ -3517,6 +3517,16 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             const int first = m_ngChips.count();
             chipRow(card.left() + 8, m_ngCardThumb.bottom() - chipHeight - 7, card.right() - 8, {m_ngSigla, sizeText, countText}, 1);
             if (m_ngChips.count() > first) {
+                // they are the parts of one badge: side by side without a gap, with the padding of the mockup
+                // (6 px above and below the text, 10 px at the ends)
+                const qreal badgeHeight = chipFm.height() + 11;
+                qreal next = m_ngChips.at(first).rect.left();
+                for (int i = first; i < m_ngChips.count(); ++i) {
+                    NgChip &chip = m_ngChips[i];
+                    const qreal width = chipFm.horizontalAdvance(chip.text) * (chip.tinted ? 1.12 : 1.0) + 19; // the type is bold
+                    chip.rect = QRectF(next, m_ngCardThumb.bottom() - 8 - badgeHeight, width, badgeHeight);
+                    next = chip.rect.right();
+                }
                 const qreal shift = card.right() - 8 - m_ngChips.constLast().rect.right();
                 for (int i = first; i < m_ngChips.count(); ++i) {
                     m_ngChips[i].rect.translate(shift, 0);
@@ -3964,7 +3974,48 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
         chipFont.setPointSizeF(chipFont.pointSizeF() * 0.88);
         painter->setFont(chipFont);
         const int ink = dark ? 255 : 0;
+        // Tessera: the chips on the band are one badge in two halves: the type on its full colour, the rest on dark
+        QRectF badge;
+        if (look == NgCardStyle::Tessera) {
+            for (const NgChip &chip : std::as_const(m_ngChips)) {
+                if (m_ngCardThumb.contains(chip.rect.center())) {
+                    badge = badge.isNull() ? chip.rect : badge.united(chip.rect);
+                }
+            }
+        }
+        if (!badge.isNull()) {
+            const qreal radius = badge.height() / 2.0;
+            QPainterPath shape;
+            shape.addRoundedRect(badge, radius, radius);
+            painter->save();
+            painter->setPen(Qt::NoPen);
+            for (int i = 3; i >= 1; --i) { // a soft shadow under it, so that it lifts off a picture
+                painter->setBrush(QColor(0, 0, 0, 26));
+                painter->drawRoundedRect(badge.translated(0, 1.5).adjusted(-i, -i + 1, i, i), radius + i, radius + i);
+            }
+            painter->setClipPath(shape, Qt::IntersectClip);
+            painter->fillRect(badge, dark ? QColor(14, 15, 18, 240) : QColor(252, 252, 252, 242));
+            for (const NgChip &chip : std::as_const(m_ngChips)) {
+                if (chip.tinted && badge.contains(chip.rect.center())) {
+                    painter->fillRect(chip.rect, m_ngTint);
+                }
+            }
+            painter->restore();
+        }
         for (const NgChip &chip : std::as_const(m_ngChips)) {
+            if (!badge.isNull() && badge.contains(chip.rect.center())) {
+                QFont badgeFont = chipFont;
+                badgeFont.setWeight(chip.tinted ? QFont::Bold : QFont::Normal);
+                if (chip.tinted) {
+                    badgeFont.setLetterSpacing(QFont::PercentageSpacing, 104);
+                }
+                painter->setFont(badgeFont);
+                painter->setPen(chip.tinted ? QColor(20, 22, 26) : text);
+                // the two halves lean towards the join: 10 px at the outer end, 8 at the inner one
+                painter->drawText(chip.rect.adjusted(chip.tinted ? 1 : -1, 0, chip.tinted ? 1 : -1, 0), Qt::AlignCenter, chip.text);
+                painter->setFont(chipFont);
+                continue;
+            }
             QColor fill = chip.tinted ? m_ngTint : QColor(ink, ink, ink);
             fill.setAlpha(chip.tinted ? (dark ? 34 : 40) : (dark ? 18 : 16));
             QColor edge = chip.tinted ? m_ngTint : QColor(ink, ink, ink);
