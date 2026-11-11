@@ -231,8 +231,20 @@ QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &
 static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime)
 {
     QList<NgQuickAction> actions;
-    if (localPath.isEmpty() || mime.isEmpty() || mime == QLatin1String("inode/directory")) {
+    if (localPath.isEmpty() || mime.isEmpty()) {
         return actions;
+    }
+    if (mime == QLatin1String("inode/directory")) {
+        // a folder: only cut and copy (a click opens it, there is nothing to convert or extract)
+        NgQuickAction cut;
+        cut.label = ngTr("Cut", "Taglia");
+        cut.program = QStringLiteral("@cut");
+        cut.icon = QStringLiteral("edit-cut");
+        NgQuickAction copy;
+        copy.label = ngTr("Copy", "Copia");
+        copy.program = QStringLiteral("@copy");
+        copy.icon = QStringLiteral("edit-copy");
+        return {cut, copy};
     }
     const QFileInfo info(localPath);
     const QString base = info.completeBaseName();

@@ -2384,7 +2384,7 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
                 if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
                     const KFileItem fileItem = fileModel->fileItem(index());
-                    if (!fileItem.isNull() && !fileItem.isDir() && fileItem.isLocalFile()) {
+                    if (!fileItem.isNull() && fileItem.isLocalFile()) {
                         rowActions = ngQuickActionsFor(fileItem.localPath(), fileItem.mimetype());
                     }
                 }
@@ -2969,7 +2969,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
                 if (!modified.isValid()) {
                     modified = fileItem.time(KFileItem::ModificationTime);
                 }
-                if (!isDir && fileItem.isLocalFile()) {
+                if (fileItem.isLocalFile()) {
                     quickActions = ngQuickActionsFor(fileItem.localPath(), fileItem.mimetype());
                 }
             }
