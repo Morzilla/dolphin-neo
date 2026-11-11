@@ -3316,6 +3316,16 @@ void KStandardItemListWidget::ngPlaceCardPixmap()
     m_iconRect = QRectF(m_pixmapPos, QSizeF(m_scaledPixmapSize)).intersected(area);
 }
 
+bool KStandardItemListWidget::ngOwnSelection() const
+{
+    return m_layout == CardsLayout || KItemListWidget::ngOwnSelection();
+}
+
+qreal KStandardItemListWidget::ngSelectionRadius() const
+{
+    return m_layout == CardsLayout ? 12 : 9;
+}
+
 void KStandardItemListWidget::paintNgCardSheet(QPainter *painter)
 {
     // a dark rounded sheet with a hairline of light along its top edge, like the tiles of the icons view

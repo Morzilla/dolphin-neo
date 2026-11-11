@@ -783,8 +783,8 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     : SettingsPageBase(parent)
 {
     auto *outer = new QHBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
-    outer->setSpacing(18);
+    outer->setContentsMargins(14, 4, 0, 0);
+    outer->setSpacing(20);
 
     // ---- left: the miniature ----------------------------------------------------------------------------
     auto *left = new QVBoxLayout();

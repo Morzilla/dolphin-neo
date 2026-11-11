@@ -24,6 +24,7 @@
 #include <KMessageBox>
 #include <KRuntimePlatform>
 #include <KWindowConfig>
+#include <QScreen>
 
 #include <kwidgetsaddons_version.h>
 
@@ -127,7 +128,15 @@ DolphinSettingsDialog::DolphinSettingsDialog(const QUrl &url, QWidget *parent, K
     connect(box->button(QDialogButtonBox::RestoreDefaults), &QAbstractButton::clicked, this, &DolphinSettingsDialog::restoreDefaults);
 
     const KConfigGroup dialogConfig(KSharedConfig::openStateConfig(), QStringLiteral("SettingsDialog"));
+    // dolphin-ng: the stored size needs the native window, which does not exist yet in the constructor (the
+    // dialog used to open at its minimum size every time); and the NG page wants room for its tiles
+    winId();
     KWindowConfig::restoreWindowSize(windowHandle(), dialogConfig);
+    QSize wanted = size().expandedTo(QSize(1080, 720));
+    if (const QScreen *target = parent && parent->screen() ? parent->screen() : screen()) {
+        wanted = wanted.boundedTo(target->availableGeometry().size() - QSize(60, 80));
+    }
+    resize(wanted);
 }
 
 DolphinSettingsDialog::~DolphinSettingsDialog()

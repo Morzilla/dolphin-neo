@@ -362,6 +362,14 @@ private:
     void setHoverOpacity(qreal opacity);
     void drawItemStyleOption(QPainter *painter, QWidget *widget, QStyle::State styleState);
 
+protected:
+    /** dolphin-ng: true if this item paints its own hover and selection (two-line rows, cards). */
+    virtual bool ngOwnSelection() const;
+    /** dolphin-ng: the corner radius of that shape; above 10 the shape is the whole item (a card). */
+    virtual qreal ngSelectionRadius() const;
+
+private:
+
 private:
     KItemListWidgetInformant *m_informant;
     int m_index;

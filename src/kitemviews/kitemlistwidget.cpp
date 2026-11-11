@@ -1062,35 +1062,67 @@ void KItemListWidget::setPressed(bool enabled)
     }
 }
 
+bool KItemListWidget::ngOwnSelection() const
+{
+    return m_alternateBackground && ngTwoLineList();
+}
+
+qreal KItemListWidget::ngSelectionRadius() const
+{
+    return 9;
+}
+
 void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QStyle::State styleState)
 {
-    if (m_alternateBackground && ngTwoLineList()) {
-        // dolphin-ng: the rows draw their own hover and selection, so the look does not depend on the widget
-        // style (Breeze would fill the whole row with the highlight colour): a neutral veil, stronger on the left
+    if (ngOwnSelection()) {
+        // dolphin-ng: rows and cards draw their own hover and selection, so the look does not depend on the widget
+        // style. Hover is a neutral veil; the selection takes the accent colour, with an edge that catches the
+        // light at the top left and fades towards the bottom right.
         const bool selected = styleState & QStyle::State_Selected;
         const bool hovered = styleState & QStyle::State_MouseOver;
         if (!selected && !hovered) {
             return;
         }
         const bool dark = ngIsDark(widget ? widget->palette() : m_styleOption.palette);
-        const QRectF card = selectionRectFull().adjusted(3, 3, -3, -3);
-        const qreal strength = selected ? (hovered ? 1.0 : 0.85) : 0.35;
-        QLinearGradient veil(card.topLeft(), card.topRight());
-        const int base = dark ? 255 : 0;
-        veil.setColorAt(0.0, QColor(base, base, base, qRound((dark ? 72 : 40) * strength)));
-        veil.setColorAt(1.0, QColor(base, base, base, qRound((dark ? 18 : 10) * strength)));
+        const qreal radius = ngSelectionRadius();
+        const QRectF card = radius > 10 ? selectionRectFull() : selectionRectFull().adjusted(3, 3, -3, -3);
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
-        painter->setPen(Qt::NoPen);
-        painter->setBrush(veil);
-        painter->drawRoundedRect(card, 5, 5);
-        if (selected) {
-            // a thin edge in the highlight colour marks the selection without filling it
-            QColor edge = m_styleOption.palette.color(QPalette::Highlight);
-            edge.setAlphaF(0.55);
+        if (!selected) {
+            QLinearGradient veil(card.topLeft(), card.topRight());
+            const int base = dark ? 255 : 0;
+            veil.setColorAt(0.0, QColor(base, base, base, dark ? 25 : 14));
+            veil.setColorAt(1.0, QColor(base, base, base, dark ? 7 : 4));
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(veil);
+            painter->drawRoundedRect(card, radius, radius);
+        } else {
+            // the accent of the colour scheme, lifted when it is a dark one: as a faint fill it would not show
+            QColor accent = m_styleOption.palette.color(QPalette::Highlight);
+            if (dark && accent.lightness() < 150) {
+                accent = QColor::fromHsl(accent.hslHue() < 0 ? 210 : accent.hslHue(), qMax(accent.hslSaturation(), 150), 150);
+            }
+            QColor fill = accent;
+            fill.setAlphaF(hovered ? 0.34 : 0.26);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(fill);
+            painter->drawRoundedRect(card, radius, radius);
+            const QRectF line = card.adjusted(0.6, 0.6, -0.6, -0.6);
+            QColor bright = accent.lighter(dark ? 150 : 110), mid = accent, faint = accent;
+            bright.setAlphaF(0.95);
+            mid.setAlphaF(0.55);
+            faint.setAlphaF(0.22);
+            QLinearGradient edge(line.topLeft(), QPointF(line.left() + qMin(line.width(), line.height() * 6), line.bottom()));
+            edge.setColorAt(0.0, bright);
+            edge.setColorAt(0.35, mid);
+            edge.setColorAt(1.0, faint);
             painter->setBrush(Qt::NoBrush);
-            painter->setPen(QPen(edge, 1));
-            painter->drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), 5, 5);
+            painter->setPen(QPen(QBrush(edge), 1.2));
+            painter->drawRoundedRect(line, radius, radius);
+            // a hairline of light just inside the top edge
+            painter->setClipRect(QRectF(card.left(), card.top(), card.width(), radius + 2), Qt::IntersectClip);
+            painter->setPen(QPen(QColor(255, 255, 255, dark ? 30 : 110), 1));
+            painter->drawRoundedRect(card.adjusted(1.6, 1.6, -1.6, -1.6), radius - 1, radius - 1);
         }
         painter->restore();
         return;

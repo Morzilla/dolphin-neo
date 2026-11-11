@@ -221,6 +221,8 @@ private:
     void updateCardsLayoutTextCache();
     void ngPlaceCardPixmap();
     void paintNgCardSheet(QPainter *painter);
+    bool ngOwnSelection() const override;
+    qreal ngSelectionRadius() const override;
     void paintNgCard(QPainter *painter, QWidget *widget);
     qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight);
     void paintNgActionPill(QPainter *painter, const QColor &text, bool dark);
