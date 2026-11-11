@@ -1818,7 +1818,8 @@ private:
         if (y + height > area.bottom() - 6) {
             y = toHost(m_rowRect.topLeft()).y() - height - 2; // no room below: open above the row
         }
-        int x = below.x() + 3;
+        // rows: the eye is at the right end of the row, so the card hangs from that end, under the eye
+        int x = toHost(m_rowRect.bottomRight()).x() - width - 3;
         if (m_view->viewMode() == DolphinView::CardsView) {
             // cards: the popup opens at the pointer (the eye is in a corner of the card, far from its bottom left),
             // below and to the right of it, or on the other side where there is no room
@@ -1885,7 +1886,16 @@ private:
         // everything else: the type icon at once, then a thumbnail from KIO, then (pictures only) the picture itself,
         // so that zooming in shows real detail
         m_stack->setCurrentWidget(m_image);
-        m_image->setPixmap(QIcon::fromTheme(m_item.iconName()).pixmap(96, 96));
+        {
+            // the icon keeps its size in the middle of the frame: the view fits what it is given to the frame, and
+            // a bare 96 px icon came out several times larger and blurred
+            QPixmap canvas(640, 420);
+            canvas.fill(Qt::transparent);
+            QPainter iconPainter(&canvas);
+            QIcon::fromTheme(m_item.iconName()).paint(&iconPainter, QRect((canvas.width() - 144) / 2, (canvas.height() - 144) / 2, 144, 144));
+            iconPainter.end();
+            m_image->setPixmap(canvas);
+        }
         updateVideoBar();
         const QUrl url = m_item.url();
         if (m_kind == Animation && !path.isEmpty()) {
