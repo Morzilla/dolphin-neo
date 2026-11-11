@@ -1100,7 +1100,7 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
     if (m_layout == DetailsLayout && ngTwoLineList() && m_ngCardActionsPill.contains(pos)) {
         for (int i = 0; i < m_ngCardActions.count(); ++i) {
             if (m_ngCardActions.at(i).rect.contains(pos)) {
-                return 10 + i;
+                return 10 + m_ngCardActionIndex.value(i, i);
             }
         }
         return 0; // on the pill, between two buttons: not the row's own buttons
@@ -1111,8 +1111,12 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
     if (m_layout == CardsLayout) {
         const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
         for (int i = 0; i < m_ngCardActions.count(); ++i) {
-            if (m_ngCardActions.at(i).rect.contains(pos)) {
-                return 10 + i;
+            const QRectF &rect = m_ngCardActions.at(i).rect;
+            if (m_ngCardHoverPill && !isHovered() && !m_ngCardFab.contains(rect.center())) {
+                continue; // in the pill that is not shown now
+            }
+            if (rect.contains(pos)) {
+                return 10 + m_ngCardActionIndex.value(i, i);
             }
         }
         if (!isHovered()) {
@@ -2390,6 +2394,9 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
 
         // ---- the quick actions of the file, as on the cards: one pill at the end of the text column, before the dates
         m_ngCardActions.clear();
+        m_ngCardActionIndex.clear();
+        m_ngCardFab = QRectF();
+        m_ngCardHoverPill = false;
         m_ngCardActionIcons.clear();
         m_ngCardActionSeps.clear();
         m_ngCardActionsPill = QRectF();
@@ -2760,7 +2767,8 @@ void KStandardItemListWidget::drawSiblingsInformation(QPainter *painter)
 
 // dolphin-ng: lays out the pill of quick actions (cards and two-line rows). With alignRight the pill ends at
 // `right` and `x` is the leftmost place it may start from.
-qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight)
+qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
+                                                  const QList<int> &origin)
 {
     const KItemListStyleOption &option = styleOption();
     const qreal dpr = KItemViewsUtils::devicePixelRatio(this);
@@ -2828,6 +2836,7 @@ qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &qu
         chip.rect = QRectF(cx, y + inner, item.width, actionHeight - 2 * inner);
         chip.tinted = action.main;
         m_ngCardActions.append(chip);
+        m_ngCardActionIndex.append(origin.isEmpty() ? item.index : origin.value(item.index, item.index)); // a part of the list keeps its numbering
         // rendered once per icon and kept: this runs for every card at every layout
         static QHash<QString, QPixmap> iconCache;
         const QColor glyphColor = option.palette.color(QPalette::Text);
@@ -2856,17 +2865,30 @@ void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor 
     painter->setRenderHint(QPainter::Antialiasing);
     // ---- the quick actions: icons in one pill, the main one with its label on a tint of the type
     if (!m_ngCardActions.isEmpty()) {
+        const bool pillShown = !m_ngCardActionsPill.isEmpty() && (!m_ngCardHoverPill || isHovered());
         const QRectF pill = m_ngCardActionsPill.adjusted(0.5, 0.5, -0.5, -0.5);
         QColor edge = text;
-        edge.setAlphaF(0.13);
-        painter->setPen(QPen(edge, 1));
-        painter->setBrush(dark ? QColor(0, 0, 0, 72) : QColor(255, 255, 255, 130));
-        painter->drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0);
-        QColor hairline = text;
-        hairline.setAlphaF(0.18);
-        painter->setPen(QPen(hairline, 1));
-        for (const qreal x : std::as_const(m_ngCardActionSeps)) {
-            painter->drawLine(QPointF(x, pill.top() + 6), QPointF(x, pill.bottom() - 6));
+        edge.setAlphaF(m_ngCardHoverPill ? 0.22 : 0.13);
+        if (pillShown) {
+            painter->setPen(QPen(edge, 1));
+            // over a picture the pill needs a darker ground than over the sheet of the card
+            painter->setBrush(m_ngCardHoverPill ? (dark ? QColor(12, 13, 16, 190) : QColor(250, 250, 250, 215)) : (dark ? QColor(0, 0, 0, 72) : QColor(255, 255, 255, 130)));
+            painter->drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0);
+            QColor hairline = text;
+            hairline.setAlphaF(0.18);
+            painter->setPen(QPen(hairline, 1));
+            for (const qreal x : std::as_const(m_ngCardActionSeps)) {
+                painter->drawLine(QPointF(x, pill.top() + 6), QPointF(x, pill.bottom() - 6));
+            }
+        }
+        if (!m_ngCardFab.isEmpty()) {
+            // the main action: an opaque pill of its own, half on the picture and half on the sheet
+            const QRectF fab = m_ngCardFab.adjusted(0.5, 0.5, -0.5, -0.5);
+            QColor rim = text;
+            rim.setAlphaF(0.26);
+            painter->setPen(QPen(rim, 1));
+            painter->setBrush(dark ? QColor(22, 23, 27) : QColor(250, 250, 250));
+            painter->drawRoundedRect(fab, fab.height() / 2.0, fab.height() / 2.0);
         }
         QFont chipFont = m_customizedFont;
         chipFont.setPointSizeF(chipFont.pointSizeF() * 0.88);
@@ -2875,6 +2897,9 @@ void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor 
         for (int i = 0; i < m_ngCardActions.count(); ++i) {
             const NgChip &chip = m_ngCardActions.at(i);
             const QPixmap &icon = m_ngCardActionIcons.at(i);
+            if (!pillShown && !m_ngCardFab.contains(chip.rect.center())) {
+                continue; // a button of the pill that is hidden now
+            }
             if (!chip.text.isEmpty()) {
                 QColor tint = m_ngTint;
                 tint.setAlpha(dark ? 64 : 70);
@@ -2913,6 +2938,9 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     m_ngCardEye = QRectF();
     m_ngCardMenu = QRectF();
     m_ngCardActions.clear();
+    m_ngCardActionIndex.clear();
+    m_ngCardFab = QRectF();
+    m_ngCardHoverPill = false;
     m_ngCardActionIcons.clear();
     m_ngCardActionSeps.clear();
     m_ngCardActionsPill = QRectF();
@@ -3119,7 +3147,30 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         m_ngCardIconSide = showPicture ? qMin<qreal>(option.iconSize, bandHeight * 0.56) : 0;
         const qreal x0 = card.left() + pad;
         const qreal right = card.right() - pad;
-        qreal y = m_ngCardThumb.bottom() + pad * 0.8;
+        // The actions (arrangement B): the main one, with its label, is always there, astride the bottom edge of the
+        // band at the right; everything else is one pill over the top left of the band, shown while the card is hovered.
+        int mainAt = -1;
+        QList<NgQuickAction> others;
+        QList<int> otherAt;
+        for (int i = 0; i < quickActions.count(); ++i) {
+            if (quickActions.at(i).main && mainAt < 0) {
+                mainAt = i;
+            } else {
+                others.append(quickActions.at(i));
+                otherAt.append(i);
+            }
+        }
+        if (mainAt >= 0) {
+            ngLayoutActionPill({quickActions.at(mainAt)}, x0, m_ngCardThumb.bottom() - actionHeight / 2.0, right, actionHeight, chipFm, true, {mainAt});
+            m_ngCardFab = m_ngCardActionsPill;
+            m_ngCardActionsPill = QRectF();
+        }
+        if (!others.isEmpty()) {
+            const qreal eyeRoom = actionSide + 2 + 12; // the preview eye is in the top right corner
+            ngLayoutActionPill(others, card.left() + 8, card.top() + 8, card.right() - eyeRoom, actionHeight, chipFm, false, otherAt);
+            m_ngCardHoverPill = true;
+        }
+        qreal y = m_ngCardThumb.bottom() + (m_ngCardFab.isEmpty() ? pad * 0.8 : qMax(pad * 0.8, actionHeight / 2.0 + 5));
         actionsAt(right, y - 2);
         setName(x0, y, right - x0);
         y += nameFm.height() + 6;
@@ -3149,7 +3200,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             labelWidth = qMax(labelWidth, smallFm.horizontalAdvance(line.label));
         }
         labelWidth += 10;
-        const qreal actionsHeight = quickActions.isEmpty() ? 0 : actionHeight + 6;
+        const qreal actionsHeight = 0; // the actions are on the band now: the lines have the card down to its foot
         const int fit = qBound(0, int((card.bottom() - pad - actionsHeight - y) / lineHeight), int(lines.count()));
         qreal lineY = y; // the lines follow the chips
         for (int i = 0; i < fit; ++i) {
@@ -3160,10 +3211,6 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             Q_UNUSED(valueFm)
             putRich(line.value, x0 + labelWidth, lineY + smallFm.ascent(), right - x0 - labelWidth, valueFont, 0);
             lineY += lineHeight;
-        }
-        if (!quickActions.isEmpty()) {
-            // the quick actions sit at the bottom of the card
-            actionRow(x0, card.bottom() - pad - actionHeight, right);
         }
     } else if (look == NgCardStyle::Scheda) {
         // +------+  Name

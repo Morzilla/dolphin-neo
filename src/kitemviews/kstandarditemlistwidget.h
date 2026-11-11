@@ -224,7 +224,8 @@ private:
     bool ngOwnSelection() const override;
     qreal ngSelectionRadius() const override;
     void paintNgCard(QPainter *painter, QWidget *widget);
-    qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight);
+    qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
+                             const QList<int> &origin = {});
     void paintNgActionPill(QPainter *painter, const QColor &text, bool dark);
 
     /** Draw the icon overlays at a fixed size in the corners of the on-screen
@@ -342,6 +343,9 @@ private:
     QList<QPixmap> m_ngCardActionIcons; // one per entry of m_ngCardActions
     QList<qreal> m_ngCardActionSeps; // x of the hairlines between the groups
     QRectF m_ngCardActionsPill;
+    QRectF m_ngCardFab; // Tessera: the main action on its own, astride the bottom edge of the picture band
+    bool m_ngCardHoverPill = false; // Tessera: the pill (everything but the main action) shows only while hovered
+    QList<int> m_ngCardActionIndex; // one per entry of m_ngCardActions: which quick action of the file it is
     QRectF m_ngRowThumb; // two-line rows: where the small preview is drawn (empty: the type mark is shown)
     QPixmap m_ngRowThumbPixmap;
     qint64 m_ngRowThumbKey = 0;
