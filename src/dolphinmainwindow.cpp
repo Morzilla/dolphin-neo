@@ -209,9 +209,8 @@ DolphinMainWindow::DolphinMainWindow()
         const bool translucent = !DolphinDockWidget::ngGlassPlain() && !DolphinDockWidget::ngGlassImageMode();
         if (translucent != testAttribute(Qt::WA_TranslucentBackground)) {
             setAttribute(Qt::WA_TranslucentBackground, translucent); // Qt re-creates the native window for this
-            if (windowHandle()) {
-                KWindowEffects::enableBlurBehind(windowHandle(), translucent);
-            }
+            m_ngBlurSet = false; // a new native window: say it again
+            ngUpdateBlurRegion();
         }
     };
     applyNgWindowSettings();
@@ -650,13 +649,36 @@ bool DolphinMainWindow::event(QEvent *event)
     return KXmlGuiWindow::event(event);
 }
 
+void DolphinMainWindow::ngUpdateBlurRegion()
+{
+    if (!windowHandle()) {
+        return;
+    }
+    // Only the cards of the panels are see-through. Asking for the blur behind the whole window made the
+    // compositor blur again under the file view at every scrolled frame, where nothing of it shows.
+    QRegion region;
+    if (testAttribute(Qt::WA_TranslucentBackground)) {
+        const auto docks = findChildren<DolphinDockWidget *>();
+        for (const DolphinDockWidget *dock : docks) {
+            if (dock->isVisible() && !dock->isFloating()) {
+                region += QRect(dock->mapTo(this, QPoint(6, 6)), dock->size() - QSize(12, 12));
+            }
+        }
+    }
+    if (m_ngBlurSet && region == m_ngBlurRegion) {
+        return;
+    }
+    m_ngBlurSet = true;
+    m_ngBlurRegion = region;
+    KWindowEffects::enableBlurBehind(windowHandle(), !region.isEmpty(), region);
+}
+
 void DolphinMainWindow::showEvent(QShowEvent *event)
 {
     KXmlGuiWindow::showEvent(event);
 
-    if (testAttribute(Qt::WA_TranslucentBackground) && windowHandle()) {
-        KWindowEffects::enableBlurBehind(windowHandle(), true); // dolphin-ng: ask the compositor to blur behind the glass
-    }
+    m_ngBlurSet = false;
+    ngUpdateBlurRegion(); // dolphin-ng: ask the compositor to blur behind the glass
 
     if (!event->spontaneous() && m_activeViewContainer) {
         m_activeViewContainer->view()->setFocus();

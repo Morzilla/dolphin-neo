@@ -330,7 +330,7 @@ void DolphinDockWidget::ngApplySettings()
     if (pollBackdrop && !m_glassTimer) {
         m_glassTimer = new QTimer(this);
         // DOLPHIN_NG_GLASS_MS: polling interval of the backdrop, milliseconds (default 150)
-        m_glassTimer->setInterval(qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS_MS") ? qMax(50, qEnvironmentVariableIntValue("DOLPHIN_NG_GLASS_MS")) : 150);
+        m_glassTimer->setInterval(qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS_MS") ? qMax(50, qEnvironmentVariableIntValue("DOLPHIN_NG_GLASS_MS")) : 900);
         connect(m_glassTimer, &QTimer::timeout, this, &DolphinDockWidget::updateGlass);
     }
     if (m_glassTimer) {
@@ -386,13 +386,14 @@ qreal DolphinDockWidget::backdropLuminance() const
         return -1;
     }
 
-    // sample a 3 x 8 grid of small patches; each patch comes from the topmost window below ours at that point
+    // sample a 2 x 4 grid of small patches; each patch comes from the topmost window below ours at that point
+    // (every patch is a round trip to the X server, on the thread that also draws the files)
     const int patch = 6;
     qreal sum = 0;
     int count = 0;
-    for (int row = 0; row < 8; ++row) {
-        for (int col = 0; col < 3; ++col) {
-            const QPoint point(card.left() + card.width() * (2 * col + 1) / 6, card.top() + card.height() * (2 * row + 1) / 16);
+    for (int row = 0; row < 4; ++row) {
+        for (int col = 0; col < 2; ++col) {
+            const QPoint point(card.left() + card.width() * (2 * col + 1) / 4, card.top() + card.height() * (2 * row + 1) / 8);
             for (const Below &window : std::as_const(below)) {
                 if (!window.geometry.adjusted(0, 0, -patch, -patch).contains(point)) {
                     continue;
@@ -438,6 +439,13 @@ void DolphinDockWidget::updateGlass()
     if (!qFuzzyCompare(next, m_glass)) {
         m_glass = next;
         update();
+    }
+    // look often only while the transparency is on its way to a new value; otherwise about once a second
+    if (m_glassTimer && !qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS_MS")) {
+        const int wanted = qFuzzyCompare(next, target) ? 900 : 120;
+        if (m_glassTimer->interval() != wanted) {
+            m_glassTimer->setInterval(wanted);
+        }
     }
 }
 
@@ -767,6 +775,12 @@ void DolphinDockWidget::mouseReleaseEvent(QMouseEvent *event)
 
 bool DolphinDockWidget::event(QEvent *event)
 {
+    // dolphin-ng: the compositor blurs only behind the glass cards, so the window tells it where they are
+    if (event->type() == QEvent::Resize || event->type() == QEvent::Move || event->type() == QEvent::Show || event->type() == QEvent::Hide) {
+        if (QWidget *top = window(); top && top != this && top->metaObject()->indexOfSlot("ngUpdateBlurRegion()") >= 0) {
+            QMetaObject::invokeMethod(top, "ngUpdateBlurRegion", Qt::QueuedConnection);
+        }
+    }
     if ((event->type() == QEvent::Show || event->type() == QEvent::ParentChange) && !ngGlassPlain() && window() != this) {
         window()->removeEventFilter(this);
         window()->installEventFilter(this);

@@ -145,6 +145,9 @@ public:
     void slotDoubleClickViewBackground(Qt::MouseButton button);
 
 public Q_SLOTS:
+    /** dolphin-ng: tells the compositor to blur only behind the glass cards of the panels. */
+    void ngUpdateBlurRegion();
+
     /**
      * Opens each directory in \p dirs in a separate tab. If \a splitView is set,
      * 2 directories are collected within one tab.
@@ -273,6 +276,8 @@ protected:
 
     /** @see QWidget::showEvent() */
     void showEvent(QShowEvent *event) override;
+    QRegion m_ngBlurRegion;
+    bool m_ngBlurSet = false;
     /** dolphin-ng: with the "live blur" sidebar the window is translucent and paints its own opaque background. */
     void paintEvent(QPaintEvent *event) override;
 

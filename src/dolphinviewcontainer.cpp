@@ -526,6 +526,9 @@ private:
                                      "QToolButton:checked { background: rgba(%1, 0.16); border-color: rgba(%1, 0.20); }"
                                      "QToolButton:checked:hover { background: rgba(%1, 0.20); }"
                                      "QToolButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: right center; left: -3px; }"
+                                     // a button with its own arrow (the cards one): room between the text and the arrow
+                                     "QToolButton[popupMode=\"1\"] { padding-right: 24px; }"
+                                     "QToolButton::menu-button { border: none; width: 18px; }"
                                      "QToolButton[menuOpen=\"true\"], QToolButton[menuOpen=\"true\"]:hover, QToolButton[menuOpen=\"true\"]:checked, QToolButton[menuOpen=\"true\"]:pressed { background: %2; border-color: rgba(%1, %3); border-bottom-color: %2; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }"
                                      "QLineEdit { border: 1px solid rgba(%1, 0.14); border-radius: 6px; padding: 3px 8px; background: rgba(%1, 0.06); color: palette(window-text); }"
                                      "QLineEdit:hover { border-color: rgba(%1, 0.22); }"
