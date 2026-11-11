@@ -3512,7 +3512,10 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         actionsAt(right, y - 2);
         setName(x0, y, right - x0);
         y += nameFm.height() + 6;
-        {
+        if (ngSetting("CARDS_BADGE").toLower() == QLatin1String("row")) {
+            // the chips in a row of their own under the name
+            y = chipRow(x0, y, right, {m_ngSigla, sizeText, countText}, 1) + 8;
+        } else {
             // the chips (type, size, items) sit on the band, at its bottom right: laid out from the left, then moved
             const int first = m_ngChips.count();
             chipRow(card.left() + 8, m_ngCardThumb.bottom() - chipHeight - 7, card.right() - 8, {m_ngSigla, sizeText, countText}, 1);

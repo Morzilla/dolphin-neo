@@ -410,6 +410,19 @@ void ngDrawChoice(QPainter &painter, const QRectF &rect, const QString &key, con
     } else if (key == QLatin1String("cardsmark")) {
         ngMiniCard(painter, QRectF(in.center().x() - 26, in.top(), 52, in.height()), QStringLiteral("a"), kindPdf, false, id == QLatin1String("type"), palette);
     } else if (key == QLatin1String("badge")) {
+        if (id == QLatin1String("row")) {
+            // the picture above, the two chips in their own row under it
+            const QRectF picture(rect.left(), rect.top(), rect.width(), rect.height() * 0.5);
+            painter.fillRect(picture, ngPictureBrush(picture));
+            ngBar(painter, QRectF(rect.left() + 8, picture.bottom() + 6, rect.width() * 0.5, 4), ngInk(palette, 0.6));
+            painter.setPen(QPen(ngWithAlpha(kindPdf, 0.6), 1));
+            painter.setBrush(ngWithAlpha(kindPdf, 0.22));
+            painter.drawRoundedRect(QRectF(rect.left() + 8, picture.bottom() + 15, 26, 10), 5, 5);
+            painter.setPen(QPen(ngInk(palette, 0.25), 1));
+            painter.setBrush(ngInk(palette, 0.08));
+            painter.drawRoundedRect(QRectF(rect.left() + 38, picture.bottom() + 15, 32, 10), 5, 5);
+            return;
+        }
         // a picture with the badge at its bottom right
         painter.fillRect(rect, ngPictureBrush(rect));
         const QRectF pill(rect.right() - 62, rect.bottom() - 26, 54, 18);
@@ -1100,8 +1113,9 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_cardsBadge = new QComboBox(this);
     m_cardsBadge->addItem(QString(), QString());
     m_cardsBadge->addItem(QString(), QStringLiteral("glass"));
-    tilesFor(m_cardsBadge, QStringLiteral("badge"), ngTr("Type and size badge (Tessera)", "Etichetta di tipo e dimensione (Tessera)"),
-             {{ngTr("Solid: the type on its colour", "Piena: il tipo sul suo colore"), {}}, {ngTr("Glass", "Vetro"), {}}}, 5);
+    m_cardsBadge->addItem(QString(), QStringLiteral("row"));
+    tilesFor(m_cardsBadge, QStringLiteral("badge"), ngTr("Type and size (Tessera)", "Tipo e dimensione (Tessera)"),
+             {{ngTr("Solid badge", "Etichetta piena"), {}}, {ngTr("Glass badge", "Etichetta di vetro"), {}}, {ngTr("A row of their own", "Riga separata"), {}}}, 5);
     startForm();
     m_cardsInfo = new QComboBox(this);
     m_cardsInfo->addItem(ngTr("Created and modified", "Creato e modificato"), QString());
@@ -1322,7 +1336,7 @@ void NgSettingsPage::loadSettings()
     m_cardsFit->setCurrentIndex(ngCardsStretch() ? 1 : 0);
     m_cardsInfo->setCurrentIndex(ngSetting("CARDS_INFO").toLower() == QLatin1String("full") ? 1 : 0);
     m_cardsMark->setCurrentIndex(ngSetting("CARDS_MARK").toLower() == QLatin1String("type") ? 1 : 0);
-    m_cardsBadge->setCurrentIndex(ngSetting("CARDS_BADGE").toLower() == QLatin1String("glass") ? 1 : 0);
+    m_cardsBadge->setCurrentIndex(qMax(0, m_cardsBadge->findData(ngSetting("CARDS_BADGE").toLower())));
     const QString quick = ngSetting("CARDS_QUICKVIEW").toLower();
     m_quickView->setChecked(quick != QLatin1String("off"));
     m_quickDelay->setValue(qBound(0, quick.toInt(), 3000));

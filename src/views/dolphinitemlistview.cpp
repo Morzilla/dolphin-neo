@@ -303,8 +303,9 @@ void DolphinItemListView::updateGridSize()
             const qreal pad = qBound(8.0, itemWidth * 0.05, 14.0);
             const qreal band = qRound(qMin(itemWidth * 0.40, fh * 9.0));
             const int lines = ngSetting("CARDS_INFO").toLower() == QLatin1String("full") ? 4 : 2;
-            Q_UNUSED(chipFont) // the chips are on the band
-            itemHeight = qRound(band + pad * 0.8 + QFontMetricsF(nameFont).height() + 6
+            // the chips are on the band, unless they were given a row of their own
+            const qreal chipRow = ngSetting("CARDS_BADGE").toLower() == QLatin1String("row") ? qRound(QFontMetricsF(chipFont).height() + 4) + 8 : 0;
+            itemHeight = qRound(band + pad * 0.8 + QFontMetricsF(nameFont).height() + 6 + chipRow
                                 + lines * (QFontMetricsF(small).height() + 2) + pad + 3); // 3: the widget rounds its own steps
         }
         break;
