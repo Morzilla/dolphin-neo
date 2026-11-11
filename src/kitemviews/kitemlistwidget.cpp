@@ -23,9 +23,12 @@
 #include <QLinearGradient>
 #include <KApplicationTrader>
 #include <KService>
+#include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <signal.h>
 #include <tuple>
+#include <cmath>
 #include <QPainter>
 #include <QPropertyAnimation>
 #include <QStyleOption>
@@ -214,6 +217,105 @@ bool ngCardsStretch()
 
 static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime);
 
+NgActivity *NgActivity::self()
+{
+    static NgActivity *instance = new NgActivity();
+    return instance;
+}
+
+NgActivity::NgActivity()
+{
+    m_timer.setInterval(60);
+    connect(&m_timer, &QTimer::timeout, this, &NgActivity::tick);
+}
+
+QString NgActivity::key(const QUrl &url)
+{
+    return url.adjusted(QUrl::StripTrailingSlash | QUrl::NormalizePathSegments).toString();
+}
+
+void NgActivity::set(const QUrl &url, int percent, const QString &text)
+{
+    if (!url.isValid()) {
+        return;
+    }
+    Entry &e = m_entries[key(url)];
+    if (e.percent == percent && e.text == text) {
+        return;
+    }
+    e.percent = qBound(-1, percent, 100);
+    e.text = text;
+    if (!m_timer.isActive()) {
+        m_timer.start();
+    }
+    Q_EMIT changed();
+}
+
+void NgActivity::clear(const QUrl &url)
+{
+    const QString k = key(url);
+    m_pids.remove(k);
+    if (m_entries.remove(k)) {
+        Q_EMIT changed();
+    }
+}
+
+bool NgActivity::contains(const QUrl &url) const
+{
+    return !m_entries.isEmpty() && m_entries.contains(key(url));
+}
+
+NgActivity::Entry NgActivity::entry(const QUrl &url) const
+{
+    return m_entries.value(key(url));
+}
+
+bool NgActivity::isEmpty() const
+{
+    return m_entries.isEmpty();
+}
+
+void NgActivity::setUntilProcessEnds(const QUrl &url, qint64 pid, const QString &text)
+{
+    set(url, -1, text);
+    m_pids.insert(key(url), pid);
+}
+
+qreal NgActivity::phase() const
+{
+    return m_phase;
+}
+
+void NgActivity::tick()
+{
+    // processes started for quick actions: done when they are gone (they are detached: no zombie stays behind)
+    static int slow = 0;
+    if (++slow >= 8) {
+        slow = 0;
+        for (auto it = m_pids.begin(); it != m_pids.end();) {
+            if (::kill(static_cast<pid_t>(it.value()), 0) != 0) {
+                m_entries.remove(it.key());
+                it = m_pids.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    if (m_entries.isEmpty()) {
+        m_timer.stop();
+        Q_EMIT changed(); // one last repaint, to take the marks away
+        return;
+    }
+    bool turning = false;
+    for (const Entry &e : std::as_const(m_entries)) {
+        turning = turning || e.percent < 0;
+    }
+    if (turning) {
+        m_phase = std::fmod(m_phase + 0.03, 1.0);
+        Q_EMIT changed();
+    }
+}
+
 QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &mime)
 {
     static QHash<QString, QList<NgQuickAction>> cache;
@@ -226,6 +328,21 @@ QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &
         it = cache.insert(key, ngQuickActionsCompute(localPath, mime));
     }
     return *it;
+}
+
+// ng-transcribe (ng/ng-transcribe), installed as a command: in PATH or in ~/.local/bin, which a session started
+// from a menu may not have in PATH
+static QString ngTranscriber()
+{
+    static const QString path = [] {
+        QString p = QStandardPaths::findExecutable(QStringLiteral("ng-transcribe"));
+        const QString local = QDir::homePath() + QStringLiteral("/.local/bin/ng-transcribe");
+        if (p.isEmpty() && QFileInfo(local).isExecutable()) {
+            p = local;
+        }
+        return p;
+    }();
+    return path;
 }
 
 static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime)
@@ -298,6 +415,10 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
         simple(ngTr("To PNG", "In PNG"), QStringLiteral("pdftoppm"), {QStringLiteral("-png"), QStringLiteral("-r"), QStringLiteral("150"), localPath, base});
         simple(ngTr("Extract the text", "Estrai il testo"), QStringLiteral("pdftotext"), {QStringLiteral("-layout"), localPath, QStringLiteral("%1.txt").arg(base)});
     } else if (mime.startsWith(QLatin1String("audio/"))) {
+        // speech to text with ng-transcribe (whisper.cpp, on this computer), when it is installed: the main action
+        if (!ngTranscriber().isEmpty()) {
+            simple(ngTr("Transcribe", "Trascrivi"), ngTranscriber(), {localPath});
+        }
         if (lowerSuffix != QLatin1String("mp3")) {
             simple(ngTr("To MP3", "In MP3"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
         }
@@ -307,6 +428,9 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
     } else if (mime.startsWith(QLatin1String("video/"))) {
         simple(ngTr("To MP4", "In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
         simple(ngTr("Extract the audio (MP3)", "Estrai l'audio (MP3)"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+        if (!ngTranscriber().isEmpty()) {
+            simple(ngTr("Transcribe", "Trascrivi"), ngTranscriber(), {localPath});
+        }
         simple(ngTr("Frame to PNG", "Fotogramma in PNG"), QStringLiteral("ffmpeg"), {QStringLiteral("-ss"), QStringLiteral("1"), QStringLiteral("-i"), localPath, QStringLiteral("-frames:v"), QStringLiteral("1"), QStringLiteral("%1-1s.png").arg(base)});
     }
     // icons; the first action of the kind is the main one
@@ -318,7 +442,8 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
                                                {ngTr("To MP3", "In MP3"), QStringLiteral("audio-x-generic")},
                                                {ngTr("To FLAC", "In FLAC"), QStringLiteral("audio-x-generic")},
                                                {ngTr("Extract the audio (MP3)", "Estrai l'audio (MP3)"), QStringLiteral("audio-x-generic")},
-                                               {ngTr("Frame to PNG", "Fotogramma in PNG"), QStringLiteral("camera-photo")}};
+                                               {ngTr("Frame to PNG", "Fotogramma in PNG"), QStringLiteral("camera-photo")},
+                                               {ngTr("Transcribe", "Trascrivi"), QStringLiteral("text-x-generic")}};
     for (NgQuickAction &action : actions) {
         action.icon = icons.value(action.label, QStringLiteral("system-run"));
     }

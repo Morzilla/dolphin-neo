@@ -553,6 +553,12 @@ KStandardItemListWidget::KStandardItemListWidget(KItemListWidgetInformant *infor
     , m_roleEditor(nullptr)
     , m_oldRoleEditor(nullptr)
 {
+    // dolphin-ng: repaint while work on this file is in progress, and once more when it ends
+    connect(NgActivity::self(), &NgActivity::changed, this, [this] {
+        if (m_ngShowedActivity || NgActivity::self()->contains(data().value("url").toUrl())) {
+            update();
+        }
+    });
 }
 
 KStandardItemListWidget::~KStandardItemListWidget()
@@ -648,6 +654,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         paintNgCardSheet(painter);
         KItemListWidget::paint(painter, option, widget);
         paintNgCard(painter, widget);
+        paintNgActivity(painter);
         return;
     }
 
@@ -1039,6 +1046,8 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
     if (clipAdditionalInfoBounds) {
         painter->restore();
     }
+
+    paintNgActivity(painter);
 
 #ifdef KSTANDARDITEMLISTWIDGET_DEBUG
     painter->setBrush(Qt::NoBrush);
@@ -3757,6 +3766,114 @@ bool KStandardItemListWidget::ngOwnSelection() const
 qreal KStandardItemListWidget::ngSelectionRadius() const
 {
     return m_layout == CardsLayout ? 12 : 9;
+}
+
+void KStandardItemListWidget::paintNgActivity(QPainter *painter)
+{
+    const QUrl url = data().value("url").toUrl();
+    NgActivity *activity = NgActivity::self();
+    m_ngShowedActivity = activity->contains(url);
+    if (!m_ngShowedActivity) {
+        return;
+    }
+    const NgActivity::Entry e = activity->entry(url);
+    // the accent of the desktop, lifted: drawn over pictures and dark previews it has to stand out
+    QColor accent = styleOption().palette.color(QPalette::Highlight);
+    accent = QColor::fromHslF(accent.hslHueF() < 0 ? 0.55 : accent.hslHueF(), qMax<qreal>(accent.hslSaturationF(), 0.65), 0.62);
+    const bool busy = e.percent < 0;
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+
+    // the ring: a track, the part done (or a turning arc), the figure in the middle
+    auto ring = [&](const QPointF &centre, qreal radius, qreal width) {
+        const QRectF box(centre.x() - radius, centre.y() - radius, 2 * radius, 2 * radius);
+        painter->setBrush(QColor(18, 20, 24, 235));
+        painter->setPen(Qt::NoPen);
+        painter->drawEllipse(box.adjusted(-width, -width, width, width));
+        painter->setBrush(Qt::NoBrush);
+        painter->setPen(QPen(QColor(255, 255, 255, 40), width, Qt::SolidLine, Qt::RoundCap));
+        painter->drawEllipse(box);
+        painter->setPen(QPen(accent, width, Qt::SolidLine, Qt::RoundCap));
+        if (busy) {
+            painter->drawArc(box, qRound(90 * 16 - activity->phase() * 360 * 16), -100 * 16);
+        } else {
+            painter->drawArc(box, 90 * 16, -qRound(e.percent * 3.6 * 16));
+            QFont f(m_customizedFont);
+            f.setPixelSize(qMax(10, qRound(radius * 0.62)));
+            f.setWeight(QFont::Bold);
+            painter->setFont(f);
+            painter->setPen(QColor(240, 242, 245));
+            painter->drawText(box, Qt::AlignCenter, QString::number(e.percent) + QLatin1Char('%'));
+        }
+    };
+
+    if (m_layout == CardsLayout) {
+        // over the preview: darkened, the ring in the middle, what is going on underneath
+        const QRectF card = rect();
+        // the preview band of the card (the Tessera computes it), else the icon area, else the upper half
+        QRectF area = m_ngCardThumb.isValid() && m_ngCardThumb.height() > 24 ? m_ngCardThumb
+                    : (m_iconRect.isValid() && m_iconRect.height() > 40 ? m_iconRect : QRectF(card.left(), card.top(), card.width(), card.height() * 0.55));
+        area = area.intersected(card);
+        QPainterPath clip;
+        clip.addRoundedRect(card, 12, 12);
+        painter->setClipPath(clip, Qt::IntersectClip);
+        painter->fillRect(area, QColor(10, 11, 14, 140));
+        const qreal radius = qBound<qreal>(16, qMin(area.width(), area.height()) * 0.22, 36);
+        ring(area.center() - QPointF(0, e.text.isEmpty() ? 0 : radius * 0.35), radius, qMax<qreal>(3, radius * 0.16));
+        if (!e.text.isEmpty()) {
+            QFont f(m_customizedFont);
+            f.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.62)));
+            f.setWeight(QFont::DemiBold);
+            painter->setFont(f);
+            const QRectF label(area.left() + 6, area.center().y() + radius * 0.85, area.width() - 12, QFontMetricsF(f).height() + 2);
+            painter->setPen(QColor(235, 238, 242));
+            painter->drawText(label, Qt::AlignHCenter | Qt::AlignVCenter, QFontMetricsF(f).elidedText(e.text, Qt::ElideRight, label.width()));
+        }
+        // and a line of the same colour along the bottom edge of the preview
+        if (!busy) {
+            painter->fillRect(QRectF(area.left(), area.bottom() - 3, area.width() * e.percent / 100.0, 3), accent);
+        }
+    } else {
+        // rows and icons: the part done fills the row from the left, a small ring and the figure at the end
+        const QRectF row = rect().adjusted(3, 3, -3, -3);
+        QPainterPath clip;
+        clip.addRoundedRect(row, 6, 6);
+        painter->setClipPath(clip, Qt::IntersectClip);
+        QColor fill = accent;
+        fill.setAlphaF(0.20);
+        if (busy) {
+            // a soft band sweeping across
+            const qreal w = row.width() * 0.25;
+            const qreal x = row.left() - w + (row.width() + w) * activity->phase();
+            QLinearGradient sweep(x, 0, x + w, 0);
+            sweep.setColorAt(0, Qt::transparent);
+            sweep.setColorAt(0.5, fill);
+            sweep.setColorAt(1, Qt::transparent);
+            painter->fillRect(QRectF(x, row.top(), w, row.height()), sweep);
+        } else {
+            const qreal done = row.width() * e.percent / 100.0;
+            painter->fillRect(QRectF(row.left(), row.top(), done, row.height()), fill);
+            painter->fillRect(QRectF(row.left() + done - 2, row.top(), 2, row.height()), accent);
+        }
+        if (m_layout == DetailsLayout) {
+            QFont f(m_customizedFont);
+            f.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.72)));
+            f.setWeight(QFont::DemiBold);
+            const QString figure = QString::number(e.percent) + QLatin1Char('%');
+            const QString caption = busy ? e.text : (e.text.isEmpty() ? figure : QString(e.text + QStringLiteral(" · ") + figure));
+            const QFontMetricsF fm(f);
+            const qreal w = qMin(fm.horizontalAdvance(caption) + 22, row.width() * 0.45);
+            // solid, over the end of the row: it covers the date while the work runs
+            const QRectF pill(row.right() - w - 8, row.center().y() - fm.height() * 0.85, w, fm.height() * 1.7);
+            painter->setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 110), 1));
+            painter->setBrush(QColor(16, 17, 21));
+            painter->drawRoundedRect(pill, pill.height() / 2, pill.height() / 2);
+            painter->setFont(f);
+            painter->setPen(accent.lighter(135));
+            painter->drawText(pill, Qt::AlignCenter, fm.elidedText(caption, Qt::ElideRight, pill.width() - 14));
+        }
+    }
+    painter->restore();
 }
 
 void KStandardItemListWidget::paintNgCardSheet(QPainter *painter)

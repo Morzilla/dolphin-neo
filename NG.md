@@ -35,6 +35,22 @@ on hover, a preview card with zoom.
 |---|---|
 | ![Scheda](ng/screenshots/cards-scheda.png) | ![Dossier](ng/screenshots/cards-dossier.png) |
 
+## Work in progress, on the files
+
+Copies, moves, deletions and the quick actions show on the file they concern, not only in the notifications:
+a ring with the percentage over the card's preview, the row filling up with a caption at its end, a turning arc
+while a quick action (extract, convert, transcribe) is running. A first draft: the work started by Dolphin
+itself; extractions and downloads started by other applications come next.
+
+| Cards | Rows |
+|---|---|
+| ![Work in progress on cards](ng/screenshots/activity-cards.png) | ![Work in progress on rows](ng/screenshots/activity-rows.png) |
+
+**Transcribe**, on audio and video files, writes the spoken text next to the file (and subtitles for videos), with
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp) on your computer: nothing is uploaded. Run
+`ng/ng-transcribe --setup` once (it builds whisper.cpp in `~/.local/src` and downloads the speech model, about
+550 MB); the action appears when that is done.
+
 ## Settings
 
 Everything is a setting, on a graphical page: tabs, a tile with a drawing of each choice, switches, and a sketch of

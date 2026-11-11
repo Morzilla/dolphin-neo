@@ -40,6 +40,7 @@
 #include <KFilePlacesView>
 #include <KFormat>
 #include <KIO/CopyJob>
+#include <KIO/DeleteJob>
 #include <KIO/DeleteOrTrashJob>
 #include <KIO/DropJob>
 #include <KIO/JobUiDelegateFactory>
@@ -69,6 +70,9 @@
 #include <QGraphicsSceneDragDropEvent>
 #include <QLabel>
 #include <KIO/CommandLauncherJob>
+#include <KJobTrackerInterface>
+#include <kio/jobtracker.h>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QCursor>
 #include <KApplicationTrader>
@@ -83,6 +87,96 @@
 #include <QTimer>
 #include <QToolTip>
 #include <QVBoxLayout>
+
+namespace
+{
+// dolphin-ng: sits next to Plasma's job tracker (which still gets every job: the notifications stay as they are)
+// and tells NgActivity which files a copy or a move is working on and how far it is
+class NgJobTracker : public KJobTrackerInterface
+{
+public:
+    explicit NgJobTracker(KJobTrackerInterface *inner)
+        : m_inner(inner)
+    {
+    }
+
+    void registerJob(KJob *job) override
+    {
+        if (m_inner) {
+            m_inner->registerJob(job);
+        }
+        KJobTrackerInterface::registerJob(job);
+        if (auto *del = qobject_cast<KIO::DeleteJob *>(job)) {
+            // deleting: the files being deleted, from the start
+            m_label.insert(job, ngTr("Deleting", "Eliminazione"));
+            for (const QUrl &url : del->urls()) {
+                m_urls[job].insert(url);
+                NgActivity::self()->set(url, 0, m_label.value(job));
+            }
+            return;
+        }
+        auto *copy = qobject_cast<KIO::CopyJob *>(job);
+        if (!copy) {
+            return;
+        }
+        const bool toTrash = copy->destUrl().scheme() == QLatin1String("trash");
+        m_label.insert(job, toTrash ? ngTr("To the trash", "Nel cestino")
+                                    : (copy->operationMode() == KIO::CopyJob::Move ? ngTr("Moving", "Spostamento") : ngTr("Copying", "Copia")));
+        // both ends: the file leaving (seen in its folder) and the one arriving (seen in the destination)
+        auto mark = [this, job](KIO::Job *, const QUrl &from, const QUrl &to) {
+            for (const QUrl &url : {from, to}) {
+                m_urls[job].insert(url);
+                NgActivity::self()->set(url, m_percent.value(job, 0), m_label.value(job));
+            }
+        };
+        QObject::connect(copy, &KIO::CopyJob::copying, this, mark);
+        QObject::connect(copy, &KIO::CopyJob::moving, this, mark);
+        QObject::connect(copy, &KIO::CopyJob::copyingDone, this, [this, job](KIO::Job *, const QUrl &from, const QUrl &to, const QDateTime &, bool, bool) {
+            for (const QUrl &url : {from, to}) {
+                m_urls[job].remove(url);
+                NgActivity::self()->clear(url);
+            }
+        });
+    }
+
+    void unregisterJob(KJob *job) override
+    {
+        if (m_inner) {
+            m_inner->unregisterJob(job);
+        }
+        KJobTrackerInterface::unregisterJob(job);
+        forget(job);
+    }
+
+protected:
+    void finished(KJob *job) override
+    {
+        forget(job);
+    }
+    void percent(KJob *job, unsigned long value) override
+    {
+        m_percent.insert(job, int(value));
+        for (const QUrl &url : m_urls.value(job)) {
+            NgActivity::self()->set(url, int(value), m_label.value(job));
+        }
+    }
+
+private:
+    void forget(KJob *job)
+    {
+        for (const QUrl &url : m_urls.value(job)) {
+            NgActivity::self()->clear(url);
+        }
+        m_urls.remove(job);
+        m_percent.remove(job);
+        m_label.remove(job);
+    }
+    KJobTrackerInterface *m_inner;
+    QHash<KJob *, QSet<QUrl>> m_urls;
+    QHash<KJob *, int> m_percent;
+    QHash<KJob *, QString> m_label;
+};
+}
 
 DolphinView::DolphinView(const QUrl &url, QWidget *parent)
     : QWidget(parent)
@@ -114,6 +208,25 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
     , m_placeholderLabel(nullptr)
     , m_showLoadingPlaceholderTimer(nullptr)
 {
+    // dolphin-ng: once per process, see the progress of copies and moves on the files (NgActivity)
+    static const bool ngTracker = [] {
+        KIO::setJobTracker(new NgJobTracker(KIO::getJobTracker()));
+        return true;
+    }();
+    Q_UNUSED(ngTracker)
+    static const bool ngDemo = [] {
+        // DOLPHIN_NG_ACTIVITY_DEMO="/path/file|64|Extracting;/path/other|-1|Converting": marks shown as if work
+        // were running, for screenshots and tests
+        const QString demo = qEnvironmentVariable("DOLPHIN_NG_ACTIVITY_DEMO");
+        for (const QString &entry : demo.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+            const QStringList f = entry.split(QLatin1Char('|'));
+            if (f.size() >= 2) {
+                NgActivity::self()->set(QUrl::fromLocalFile(f.at(0)), f.at(1).toInt(), f.value(2));
+            }
+        }
+        return true;
+    }();
+    Q_UNUSED(ngDemo)
     m_topLayout = new QVBoxLayout(this);
     m_topLayout->setSpacing(0);
     m_topLayout->setContentsMargins(0, 0, 0, 0);
@@ -2679,15 +2792,20 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
     }
     const NgQuickAction action = actions.at(number);
     const QString folder = item.url().adjusted(QUrl::RemoveFilename).toLocalFile();
-    auto run = [this, folder](const QString &program, const QStringList &arguments) {
+    const QUrl itemUrl = item.url();
+    auto run = [this, folder, itemUrl](const QString &label, const QString &program, const QStringList &arguments) {
         if (QStandardPaths::findExecutable(program).isEmpty()) {
             KMessageBox::error(window(), ngTr("This needs the program “%1”, which is not installed.", "Serve il programma «%1», che non è installato.").arg(program));
             return;
         }
-        auto *job = new KIO::CommandLauncherJob(program, arguments);
-        job->setWorkingDirectory(folder);
-        job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
-        job->start();
+        // detached, so a long job (a transcription) goes on if Dolphin is closed; the file shows it is busy
+        // with this action until the process is gone
+        qint64 pid = 0;
+        if (QProcess::startDetached(program, arguments, folder, &pid)) {
+            NgActivity::self()->setUntilProcessEnds(itemUrl, pid, label + QStringLiteral("…"));
+        } else {
+            KMessageBox::error(window(), ngTr("“%1” could not be started.", "Impossibile avviare «%1».").arg(program));
+        }
     };
     if (action.program == QLatin1String("@cut") || action.program == QLatin1String("@copy")) {
         // this one file, whatever is selected
@@ -2736,13 +2854,13 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
         return;
     }
     if (action.choices.isEmpty()) {
-        run(action.program, action.arguments);
+        run(action.label, action.program, action.arguments);
         return;
     }
     QMenu menu(this);
     for (const auto &[label, arguments] : action.choices) {
-        menu.addAction(label, this, [run, program = action.program, arguments] {
-            run(program, arguments);
+        menu.addAction(label, this, [run, title = action.label, program = action.program, arguments] {
+            run(title, program, arguments);
         });
     }
     menu.exec(QCursor::pos());

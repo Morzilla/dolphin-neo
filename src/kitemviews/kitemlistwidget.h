@@ -18,6 +18,8 @@
 #include <QGraphicsWidget>
 #include <QStyle>
 #include <QTimer>
+#include <QUrl>
+#include <QHash>
 
 class KItemListSelectionToggle;
 
@@ -48,6 +50,43 @@ DOLPHIN_EXPORT QString ngSetting(const char *name, const QString &fallback = QSt
 DOLPHIN_EXPORT int ngSettingInt(const char *name, int fallback);
 /** dolphin-ng: the interface text, in Italian when the desktop language is Italian and in English otherwise. */
 DOLPHIN_EXPORT QString ngTr(const char *english, const char *italian);
+
+/**
+ * dolphin-ng: work in progress on files, shown on their cards and rows. Copies, moves, extractions,
+ * conversions: whoever starts the work tells which files it concerns and how far it is; the item widgets
+ * read it here when they paint. A percent below 0 means "busy, no figure" (drawn as a turning arc).
+ */
+class DOLPHIN_EXPORT NgActivity : public QObject
+{
+    Q_OBJECT
+public:
+    struct Entry {
+        int percent = -1;
+        QString text;
+    };
+    static NgActivity *self();
+    void set(const QUrl &url, int percent, const QString &text);
+    void clear(const QUrl &url);
+    bool contains(const QUrl &url) const;
+    Entry entry(const QUrl &url) const;
+    bool isEmpty() const;
+    /** busy until the process \a pid ends (checked twice a second; it may outlive Dolphin) */
+    void setUntilProcessEnds(const QUrl &url, qint64 pid, const QString &text);
+    /** 0..1, turns while anything is busy without a figure: the angle of the turning arc */
+    qreal phase() const;
+
+Q_SIGNALS:
+    void changed();
+
+private:
+    NgActivity();
+    static QString key(const QUrl &url);
+    void tick();
+    QHash<QString, Entry> m_entries;
+    QHash<QString, qint64> m_pids;
+    QTimer m_timer;
+    qreal m_phase = 0;
+};
 /** Store a value in dolphinrc; an empty value removes it. */
 DOLPHIN_EXPORT void setNgSetting(const char *name, const QString &value);
 /** True if the environment decides this setting, so the stored value is ignored. */

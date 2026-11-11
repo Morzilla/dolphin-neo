@@ -107,6 +107,8 @@ cat > "$COMMAND" <<LAUNCH
 DOLPHIN_NG_PREFIX="$PREFIX" exec "$ROOT/ng/dolphin-ng" "\$@"
 LAUNCH
 chmod +x "$COMMAND"
+# speech to text for the "Transcribe" quick action (needs "ng-transcribe --setup" once)
+ln -sf "$ROOT/ng/ng-transcribe" "$(dirname "$COMMAND")/ng-transcribe"
 cat > "$DESKTOP" <<ENTRY
 [Desktop Entry]
 Type=Application

@@ -224,6 +224,7 @@ private:
     bool ngOwnSelection() const override;
     qreal ngSelectionRadius() const override;
     void paintNgCard(QPainter *painter, QWidget *widget);
+    void paintNgActivity(QPainter *painter); // work in progress on this file (NgActivity): a ring on cards, a fill on rows
     qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
                              const QList<int> &origin = {});
     void paintNgActionPill(QPainter *painter, const QColor &text, bool dark);
@@ -338,6 +339,7 @@ private:
     qreal m_ngCardIconSide = 0; // side of the icon when the pixmap is not a preview
     bool m_ngCardPreview = false; // the pixmap is a preview, not the icon of the type
     bool m_ngCardWatermark = false; // the type is drawn as the background instead of the icon
+    bool m_ngShowedActivity = false; // painted with an activity mark last time: repaint once more when it ends
     QRectF m_ngCardEye; // hover actions: preview and menu
     QRectF m_ngCardMenu;
     QList<QPixmap> m_ngCardActionIcons; // one per entry of m_ngCardActions
