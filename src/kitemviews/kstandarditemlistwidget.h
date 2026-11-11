@@ -222,6 +222,8 @@ private:
     void ngPlaceCardPixmap();
     void paintNgCardSheet(QPainter *painter);
     void paintNgCard(QPainter *painter, QWidget *widget);
+    qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight);
+    void paintNgActionPill(QPainter *painter, const QColor &text, bool dark);
 
     /** Draw the icon overlays at a fixed size in the corners of the on-screen
      *  icon. Must be called after the icon itself has been drawn. */

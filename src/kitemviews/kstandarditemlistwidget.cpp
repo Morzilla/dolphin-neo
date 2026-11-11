@@ -900,6 +900,9 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         }
         painter->setPen(m_additionalInfoTextColor);
     }
+    if (ngRow && !m_ngCardActions.isEmpty()) {
+        paintNgActionPill(painter, styleOption().palette.color(QPalette::Text), ngIsDark(styleOption().palette));
+    }
     if (ngRow && !m_ngChips.isEmpty()) {
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
@@ -1023,6 +1026,14 @@ QRectF KStandardItemListWidget::textFocusRect() const
 
 int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
 {
+    if (m_layout == DetailsLayout && ngTwoLineList() && m_ngCardActionsPill.contains(pos)) {
+        for (int i = 0; i < m_ngCardActions.count(); ++i) {
+            if (m_ngCardActions.at(i).rect.contains(pos)) {
+                return 10 + i;
+            }
+        }
+        return 0; // on the pill, between two buttons: not the row's own buttons
+    }
     if (m_layout == CardsLayout) {
         const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
         for (int i = 0; i < m_ngCardActions.count(); ++i) {
@@ -2287,7 +2298,35 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             }
             blockLeft = timeLeft;
         }
-        const qreal textRight = blockLeft - 2 * gap;
+        qreal textRight = blockLeft - 2 * gap;
+
+        // ---- the quick actions of the file, as on the cards: one pill at the end of the text column, before the dates
+        m_ngCardActions.clear();
+        m_ngCardActionIcons.clear();
+        m_ngCardActionSeps.clear();
+        m_ngCardActionsPill = QRectF();
+        if (ngSetting("ROW_ACTIONS").toLower() != QLatin1String("hide")) {
+            QList<NgQuickAction> rowActions;
+            if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
+                if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
+                    const KFileItem fileItem = fileModel->fileItem(index());
+                    if (!fileItem.isNull() && !fileItem.isDir() && fileItem.isLocalFile()) {
+                        rowActions = ngQuickActionsFor(fileItem.localPath(), fileItem.mimetype());
+                    }
+                }
+            }
+            QFont pillFont = m_customizedFont;
+            pillFont.setPointSizeF(pillFont.pointSizeF() * 0.88);
+            const QFontMetricsF pillMetrics(pillFont);
+            const qreal pillHeight = qMin(qreal(fontHeight + 2), pillMetrics.height() + 5) + 12;
+            const qreal earliest = left + fontHeight * 14; // the name keeps at least this much
+            if (!rowActions.isEmpty() && textRight - earliest > 60 && widgetHeight >= pillHeight + 4) {
+                ngLayoutActionPill(rowActions, earliest, (widgetHeight - pillHeight) / 2.0, textRight, pillHeight, pillMetrics, true);
+                if (!m_ngCardActionsPill.isEmpty()) {
+                    textRight = m_ngCardActionsPill.left() - 12;
+                }
+            }
+        }
 
         if (noIcons) {
             const NgKind kind = ngKindFor(values.value("text").toString(), isDir);
@@ -2631,6 +2670,142 @@ void KStandardItemListWidget::drawSiblingsInformation(QPainter *painter)
 //   Dossier   the list row folded: icon and name, chips, the dates on the left, the big "ago" on the right
 // The base class paints the selection and the hover over the sheet drawn by paintNgCardSheet().
 
+// dolphin-ng: lays out the pill of quick actions (cards and two-line rows). With alignRight the pill ends at
+// `right` and `x` is the leftmost place it may start from.
+qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight)
+{
+    const KItemListStyleOption &option = styleOption();
+    const qreal dpr = KItemViewsUtils::devicePixelRatio(this);
+    const qreal inner = 3, button = 30, divider = 7; // 22 px application icons with a little air
+    struct Item {
+        int index;
+        qreal width;
+        bool divided;
+    };
+    QList<Item> items;
+    auto build = [&](bool labelled, int count) {
+        items.clear();
+        qreal total = 2 * inner;
+        int previous = -1;
+        for (int i = 0; i < count; ++i) {
+            const NgQuickAction &action = quickActions.at(i);
+            const bool clipboard = action.program == QLatin1String("@cut") || action.program == QLatin1String("@copy");
+            const int group = action.main ? 0 : clipboard ? 3 : action.program.startsWith(QLatin1Char('@')) ? 1 : 2;
+            const qreal width = (action.main && labelled) ? 8 + 18 + 6 + chipFm.horizontalAdvance(action.label) + 12 : button + 2;
+            const bool divided = previous >= 0 && group != previous;
+            total += width + (divided ? divider : 0);
+            items.append({i, width, divided});
+            previous = group;
+        }
+        return total;
+    };
+    int count = quickActions.count();
+    bool labelled = true;
+    qreal total = build(true, count);
+    // the first thing to give way is an extra action at the end, down to the main one + the application +
+    // "open with"; below that the label goes
+    int keep = 1;
+    for (int i = 0; i < quickActions.count(); ++i) {
+        if (quickActions.at(i).program.startsWith(QLatin1Char('@'))) {
+            keep = i + 1;
+        }
+    }
+    while (total > right - x && count > keep) {
+        total = build(true, --count);
+    }
+    if (total > right - x) {
+        labelled = false;
+        count = quickActions.count();
+        total = build(false, count);
+        while (total > right - x && count > 1) {
+            total = build(false, --count);
+        }
+    }
+    if (count == 0 || total > right - x) {
+        return y;
+    }
+    if (alignRight) {
+        x = right - total;
+    }
+    m_ngCardActionsPill = QRectF(x, y, total, actionHeight);
+    qreal cx = x + inner;
+    for (const Item &item : std::as_const(items)) {
+        const NgQuickAction &action = quickActions.at(item.index);
+        if (item.divided) {
+            m_ngCardActionSeps.append(cx + divider / 2.0);
+            cx += divider;
+        }
+        NgChip chip;
+        chip.text = (action.main && labelled) ? action.label : QString();
+        chip.rect = QRectF(cx, y + inner, item.width, actionHeight - 2 * inner);
+        chip.tinted = action.main;
+        m_ngCardActions.append(chip);
+        // rendered once per icon and kept: this runs for every card at every layout
+        static QHash<QString, QPixmap> iconCache;
+        const QColor glyphColor = option.palette.color(QPalette::Text);
+        const bool isApp = action.program.startsWith(QLatin1String("@app"));
+        const QString cacheKey = action.icon + QLatin1Char('|') + QString::number(dpr) + QLatin1Char('|') + (isApp ? QString() : glyphColor.name());
+        auto cached = iconCache.constFind(cacheKey);
+        if (cached == iconCache.constEnd()) {
+            QPixmap pixmap = QIcon::fromTheme(action.icon, QIcon::fromTheme(QStringLiteral("application-x-executable"))).pixmap(isApp ? QSize(22, 22) : QSize(18, 18), dpr);
+            if (!isApp) {
+                // an action glyph: in the text colour, whatever the icon theme draws it in (applications keep their colours)
+                QPainter tint(&pixmap);
+                tint.setCompositionMode(QPainter::CompositionMode_SourceIn);
+                tint.fillRect(pixmap.rect(), glyphColor);
+            }
+            cached = iconCache.insert(cacheKey, pixmap);
+        }
+        m_ngCardActionIcons.append(*cached);
+        cx += item.width;
+    }
+    return y + actionHeight;
+}
+
+void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor &text, bool dark)
+{
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    // ---- the quick actions: icons in one pill, the main one with its label on a tint of the type
+    if (!m_ngCardActions.isEmpty()) {
+        const QRectF pill = m_ngCardActionsPill.adjusted(0.5, 0.5, -0.5, -0.5);
+        QColor edge = text;
+        edge.setAlphaF(0.13);
+        painter->setPen(QPen(edge, 1));
+        painter->setBrush(dark ? QColor(0, 0, 0, 72) : QColor(255, 255, 255, 130));
+        painter->drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0);
+        QColor hairline = text;
+        hairline.setAlphaF(0.18);
+        painter->setPen(QPen(hairline, 1));
+        for (const qreal x : std::as_const(m_ngCardActionSeps)) {
+            painter->drawLine(QPointF(x, pill.top() + 6), QPointF(x, pill.bottom() - 6));
+        }
+        QFont chipFont = m_customizedFont;
+        chipFont.setPointSizeF(chipFont.pointSizeF() * 0.88);
+        painter->setFont(chipFont);
+        painter->setOpacity(isHovered() ? 1.0 : 0.82);
+        for (int i = 0; i < m_ngCardActions.count(); ++i) {
+            const NgChip &chip = m_ngCardActions.at(i);
+            const QPixmap &icon = m_ngCardActionIcons.at(i);
+            if (!chip.text.isEmpty()) {
+                QColor tint = m_ngTint;
+                tint.setAlpha(dark ? 64 : 70);
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(tint);
+                painter->drawRoundedRect(chip.rect, chip.rect.height() / 2.0, chip.rect.height() / 2.0);
+                painter->drawPixmap(QPointF(chip.rect.left() + 8, chip.rect.center().y() - 9), icon);
+                painter->setPen(text);
+                painter->drawText(chip.rect.adjusted(8 + 18 + 6, 0, -6, 0), Qt::AlignLeft | Qt::AlignVCenter, chip.text);
+            } else {
+                const qreal side = icon.width() / icon.devicePixelRatio(); // 22 for applications, 18 for glyphs
+                painter->drawPixmap(QPointF(chip.rect.center().x() - side / 2.0, chip.rect.center().y() - side / 2.0), icon);
+            }
+        }
+        painter->setOpacity(1.0);
+    }
+    painter->restore();
+}
+
 void KStandardItemListWidget::updateCardsLayoutTextCache()
 {
     const KItemListStyleOption &option = styleOption();
@@ -2818,87 +2993,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     // Too narrow: the label goes first, then the actions at the end.
     const qreal actionHeight = chipHeight + 12; // room for 22 px application icons
     auto actionRow = [&](qreal x, qreal y, qreal right) {
-        const qreal inner = 3, button = 30, divider = 7; // 22 px application icons with a little air
-        struct Item {
-            int index;
-            qreal width;
-            bool divided;
-        };
-        QList<Item> items;
-        auto build = [&](bool labelled, int count) {
-            items.clear();
-            qreal total = 2 * inner;
-            int previous = -1;
-            for (int i = 0; i < count; ++i) {
-                const NgQuickAction &action = quickActions.at(i);
-                const bool clipboard = action.program == QLatin1String("@cut") || action.program == QLatin1String("@copy");
-                const int group = action.main ? 0 : clipboard ? 3 : action.program.startsWith(QLatin1Char('@')) ? 1 : 2;
-                const qreal width = (action.main && labelled) ? 8 + 18 + 6 + chipFm.horizontalAdvance(action.label) + 12 : button + 2;
-                const bool divided = previous >= 0 && group != previous;
-                total += width + (divided ? divider : 0);
-                items.append({i, width, divided});
-                previous = group;
-            }
-            return total;
-        };
-        int count = quickActions.count();
-        bool labelled = true;
-        qreal total = build(true, count);
-        // the first thing to give way is an extra action at the end, down to the main one + the application +
-        // "open with"; below that the label goes
-        int keep = 1;
-        for (int i = 0; i < quickActions.count(); ++i) {
-            if (quickActions.at(i).program.startsWith(QLatin1Char('@'))) {
-                keep = i + 1;
-            }
-        }
-        while (total > right - x && count > keep) {
-            total = build(true, --count);
-        }
-        if (total > right - x) {
-            labelled = false;
-            count = quickActions.count();
-            total = build(false, count);
-            while (total > right - x && count > 1) {
-                total = build(false, --count);
-            }
-        }
-        if (count == 0 || total > right - x) {
-            return y;
-        }
-        m_ngCardActionsPill = QRectF(x, y, total, actionHeight);
-        qreal cx = x + inner;
-        for (const Item &item : std::as_const(items)) {
-            const NgQuickAction &action = quickActions.at(item.index);
-            if (item.divided) {
-                m_ngCardActionSeps.append(cx + divider / 2.0);
-                cx += divider;
-            }
-            NgChip chip;
-            chip.text = (action.main && labelled) ? action.label : QString();
-            chip.rect = QRectF(cx, y + inner, item.width, actionHeight - 2 * inner);
-            chip.tinted = action.main;
-            m_ngCardActions.append(chip);
-            // rendered once per icon and kept: this runs for every card at every layout
-            static QHash<QString, QPixmap> iconCache;
-            const QColor glyphColor = option.palette.color(QPalette::Text);
-            const bool isApp = action.program.startsWith(QLatin1String("@app"));
-            const QString cacheKey = action.icon + QLatin1Char('|') + QString::number(dpr) + QLatin1Char('|') + (isApp ? QString() : glyphColor.name());
-            auto cached = iconCache.constFind(cacheKey);
-            if (cached == iconCache.constEnd()) {
-                QPixmap pixmap = QIcon::fromTheme(action.icon, QIcon::fromTheme(QStringLiteral("application-x-executable"))).pixmap(isApp ? QSize(22, 22) : QSize(18, 18), dpr);
-                if (!isApp) {
-                    // an action glyph: in the text colour, whatever the icon theme draws it in (applications keep their colours)
-                    QPainter tint(&pixmap);
-                    tint.setCompositionMode(QPainter::CompositionMode_SourceIn);
-                    tint.fillRect(pixmap.rect(), glyphColor);
-                }
-                cached = iconCache.insert(cacheKey, pixmap);
-            }
-            m_ngCardActionIcons.append(*cached);
-            cx += item.width;
-        }
-        return y + actionHeight;
+        return ngLayoutActionPill(quickActions, x, y, right, actionHeight, chipFm, false);
     };
     if (hovered) {
         m_ngCardEye = QRectF(card.right() - 6 - (actionSide + 2), card.top() + 6, actionSide + 2, actionSide + 2);
@@ -3282,43 +3377,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
         }
     }
 
-    // ---- the quick actions: icons in one pill, the main one with its label on a tint of the type
-    if (!m_ngCardActions.isEmpty()) {
-        const QRectF pill = m_ngCardActionsPill.adjusted(0.5, 0.5, -0.5, -0.5);
-        QColor edge = text;
-        edge.setAlphaF(0.13);
-        painter->setPen(QPen(edge, 1));
-        painter->setBrush(dark ? QColor(0, 0, 0, 72) : QColor(255, 255, 255, 130));
-        painter->drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0);
-        QColor hairline = text;
-        hairline.setAlphaF(0.18);
-        painter->setPen(QPen(hairline, 1));
-        for (const qreal x : std::as_const(m_ngCardActionSeps)) {
-            painter->drawLine(QPointF(x, pill.top() + 6), QPointF(x, pill.bottom() - 6));
-        }
-        QFont chipFont = m_customizedFont;
-        chipFont.setPointSizeF(chipFont.pointSizeF() * 0.88);
-        painter->setFont(chipFont);
-        painter->setOpacity(isHovered() ? 1.0 : 0.82);
-        for (int i = 0; i < m_ngCardActions.count(); ++i) {
-            const NgChip &chip = m_ngCardActions.at(i);
-            const QPixmap &icon = m_ngCardActionIcons.at(i);
-            if (!chip.text.isEmpty()) {
-                QColor tint = m_ngTint;
-                tint.setAlpha(dark ? 64 : 70);
-                painter->setPen(Qt::NoPen);
-                painter->setBrush(tint);
-                painter->drawRoundedRect(chip.rect, chip.rect.height() / 2.0, chip.rect.height() / 2.0);
-                painter->drawPixmap(QPointF(chip.rect.left() + 8, chip.rect.center().y() - 9), icon);
-                painter->setPen(text);
-                painter->drawText(chip.rect.adjusted(8 + 18 + 6, 0, -6, 0), Qt::AlignLeft | Qt::AlignVCenter, chip.text);
-            } else {
-                const qreal side = icon.width() / icon.devicePixelRatio(); // 22 for applications, 18 for glyphs
-                painter->drawPixmap(QPointF(chip.rect.center().x() - side / 2.0, chip.rect.center().y() - side / 2.0), icon);
-            }
-        }
-        painter->setOpacity(1.0);
-    }
+    paintNgActionPill(painter, text, dark);
 
     // ---- the size bar (Dossier, files)
     if (m_ngBarFraction >= 0 && !m_ngBarRect.isEmpty()) {
