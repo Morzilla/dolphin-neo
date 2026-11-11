@@ -344,6 +344,7 @@ private:
     QList<qreal> m_ngCardActionSeps; // x of the hairlines between the groups
     QRectF m_ngCardActionsPill;
     QRectF m_ngCardFab; // Tessera: the main action on its own, astride the bottom edge of the picture band
+    bool m_ngCardEyeInPill = false; // Tessera: the preview eye is the last button of the pill
     bool m_ngCardHoverPill = false; // Tessera: the pill (everything but the main action) shows only while hovered
     QList<int> m_ngCardActionIndex; // one per entry of m_ngCardActions: which quick action of the file it is
     QRectF m_ngRowThumb; // two-line rows: where the small preview is drawn (empty: the type mark is shown)

@@ -3078,7 +3078,7 @@ void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor 
             }
             if (!chip.text.isEmpty()) {
                 QColor tint = m_ngTint;
-                tint.setAlpha(dark ? 64 : 70);
+                tint.setAlpha(m_ngCardHoverPill ? 135 : dark ? 64 : 70); // over a picture the colour has to hold its own
                 painter->setPen(Qt::NoPen);
                 painter->setBrush(tint);
                 painter->drawRoundedRect(chip.rect, chip.rect.height() / 2.0, chip.rect.height() / 2.0);
@@ -3086,6 +3086,14 @@ void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor 
                 painter->setPen(text);
                 painter->drawText(chip.rect.adjusted(8 + 18 + 6, 0, -6, 0), Qt::AlignLeft | Qt::AlignVCenter, chip.text);
             } else {
+                if (chip.tinted) {
+                    // the main action without room for its label: it keeps the colour of the type behind its glyph
+                    QColor tint = m_ngTint;
+                    tint.setAlpha(m_ngCardHoverPill ? 135 : dark ? 64 : 70);
+                    painter->setPen(Qt::NoPen);
+                    painter->setBrush(tint);
+                    painter->drawRoundedRect(chip.rect, chip.rect.height() / 2.0, chip.rect.height() / 2.0);
+                }
                 const qreal side = icon.width() / icon.devicePixelRatio(); // 22 for applications, 18 for glyphs
                 painter->drawPixmap(QPointF(chip.rect.center().x() - side / 2.0, chip.rect.center().y() - side / 2.0), icon);
             }
@@ -3112,6 +3120,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     m_ngCount.clear();
     m_ngAgo.clear();
     m_ngCardEye = QRectF();
+    m_ngCardEyeInPill = false;
     m_ngCardMenu = QRectF();
     m_ngCardActions.clear();
     m_ngCardActionIndex.clear();
@@ -3323,28 +3332,18 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         m_ngCardIconSide = showPicture ? qMin<qreal>(option.iconSize, bandHeight * 0.56) : 0;
         const qreal x0 = card.left() + pad;
         const qreal right = card.right() - pad;
-        // The actions (arrangement B): the main one, with its label, is always there, astride the bottom edge of the
-        // band at the right; everything else is one pill over the top left of the band, shown while the card is hovered.
-        int mainAt = -1;
-        QList<NgQuickAction> others;
-        QList<int> otherAt;
-        for (int i = 0; i < quickActions.count(); ++i) {
-            if (quickActions.at(i).main && mainAt < 0) {
-                mainAt = i;
-            } else {
-                others.append(quickActions.at(i));
-                otherAt.append(i);
-            }
-        }
-        if (mainAt >= 0) {
-            ngLayoutActionPill({quickActions.at(mainAt)}, x0, m_ngCardThumb.bottom() - actionHeight / 2.0, right, actionHeight, chipFm, true, {mainAt});
-            m_ngCardFab = m_ngCardActionsPill;
-            m_ngCardActionsPill = QRectF();
-        }
-        if (!others.isEmpty()) {
-            const qreal eyeRoom = actionSide + 2 + 12; // the preview eye is in the top right corner
-            ngLayoutActionPill(others, card.left() + 8, card.top() + 8, card.right() - eyeRoom, actionHeight, chipFm, false, otherAt);
+        // The actions: one pill over the top left of the band, shown while the card is hovered. The main action comes
+        // first, with its label on the colour of the type; the preview eye is the last button of the same pill.
+        if (!quickActions.isEmpty()) {
+            const qreal eyeSide = actionHeight - 6;
+            ngLayoutActionPill(quickActions, card.left() + 8, card.top() + 8, card.right() - 8 - (hovered ? eyeSide + 9 : 0), actionHeight, chipFm, false);
             m_ngCardHoverPill = true;
+            if (hovered && !m_ngCardActionsPill.isEmpty()) {
+                m_ngCardActionSeps.append(m_ngCardActionsPill.right() + 0.5);
+                m_ngCardEye = QRectF(m_ngCardActionsPill.right() + 4, m_ngCardActionsPill.top() + 3, eyeSide, eyeSide);
+                m_ngCardActionsPill.setRight(m_ngCardEye.right() + 3);
+                m_ngCardEyeInPill = true;
+            }
         }
         qreal y = m_ngCardThumb.bottom() + (m_ngCardFab.isEmpty() ? pad * 0.8 : qMax(pad * 0.8, actionHeight / 2.0 + 5));
         actionsAt(right, y - 2);
@@ -3749,10 +3748,13 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
 
     // ---- the preview eye, on a dark disc so that it reads over a picture too
     if (isHovered() && !m_ngCardEye.isEmpty()) {
-        painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(0, 0, 0, 130));
-        painter->drawRoundedRect(m_ngCardEye, 7, 7);
-        const QColor glyph(255, 255, 255, 235);
+        if (!m_ngCardEyeInPill) {
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(0, 0, 0, 130));
+            painter->drawRoundedRect(m_ngCardEye, 7, 7);
+        }
+        // in the pill the eye takes the colour of the other glyphs; alone, over a picture, it is white on its disc
+        const QColor glyph = m_ngCardEyeInPill ? styleOption().palette.color(QPalette::Text) : QColor(255, 255, 255, 235);
         const QPointF c = m_ngCardEye.center();
         const qreal r = m_ngCardEye.width() * 0.32;
         painter->setBrush(glyph);
