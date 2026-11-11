@@ -1839,7 +1839,7 @@ void KStandardItemListWidget::updatePixmapCache()
             // column of a Scheda), not down to the icon size and up again when painted
             QSizeF cardPicture;
             if (m_layout == CardsLayout && ngCardStyle() == NgCardStyle::Tessera) {
-                cardPicture = QSizeF(widgetSize.width(), qRound(qMin(widgetSize.height() * 0.37, 120.0)));
+                cardPicture = QSizeF(widgetSize.width(), qRound(qMin(widgetSize.width() * 0.40, QFontMetricsF(m_customizedFont).height() * 9.0)));
             } else if (m_layout == CardsLayout && ngCardStyle() == NgCardStyle::Scheda) {
                 const qreal side = qBound(44.0, widgetSize.height() * 0.66, qMax(64.0, widgetSize.width() * 0.30));
                 cardPicture = QSizeF(side, side);
@@ -3343,7 +3343,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         // | Modificato ...
         // | Tipo       ...
         // | Permessi   -rw-r--r-- · daniele
-        const qreal bandHeight = qRound(qMin(card.height() * 0.37, 120.0));
+        const qreal bandHeight = qRound(qMin(card.width() * 0.40, fh * 9.0)); // follows the width; the view sizes the card around it
         m_ngCardThumb = QRectF(card.left(), card.top(), card.width(), bandHeight);
         m_ngCardIconSide = showPicture ? qMin<qreal>(option.iconSize, bandHeight * 0.56) : 0;
         const qreal x0 = card.left() + pad;

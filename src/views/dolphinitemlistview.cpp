@@ -290,6 +290,22 @@ void DolphinItemListView::updateGridSize()
                 itemWidth = int(available / columns) - horizontalMargin - 1;
             }
         }
+        if (look == 0) {
+            // a Tessera is as tall as what it shows: the band (which follows the width), the name, the chips and
+            // the lines of details. The same measures as KStandardItemListWidget::updateCardsLayoutTextCache().
+            QFont nameFont = option.font;
+            nameFont.setWeight(QFont::DemiBold);
+            QFont small = option.font;
+            small.setPointSizeF(small.pointSizeF() * 0.9);
+            QFont chipFont = option.font;
+            chipFont.setPointSizeF(chipFont.pointSizeF() * 0.88);
+            const qreal fh = QFontMetricsF(option.font).height();
+            const qreal pad = qBound(8.0, itemWidth * 0.05, 14.0);
+            const qreal band = qRound(qMin(itemWidth * 0.40, fh * 9.0));
+            const int lines = ngSetting("CARDS_INFO").toLower() == QLatin1String("full") ? 4 : 2;
+            itemHeight = qRound(band + pad * 0.8 + QFontMetricsF(nameFont).height() + 6 + qRound(QFontMetricsF(chipFont).height() + 4) + 8
+                                + lines * (QFontMetricsF(small).height() + 2) + pad + 3); // 3: the widget rounds its own steps
+        }
         break;
     }
     default:
