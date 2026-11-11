@@ -3836,18 +3836,41 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             painter->save();
             painter->setClipPath(band, Qt::IntersectClip);
             painter->setRenderHint(QPainter::SmoothPixmapTransform);
+            painter->setRenderHint(QPainter::Antialiasing);
+            // It has to read as a folder, not as a picture: the pictures stand inside a folder drawn across the band,
+            // its back with the tab behind them and its front flap over their lower part.
+            const QRectF &b = m_ngCardThumb;
+            const QColor back = m_ngTint.darker(dark ? 165 : 125), front = m_ngTint.darker(dark ? 112 : 104);
+            const QRectF backPanel(b.left() + 8, b.top() + 13, b.width() - 16, b.height());
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(back);
+            painter->drawRoundedRect(QRectF(backPanel.left(), b.top() + 4, backPanel.width() * 0.30, 20), 5, 5);
+            painter->drawRoundedRect(backPanel, 7, 7);
+            const QRectF inside = backPanel.adjusted(7, 7, -7, 0);
             const int count = folderPictures.count();
-            const qreal gap = 3, tileWidth = (m_ngCardThumb.width() - (count - 1) * gap) / count;
+            const qreal gap = 4, tileWidth = (inside.width() - (count - 1) * gap) / count;
             for (int i = 0; i < count; ++i) {
                 const QPixmap &picture = folderPictures.at(i);
-                const QRectF tile(m_ngCardThumb.left() + i * (tileWidth + gap), m_ngCardThumb.top(), tileWidth, m_ngCardThumb.height());
+                const QRectF tile(inside.left() + i * (tileWidth + gap), inside.top(), tileWidth, inside.height());
                 // cover the tile: the middle of a wide picture, the top of a tall one
                 const qreal scale = qMax(tile.width() / picture.width(), tile.height() / picture.height());
                 const QSizeF part(tile.width() / scale, tile.height() / scale);
                 const QRectF source((picture.width() - part.width()) / 2.0, picture.height() > picture.width() * 1.3 ? 0 : (picture.height() - part.height()) / 2.0,
                                     part.width(), part.height());
+                QPainterPath sheet;
+                sheet.addRoundedRect(tile.adjusted(0, 0, 0, 6), 3, 3);
+                painter->save();
+                painter->setClipPath(sheet, Qt::IntersectClip);
                 painter->drawPixmap(tile, picture, source);
+                painter->restore();
             }
+            const qreal flapHeight = qMax(16.0, b.height() * 0.26);
+            const QRectF flap(b.left() + 3, b.bottom() - flapHeight, b.width() - 6, flapHeight + 10);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(front);
+            painter->drawRoundedRect(flap, 7, 7);
+            painter->setPen(QPen(QColor(255, 255, 255, dark ? 70 : 160), 1));
+            painter->drawLine(QPointF(flap.left() + 7, flap.top() + 0.5), QPointF(flap.right() - 7, flap.top() + 0.5));
             painter->restore();
         } else if (m_ngCategory == int(NgKind::Folder) || !m_ngCardPreview) {
             // no preview: a sketch of what a file of this kind holds (or of the folder), instead of its icon

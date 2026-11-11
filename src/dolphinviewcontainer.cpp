@@ -440,12 +440,13 @@ public:
     {
         applyChipStyle();
         auto *row = new QHBoxLayout(this);
-        row->setContentsMargins(14, 4, 14, 6);
+        row->setContentsMargins(14, 4, 14, 11); // a little air between the bar and the files
         row->setSpacing(10);
         // the navigation buttons of the window, moved here from the toolbar (see setLeadingActions)
         m_leading = new QWidget(this);
         auto *leading = new QHBoxLayout(m_leading);
         leading->setContentsMargins(0, 0, 4, 0);
+        m_leadingLayout = leading;
         leading->setSpacing(2);
         m_leading->hide();
         row->addWidget(m_leading, 0, Qt::AlignTop);
@@ -663,6 +664,22 @@ public:
             layout->addWidget(button);
         }
         m_leading->setVisible(!actions.isEmpty());
+        alignLeading();
+    }
+
+    // the buttons are shorter than the pill of the sorting beside them: centred on the first line of the bar
+    void alignLeading()
+    {
+        int line = 0, button = 0;
+        for (int i = 0; i < m_flow->count(); ++i) {
+            if (QWidget *widget = m_flow->itemAt(i)->widget()) {
+                line = qMax(line, widget->sizeHint().height());
+            }
+        }
+        if (auto *first = m_leading->findChild<QToolButton *>()) {
+            button = first->sizeHint().height();
+        }
+        m_leadingLayout->setContentsMargins(0, qMax(0, (line - button) / 2), 4, 0);
     }
 
 private:
@@ -678,6 +695,9 @@ private:
         if (onFiltersChanged) {
             onFiltersChanged(); // the sidebar section mirrors the filters
         }
+        QTimer::singleShot(0, this, [this] {
+            alignLeading();
+        });
         if (!m_view) {
             m_flow->invalidate();
             return;
@@ -915,6 +935,7 @@ private:
 
     DolphinView *m_view;
     QWidget *m_leading;
+    QHBoxLayout *m_leadingLayout = nullptr;
     NgFlowLayout *m_flow;
     DolphinView::Mode m_modeBeforeCards = DolphinView::DetailsView; // the cards button goes back to this
     QLineEdit *m_filter;
