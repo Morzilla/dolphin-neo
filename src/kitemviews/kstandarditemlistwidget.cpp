@@ -601,6 +601,38 @@ bool KStandardItemListWidget::supportsItemExpanding() const
     return m_supportsItemExpanding;
 }
 
+namespace
+{
+// dolphin-ng: a horizontal fade of `tint` from alpha `start` through `middle` (at `middleAt` of the width) to nothing,
+// as an 8 px high tile with ordered dithering on the alpha. Kept per colour and width.
+QPixmap ngDitheredWash(const QColor &tint, int width, qreal start, qreal middle, qreal middleAt)
+{
+    static const int bayer[8][8] = {{0, 32, 8, 40, 2, 34, 10, 42},   {48, 16, 56, 24, 50, 18, 58, 26}, {12, 44, 4, 36, 14, 46, 6, 38},
+                                    {60, 28, 52, 20, 62, 30, 54, 22}, {3, 35, 11, 43, 1, 33, 9, 41},   {51, 19, 59, 27, 49, 17, 57, 25},
+                                    {15, 47, 7, 39, 13, 45, 5, 37},   {63, 31, 55, 23, 61, 29, 53, 21}};
+    static QHash<QString, QPixmap> cache;
+    const QString key = QString::number(tint.rgb(), 16) + QLatin1Char('|') + QString::number(width) + QLatin1Char('|') + QString::number(start);
+    auto it = cache.constFind(key);
+    if (it != cache.constEnd()) {
+        return *it;
+    }
+    if (cache.size() > 64) {
+        cache.clear();
+    }
+    QImage image(width, 8, QImage::Format_ARGB32_Premultiplied);
+    for (int y = 0; y < 8; ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
+        for (int x = 0; x < width; ++x) {
+            const qreal t = qreal(x) / width;
+            const qreal alpha = t < middleAt ? start + (middle - start) * (t / middleAt) : middle * (1.0 - (t - middleAt) / (1.0 - middleAt));
+            const int a = qBound(0, int(std::floor(alpha * 255.0 + (bayer[y][x & 7] + 0.5) / 64.0)), 255);
+            line[x] = qPremultiply(qRgba(tint.red(), tint.green(), tint.blue(), a));
+        }
+    }
+    return *cache.insert(key, QPixmap::fromImage(image));
+}
+}
+
 void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
     const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
@@ -646,15 +678,12 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         painter->setClipPath(clip, Qt::IntersectClip);
 
         // the row takes the colour of the file's category, strongest at the start and gone by the middle
-        QLinearGradient wash(rowRect.left(), 0, rowRect.left() + rowRect.width() * (openRows ? 0.40 : 0.62), 0);
-        QColor washStart = m_ngTint, washMid = m_ngTint, washEnd = m_ngTint;
-        washStart.setAlphaF(openRows ? 0.14 : 0.22);
-        washMid.setAlphaF(openRows ? 0.05 : 0.06);
-        washEnd.setAlphaF(0.0);
-        wash.setColorAt(0.0, washStart);
-        wash.setColorAt(0.55, washMid);
-        wash.setColorAt(1.0, washEnd);
-        painter->fillRect(rowRect, wash);
+        // (dithered: so faint a gradient over so many pixels shows as bands when it is drawn plain)
+        const int washWidth = qMax(8, qRound(rowRect.width() * (openRows ? 0.40 : 0.62)));
+        painter->setBrushOrigin(rowRect.topLeft());
+        painter->fillRect(QRectF(rowRect.left(), rowRect.top(), washWidth, rowRect.height()),
+                          QBrush(ngDitheredWash(m_ngTint, washWidth, openRows ? 0.14 : 0.22, openRows ? 0.05 : 0.06, 0.55)));
+        painter->setBrushOrigin(QPointF(0, 0));
 
         const NgMark mark = ngMark();
         if (mark != NgMark::Watermark) {

@@ -609,7 +609,9 @@ bool KItemListController::mousePressEvent(QGraphicsSceneMouseEvent *event, const
         Q_EMIT clickViewBackground(event->button());
     }
     
-    if (!onPress(event->pos(), event->modifiers(), buttons)) {
+    // dolphin-ng: a right click never starts a rubber band. Its release goes to the context menu, so the band
+    // stayed active and grew with the next scroll (a right click on the free part of a two-line row did that).
+    if (!onPress(event->pos(), event->modifiers(), buttons) && !(buttons & Qt::RightButton)) {
         startRubberBand();
         return false;
     }
