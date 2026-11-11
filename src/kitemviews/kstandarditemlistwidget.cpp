@@ -3156,13 +3156,17 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         // | icon |  2,4 MiB · Immagine PNG
         // +------+  Creato 05/11/26 · 5 giorni fa · Modificato ...
         // [PNG]    [-rw-r--r--]                              👁 ⋯
-        const qreal columnWidth = showPicture ? qBound(44.0, card.height() * 0.5, 64.0) : 0;
+        // the picture column grows with the card, up to 30 % of its width (it used to stop at 64 px: a stamp in a card
+        // zoomed in). It is the same for every card of the view, so the names line up; a preview fills it, a type
+        // icon is as large as the zoom makes icons
+        const qreal columnWidth = !showPicture ? 0 : qBound(44.0, card.height() * 0.66, qMax(64.0, card.width() * 0.30));
         const qreal x0 = card.left() + pad;
         const qreal right = card.right() - pad;
         const qreal footTop = card.bottom() - pad - chipHeight;
         if (showPicture) {
             m_ngCardThumb = QRectF(x0, card.top() + pad, columnWidth, footTop - 4 - (card.top() + pad));
-            m_ngCardIconSide = qMax(16.0, qMin<qreal>(option.iconSize, qMin(columnWidth, m_ngCardThumb.height()) - 4));
+            const qreal room = qMin(columnWidth, m_ngCardThumb.height()) - 4;
+            m_ngCardIconSide = qMax(16.0, m_ngCardPreview ? room : qMin<qreal>(option.iconSize, room));
             const qreal width = chipFm.horizontalAdvance(m_ngSigla) + 14;
             NgChip chip;
             chip.text = m_ngSigla;
