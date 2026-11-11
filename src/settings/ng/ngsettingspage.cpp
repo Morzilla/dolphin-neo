@@ -409,6 +409,31 @@ void ngDrawChoice(QPainter &painter, const QRectF &rect, const QString &key, con
         }
     } else if (key == QLatin1String("cardsmark")) {
         ngMiniCard(painter, QRectF(in.center().x() - 26, in.top(), 52, in.height()), QStringLiteral("a"), kindPdf, false, id == QLatin1String("type"), palette);
+    } else if (key == QLatin1String("badge")) {
+        // a picture with the badge at its bottom right
+        painter.fillRect(rect, ngPictureBrush(rect));
+        const QRectF pill(rect.right() - 62, rect.bottom() - 26, 54, 18);
+        QPainterPath shape;
+        shape.addRoundedRect(pill, 9, 9);
+        painter.save();
+        painter.setClipPath(shape, Qt::IntersectClip);
+        if (id == QLatin1String("glass")) {
+            painter.fillRect(pill, QColor(255, 255, 255, 70));
+        } else {
+            painter.fillRect(pill, QColor(14, 15, 18, 240));
+            painter.fillRect(QRectF(pill.left(), pill.top(), 26, pill.height()), kindPdf);
+        }
+        painter.restore();
+        if (id == QLatin1String("glass")) {
+            painter.setPen(QPen(QColor(255, 255, 255, 130), 1));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), 9, 9);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(kindPdf);
+            painter.drawEllipse(QPointF(pill.left() + 9, pill.center().y()), 3, 3);
+        }
+        ngBar(painter, QRectF(pill.left() + (id == QLatin1String("glass") ? 16 : 7), pill.center().y() - 1.5, 12, 3), id == QLatin1String("glass") ? QColor(255, 255, 255) : QColor(20, 22, 26));
+        ngBar(painter, QRectF(pill.left() + 33, pill.center().y() - 1.5, 14, 3), QColor(255, 255, 255, 220));
     } else if (key == QLatin1String("quickside")) {
         const QPointF cursor(in.center().x(), in.center().y() + 4);
         const QSizeF size(in.width() * 0.32, in.height() * 0.62);
@@ -1072,6 +1097,11 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_cardsMark->addItem(QString(), QStringLiteral("type"));
     tilesFor(m_cardsMark, QStringLiteral("cardsmark"), ngTr("Type mark", "Segno del tipo"),
              {{ngTr("The type icon", "L'icona del tipo"), {}}, {ngTr("The type as background", "Il tipo come sfondo"), {}}}, 5);
+    m_cardsBadge = new QComboBox(this);
+    m_cardsBadge->addItem(QString(), QString());
+    m_cardsBadge->addItem(QString(), QStringLiteral("glass"));
+    tilesFor(m_cardsBadge, QStringLiteral("badge"), ngTr("Type and size badge (Tessera)", "Etichetta di tipo e dimensione (Tessera)"),
+             {{ngTr("Solid: the type on its colour", "Piena: il tipo sul suo colore"), {}}, {ngTr("Glass", "Vetro"), {}}}, 5);
     startForm();
     m_cardsInfo = new QComboBox(this);
     m_cardsInfo->addItem(ngTr("Created and modified", "Creato e modificato"), QString());
@@ -1143,7 +1173,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
                  {m_motion, "GLASS_MOTION"}, {m_lavaStyle, "LAVA_STYLE"}, {m_lavaSize, "LAVA_SIZE"}, {m_lavaColours, "LAVA_COLORS"}, {m_lavaSpeed, "LAVA_SPEED"},
                  {m_rim, "GLASS_RIM"},      {m_devices, "DEVICES"},     {m_twoLines, "LIST"},        {m_rows, "ROWS"},        {m_icons, "ICONS"},
                  {m_mark, "MARK"},          {m_sigla, "SIGLA"},         {m_ago, "DATE_AGO"},         {m_tiles, "TILES"},          {m_rowDates, "ROW_DATES"},
-                 {m_rowWash, "ROW_WASH"}, {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}, {m_cardsInfo, "CARDS_INFO"}, {m_cardsMark, "CARDS_MARK"}, {m_sidebarFilters, "SIDEBAR_FILTERS"}};
+                 {m_rowWash, "ROW_WASH"}, {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}, {m_cardsInfo, "CARDS_INFO"}, {m_cardsMark, "CARDS_MARK"}, {m_cardsBadge, "CARDS_BADGE"}, {m_sidebarFilters, "SIDEBAR_FILTERS"}};
     for (const auto &entry : bound) {
         entry.widget->setEnabled(!ngSettingFromEnvironment(entry.name));
     }
@@ -1157,7 +1187,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
-    for (QComboBox *combo : {m_backdrop, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla, m_cards, m_cardsFit, m_cardsInfo, m_cardsMark}) {
+    for (QComboBox *combo : {m_backdrop, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla, m_cards, m_cardsFit, m_cardsInfo, m_cardsMark, m_cardsBadge}) {
         connect(combo, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     }
     for (QSlider *slider : {m_glass, m_blur, m_liveBlur, m_lavaSize, m_lavaSpeed}) {
@@ -1292,6 +1322,7 @@ void NgSettingsPage::loadSettings()
     m_cardsFit->setCurrentIndex(ngCardsStretch() ? 1 : 0);
     m_cardsInfo->setCurrentIndex(ngSetting("CARDS_INFO").toLower() == QLatin1String("full") ? 1 : 0);
     m_cardsMark->setCurrentIndex(ngSetting("CARDS_MARK").toLower() == QLatin1String("type") ? 1 : 0);
+    m_cardsBadge->setCurrentIndex(ngSetting("CARDS_BADGE").toLower() == QLatin1String("glass") ? 1 : 0);
     const QString quick = ngSetting("CARDS_QUICKVIEW").toLower();
     m_quickView->setChecked(quick != QLatin1String("off"));
     m_quickDelay->setValue(qBound(0, quick.toInt(), 3000));
@@ -1349,6 +1380,7 @@ void NgSettingsPage::applySettings()
     setNgSetting("CARDS_FIT", m_cardsFit->currentData().toString());
     setNgSetting("CARDS_INFO", m_cardsInfo->currentData().toString());
     setNgSetting("CARDS_MARK", m_cardsMark->currentData().toString());
+    setNgSetting("CARDS_BADGE", m_cardsBadge->currentData().toString());
     setNgSetting("CARDS_QUICKVIEW_SIDE", m_quickSide->currentData().toString());
     setNgSetting("CARDS_QUICKVIEW", !m_quickView->isChecked() ? QStringLiteral("off") : m_quickDelay->value() > 0 ? QString::number(m_quickDelay->value()) : QString());
 
@@ -1387,6 +1419,7 @@ void NgSettingsPage::restoreDefaults()
     m_cardsFit->setCurrentIndex(0);
     m_cardsInfo->setCurrentIndex(0);
     m_cardsMark->setCurrentIndex(0);
+    m_cardsBadge->setCurrentIndex(0);
     m_quickView->setChecked(true);
     m_quickDelay->setValue(0);
     m_quickSide->setCurrentIndex(0);

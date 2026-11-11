@@ -343,6 +343,9 @@ private:
     QList<QPixmap> m_ngCardActionIcons; // one per entry of m_ngCardActions
     QList<qreal> m_ngCardActionSeps; // x of the hairlines between the groups
     QRectF m_ngCardActionsPill;
+    QPixmap m_ngBadgeGlass; // the blurred piece of the picture under a glass badge
+    qint64 m_ngBadgeGlassKey = 0;
+    int m_ngBadgeGlassShade = 70; // how dark the veil over it is: more over a light picture, so the white text reads
     QRectF m_ngCardFab; // Tessera: the main action on its own, astride the bottom edge of the picture band
     qreal m_ngReveal = 0.0; // Tessera: how far the hover pill has faded in (0..1)
     QPointer<QVariantAnimation> m_ngRevealAnimation;

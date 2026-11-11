@@ -3523,7 +3523,9 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
                 qreal next = m_ngChips.at(first).rect.left();
                 for (int i = first; i < m_ngChips.count(); ++i) {
                     NgChip &chip = m_ngChips[i];
-                    const qreal width = chipFm.horizontalAdvance(chip.text) * (chip.tinted ? 1.12 : 1.0) + 19; // the type is bold
+                    // (the type is bold; the glass badge has a dot of the type colour before it)
+                    const bool glassBadge = ngSetting("CARDS_BADGE").toLower() == QLatin1String("glass");
+                    const qreal width = chipFm.horizontalAdvance(chip.text) * (chip.tinted ? 1.12 : 1.0) + 19 + (glassBadge && chip.tinted ? 11 : 0);
                     chip.rect = QRectF(next, m_ngCardThumb.bottom() - 8 - badgeHeight, width, badgeHeight);
                     next = chip.rect.right();
                 }
@@ -3983,6 +3985,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                 }
             }
         }
+        const bool glass = ngSetting("CARDS_BADGE").toLower() == QLatin1String("glass");
         if (!badge.isNull()) {
             const qreal radius = badge.height() / 2.0;
             QPainterPath shape;
@@ -3994,13 +3997,40 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                 painter->drawRoundedRect(badge.translated(0, 1.5).adjusted(-i, -i + 1, i, i), radius + i, radius + i);
             }
             painter->setClipPath(shape, Qt::IntersectClip);
-            painter->fillRect(badge, dark ? QColor(14, 15, 18, 240) : QColor(252, 252, 252, 242));
-            for (const NgChip &chip : std::as_const(m_ngChips)) {
-                if (chip.tinted && badge.contains(chip.rect.center())) {
-                    painter->fillRect(chip.rect, m_ngTint);
+            if (glass) {
+                // frosted glass: the part of the picture under the badge, blurred, under a pale veil; without a
+                // picture (a sketch) a dark glass
+                if (m_ngCardPreview && !m_pixmap.isNull()) {
+                    const qreal dpr = m_pixmap.devicePixelRatio();
+                    const QRect source = QRectF((badge.topLeft() - m_pixmapPos) * dpr, badge.size() * dpr).toAlignedRect().intersected(m_pixmap.rect());
+                    if (m_ngBadgeGlassKey != m_pixmap.cacheKey() || m_ngBadgeGlass.size() != source.size()) {
+                        const QPixmap part = m_pixmap.copy(source);
+                        m_ngBadgeGlass = part.scaled(qMax(1, part.width() / 10), qMax(1, part.height() / 10), Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                                             .scaled(part.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                        m_ngBadgeGlassKey = m_pixmap.cacheKey();
+                        const int lightness = m_ngBadgeGlass.isNull() ? 0 : m_ngBadgeGlass.scaled(1, 1, Qt::IgnoreAspectRatio, Qt::SmoothTransformation).toImage().pixelColor(0, 0).lightness();
+                        m_ngBadgeGlassShade = lightness > 190 ? 150 : lightness > 130 ? 115 : 70;
+                    }
+                    painter->drawPixmap(badge, m_ngBadgeGlass, QRectF(m_ngBadgeGlass.rect()));
+                    painter->fillRect(badge, QColor(0, 0, 0, m_ngBadgeGlassShade));
+                    painter->fillRect(badge, QColor(255, 255, 255, 40));
+                } else {
+                    painter->fillRect(badge, QColor(20, 22, 26, 150));
+                }
+            } else {
+                painter->fillRect(badge, dark ? QColor(14, 15, 18, 240) : QColor(252, 252, 252, 242));
+                for (const NgChip &chip : std::as_const(m_ngChips)) {
+                    if (chip.tinted && badge.contains(chip.rect.center())) {
+                        painter->fillRect(chip.rect, m_ngTint);
+                    }
                 }
             }
             painter->restore();
+            if (glass) {
+                painter->setPen(QPen(QColor(255, 255, 255, 96), 1));
+                painter->setBrush(Qt::NoBrush);
+                painter->drawRoundedRect(badge.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+            }
         }
         for (const NgChip &chip : std::as_const(m_ngChips)) {
             if (!badge.isNull() && badge.contains(chip.rect.center())) {
@@ -4010,6 +4040,22 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                     badgeFont.setLetterSpacing(QFont::PercentageSpacing, 104);
                 }
                 painter->setFont(badgeFont);
+                if (glass) {
+                    // white on the glass, with a thin shadow; the type has a dot of its colour before it
+                    QRectF textRect = chip.rect.adjusted(chip.tinted ? 1 : -1, 0, chip.tinted ? 1 : -1, 0);
+                    if (chip.tinted) {
+                        painter->setPen(QPen(QColor(0, 0, 0, 64), 2));
+                        painter->setBrush(m_ngTint);
+                        painter->drawEllipse(QPointF(chip.rect.left() + 13, chip.rect.center().y()), 4, 4);
+                        textRect.adjust(11, 0, 0, 0);
+                    }
+                    painter->setPen(QColor(0, 0, 0, 120));
+                    painter->drawText(textRect.translated(0, 1), Qt::AlignCenter, chip.text);
+                    painter->setPen(QColor(255, 255, 255, chip.tinted ? 255 : 235));
+                    painter->drawText(textRect, Qt::AlignCenter, chip.text);
+                    painter->setFont(chipFont);
+                    continue;
+                }
                 painter->setPen(chip.tinted ? QColor(20, 22, 26) : text);
                 // the two halves lean towards the join: 10 px at the outer end, 8 at the inner one
                 painter->drawText(chip.rect.adjusted(chip.tinted ? 1 : -1, 0, chip.tinted ? 1 : -1, 0), Qt::AlignCenter, chip.text);
