@@ -313,7 +313,8 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
     if (!actions.isEmpty()) {
         actions[0].main = true;
     }
-    // then the two applications that open this type besides the default one, and "open with" (the runner,
+    // then the application that opens this type after the default one (a click on the card already opens the
+    // default), "open with", and cut / copy (the runner,
     // DolphinView, launches them: "@app" + storage id, "@openwith" = the whole menu). Asked once per type.
     static QHash<QString, QList<NgQuickAction>> appsForMime;
     auto apps = appsForMime.constFind(mime);
@@ -324,7 +325,7 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
         if (!services.isEmpty()) {
             seenIcons.insert(services.constFirst()->icon());
         }
-        for (int n = 1; n < services.count() && list.count() < 2; ++n) {
+        for (int n = 1; n < services.count() && list.count() < 1; ++n) {
             if (seenIcons.contains(services.at(n)->icon())) {
                 continue;
             }
@@ -341,6 +342,16 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
         openWith.program = QStringLiteral("@openwith");
         openWith.icon = QStringLiteral("overflow-menu");
         list.append(openWith);
+        NgQuickAction cut;
+        cut.label = ngTr("Cut", "Taglia");
+        cut.program = QStringLiteral("@cut");
+        cut.icon = QStringLiteral("edit-cut");
+        list.append(cut);
+        NgQuickAction copy;
+        copy.label = ngTr("Copy", "Copia");
+        copy.program = QStringLiteral("@copy");
+        copy.icon = QStringLiteral("edit-copy");
+        list.append(copy);
         apps = appsForMime.insert(mime, list);
     }
     int at = actions.isEmpty() ? 0 : 1;

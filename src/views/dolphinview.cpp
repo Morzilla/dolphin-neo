@@ -2682,6 +2682,17 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
         job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
         job->start();
     };
+    if (action.program == QLatin1String("@cut") || action.program == QLatin1String("@copy")) {
+        // this one file, whatever is selected
+        auto *mimeData = new QMimeData();
+        mimeData->setUrls({item.url()});
+        if (action.program == QLatin1String("@cut")) {
+            KIO::setClipboardDataCut(mimeData, true);
+        }
+        KUrlMimeData::exportUrlsToPortal(mimeData);
+        QApplication::clipboard()->setMimeData(mimeData);
+        return;
+    }
     if (action.program == QLatin1String("@app")) {
         const KService::Ptr service = KService::serviceByStorageId(action.arguments.value(0));
         if (service) {

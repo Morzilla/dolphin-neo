@@ -2831,7 +2831,8 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             int previous = -1;
             for (int i = 0; i < count; ++i) {
                 const NgQuickAction &action = quickActions.at(i);
-                const int group = action.main ? 0 : action.program.startsWith(QLatin1Char('@')) ? 1 : 2;
+                const bool clipboard = action.program == QLatin1String("@cut") || action.program == QLatin1String("@copy");
+                const int group = action.main ? 0 : clipboard ? 3 : action.program.startsWith(QLatin1Char('@')) ? 1 : 2;
                 const qreal width = (action.main && labelled) ? 8 + 18 + 6 + chipFm.horizontalAdvance(action.label) + 12 : button + 2;
                 const bool divided = previous >= 0 && group != previous;
                 total += width + (divided ? divider : 0);
@@ -2843,7 +2844,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         int count = quickActions.count();
         bool labelled = true;
         qreal total = build(true, count);
-        // the first thing to give way is an extra action at the end, down to the main one + the two applications +
+        // the first thing to give way is an extra action at the end, down to the main one + the application +
         // "open with"; below that the label goes
         int keep = 1;
         for (int i = 0; i < quickActions.count(); ++i) {
