@@ -1140,11 +1140,17 @@ public:
         m_metaFlow->setContentsMargins(0, 0, 0, 0);
         layout->addWidget(m_metaRow);
 
-        auto *actions = new QHBoxLayout();
-        actions->setSpacing(6);
-        layout->addLayout(actions);
-        auto action = [this, actions](const QString &text, const QString &icon, bool primary, std::function<void()> run) {
-            auto *button = new QPushButton(QIcon::fromTheme(icon), text, this);
+        // the four actions share one pill, like the sort choices and the actions of a card; "Open" is raised in it
+        auto *actionPill = new QWidget(this);
+        actionPill->setObjectName(QStringLiteral("actionPill"));
+        actionPill->setAttribute(Qt::WA_StyledBackground);
+        auto *actions = new QHBoxLayout(actionPill);
+        actions->setContentsMargins(3, 3, 3, 3);
+        actions->setSpacing(2);
+        layout->addWidget(actionPill);
+        auto action = [actionPill, this, actions](const QString &text, const QString &icon, bool primary, std::function<void()> run) {
+            auto *button = new QPushButton(QIcon::fromTheme(icon), QLatin1Char(' ') + text, actionPill); // the space keeps the icon off the text
+            button->setFixedHeight(fontMetrics().height() + 14); // a known height: the rounded ends are half of it
             button->setProperty("kind", primary ? QStringLiteral("primary") : QStringLiteral("plain"));
             button->setCursor(Qt::PointingHandCursor);
             button->setFocusPolicy(Qt::NoFocus);
@@ -1170,6 +1176,20 @@ public:
         action(ngTr("Path", "Percorso"), QStringLiteral("edit-copy"), false, [this] {
             QGuiApplication::clipboard()->setText(m_item.isLocalFile() ? m_item.localPath() : m_item.url().toDisplayString());
         });
+
+        {
+            const QString ink = ngIsDark(palette()) ? QStringLiteral("255, 255, 255") : QStringLiteral("0, 0, 0");
+            const int inner = fontMetrics().height() + 14;
+            actionPill->setStyleSheet(QStringLiteral("QWidget#actionPill { background: rgba(%1, 0.05); border: 1px solid rgba(%1, 0.09); border-radius: %2px; }"
+                                                     "QPushButton { border: 1px solid transparent; border-radius: %3px; padding: 0 10px; background: transparent; font-weight: 500; }"
+                                                     "QPushButton:hover { background: rgba(%1, 0.10); }"
+                                                     "QPushButton:pressed { background: rgba(%1, 0.16); }"
+                                                     "QPushButton[kind=\"primary\"] { background: rgba(%1, 0.15); border-color: rgba(%1, 0.20); }"
+                                                     "QPushButton[kind=\"primary\"]:hover { background: rgba(%1, 0.21); }")
+                                          .arg(ink)
+                                          .arg((inner + 6) / 2 - 1)
+                                          .arg(inner / 2 - 1));
+        }
 
         m_divider = new QWidget(this);
         m_divider->setObjectName(QStringLiteral("divider"));
@@ -1727,7 +1747,7 @@ private:
             }, true);
         }
         const bool some = m_typeFlow->count() > 0;
-        m_divider->setVisible(some);
+        m_divider->hide(); // no rule between the two rows of actions
         m_typeRow->setVisible(some);
     }
 
