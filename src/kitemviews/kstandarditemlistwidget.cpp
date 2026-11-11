@@ -1137,6 +1137,9 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
         if (m_ngCardMenu.contains(pos)) {
             return 2;
         }
+        if (m_ngCardActionsPill.contains(pos)) {
+            return 0; // on the pill, in the gap between two buttons: not the picture under it (no quick view)
+        }
         // 4: the pointer rests on the picture of an image or a PDF (quick view; hover only, never a click)
         if (m_ngCardThumb.contains(pos)) {
             const QString name = data().value("text").toString();
