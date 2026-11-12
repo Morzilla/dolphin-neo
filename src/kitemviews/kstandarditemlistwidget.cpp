@@ -5249,8 +5249,6 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
         }
     }
 
-    paintNgActionPill(painter, text, dark);
-
     // ---- the size bar (Dossier, files)
     if (m_ngBarFraction >= 0 && !m_ngBarRect.isEmpty()) {
         QColor track = text;
@@ -5287,6 +5285,9 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             painter->drawText(line.textPos, line.text);
         }
     }
+
+    // ---- the quick actions, over everything written on the card (drawn earlier, the dates showed through the pill)
+    paintNgActionPill(painter, text, dark);
 
     // ---- the preview eye, on a dark disc so that it reads over a picture too
     if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? m_ngReveal > 0.01 : isHovered()) && !NgActivity::self()->contains(data().value("url").toUrl())
