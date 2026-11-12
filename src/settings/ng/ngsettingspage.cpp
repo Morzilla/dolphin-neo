@@ -1256,7 +1256,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     heading(ngTr("Quick view", "Anteprima al volo"));
     note(ngTr("Shown when the pointer rests on the small picture of an image, a GIF, a video or a PDF, on cards and rows.",
               "Compare fermando il mouse sulla miniatura di immagini, GIF, video e PDF, nelle card e nelle righe."));
-    m_quickView = toggle(ngTr("On", "Attiva"));
+    m_quickView = toggle(ngTr("On in Dolphin NG", "Attiva in Dolphin NG"));
     startForm();
     m_quickDelay = new QSpinBox(this);
     m_quickDelay->setRange(0, 3000);
@@ -1290,7 +1290,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     // the open/save window (Dialog NG) has a setting of its own: one may want the quick preview here and not there
     heading(ngTr("Open/Save window (Dialog NG)", "Finestra Apri/Salva (Dialog NG)"));
     note(ngTr("The file window of every application, when Dialog NG is installed.", "La finestra dei file di tutte le applicazioni, se Dialog NG è installato."));
-    m_dialogQuick = toggle(ngTr("Quick preview when the mouse rests on a file", "Anteprima al volo fermando il mouse su un file"));
+    m_dialogQuick = toggle(ngTr("On in the Open/Save window", "Attiva nella finestra Apri/Salva"));
     page->addStretch();
 
     connect(tabGroup, &QButtonGroup::idClicked, this, [this](int index) {
