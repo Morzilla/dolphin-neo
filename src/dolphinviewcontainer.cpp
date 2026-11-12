@@ -3682,6 +3682,32 @@ public:
             if (m_pins.count() > 10) {
                 m_pins.resize(10);
             }
+            // two pinned items with the same name: the folder each is in, in brackets (and the folders above it
+            // while those are the same too)
+            for (int i = 0; i < m_pins.count(); ++i) {
+                QList<int> same;
+                for (int j = 0; j < m_pins.count(); ++j) {
+                    if (QFileInfo(m_pins.at(j).path).fileName().compare(QFileInfo(m_pins.at(i).path).fileName(), Qt::CaseInsensitive) == 0) {
+                        same.append(j);
+                    }
+                }
+                if (same.count() < 2 || same.first() != i) {
+                    continue;
+                }
+                for (int depth = 1; depth <= 4; ++depth) {
+                    QStringList where;
+                    for (const int j : std::as_const(same)) {
+                        const QStringList parts = QFileInfo(m_pins.at(j).path).absolutePath().split(QLatin1Char('/'), Qt::SkipEmptyParts);
+                        where.append(parts.mid(qMax(0, int(parts.count()) - depth)).join(QLatin1Char('/')));
+                    }
+                    if (QSet<QString>(where.begin(), where.end()).count() == where.count() || depth == 4) {
+                        for (int k = 0; k < same.count(); ++k) {
+                            m_pins[same.at(k)].name = QFileInfo(m_pins.at(same.at(k)).path).fileName() + QStringLiteral(" (") + where.at(k) + QLatin1Char(')');
+                        }
+                        break;
+                    }
+                }
+            }
         }
         const int wanted = pinsHeight() + filtersHeight();
         if (wanted == 0) {
