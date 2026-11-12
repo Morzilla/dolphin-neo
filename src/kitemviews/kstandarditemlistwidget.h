@@ -349,6 +349,7 @@ private:
     bool m_ngCardWatermark = false; // the type is drawn as the background instead of the icon
     bool m_ngShowedActivity = false; // painted with an activity mark last time: repaint once more when it ends
     bool m_ngShowedFamily = false; // painted inside a bubble last time
+    bool m_ngCutPass = false; // painting a cut item into its grey image (paint() calls itself once)
     QRectF m_ngCancelRect; // the stop button on a file at work, where it was painted last
     QRectF m_ngCardEye; // hover actions: preview and menu
     QRectF m_ngCardMenu;

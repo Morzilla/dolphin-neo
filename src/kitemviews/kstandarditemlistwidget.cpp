@@ -659,6 +659,38 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
 {
     const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
 
+    // dolphin-ng: a cut file (waiting to be moved) is drawn whole in grey and see-through: the card or row is
+    // painted into an image, which is turned grey and drawn at 45 %
+    if (m_isCut && !m_ngCutPass) {
+        const QRectF bounds = boundingRect();
+        const qreal dpr = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+        QImage image((bounds.size() * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+        if (!image.isNull()) {
+            image.setDevicePixelRatio(dpr);
+            image.fill(Qt::transparent);
+            {
+                QPainter offscreen(&image);
+                offscreen.translate(-bounds.topLeft());
+                m_ngCutPass = true;
+                paint(&offscreen, option, widget);
+                m_ngCutPass = false;
+            }
+            for (int y = 0; y < image.height(); ++y) {
+                QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
+                for (int x = 0; x < image.width(); ++x) {
+                    const QRgb p = line[x];
+                    const int v = (qRed(p) * 11 + qGreen(p) * 16 + qBlue(p) * 5) / 32; // premultiplied stays valid
+                    line[x] = qRgba(v, v, v, qAlpha(p));
+                }
+            }
+            painter->save();
+            painter->setOpacity(painter->opacity() * 0.45);
+            painter->drawImage(bounds.topLeft(), image);
+            painter->restore();
+            return;
+        }
+    }
+
     // dolphin-ng: a file just tied to the one it is made from grows into its place
     painter->save();
     const auto restoreGrow = qScopeGuard([painter] {
