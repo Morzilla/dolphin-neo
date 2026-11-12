@@ -465,7 +465,7 @@ protected:
     void ngPaintCheck(QPainter *painter, QWidget *widget);
     /** dolphin-ng: the outline of the block of selected cards this one is part of (item coordinates); \a reach
      *  receives the part this item draws */
-    QPainterPath ngSelectionBlock(qreal grow, QRectF *reach) const;
+    QPainterPath ngSelectionBlock(qreal grow, QRectF *reach, qreal *alpha = nullptr) const;
 
 private:
 

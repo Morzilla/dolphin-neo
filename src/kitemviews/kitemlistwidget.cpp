@@ -1211,7 +1211,7 @@ void KItemListWidget::setSelected(bool selected)
             // the ring comes out from under the card (or goes back under it), the bridges to its neighbours with it
             if (!m_ngSelAnim) {
                 m_ngSelAnim = new QVariantAnimation(this);
-                m_ngSelAnim->setDuration(150);
+                m_ngSelAnim->setDuration(170);
                 m_ngSelAnim->setEasingCurve(QEasingCurve::OutCubic);
                 connect(m_ngSelAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
                     m_ngSelProgress = value.toReal();
@@ -1683,7 +1683,7 @@ static QPainterPath ngRoundedOutline(const QPainterPath &area, qreal radius)
     return rounded;
 }
 
-QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach) const
+QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal *alpha) const
 {
     const QRectF own(pos(), size());
     QList<QRectF> cards{own};
@@ -1718,45 +1718,78 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach) const
             }
         }
     }
-    // a card on its way: its rect comes out from under the card (inset 10 px at 0, grown at 1), the bridges to
-    // its neighbours open from the middle of the gap with the smaller of the two
+    // A card on its way in (or out) next to one already selected: the outline of the block wraps it, growing
+    // over it from the side they share (shrinking back that way). A card on its own fades in and out instead.
+    auto adjacent = [&](int i, int j) {
+        return beside(block[i], block[j]) || beside(block[j], block[i]) || under(block[i], block[j]) || under(block[j], block[i]);
+    };
+    auto anchorOf = [&](int i) { // the neighbour furthest along, if it is further along than this card
+        int best = -1;
+        for (int j = 0; j < block.size(); ++j) {
+            if (j != i && blockProgress[j] > blockProgress[i] + 0.001 && adjacent(i, j) && (best < 0 || blockProgress[j] > blockProgress[best])) {
+                best = j;
+            }
+        }
+        return best;
+    };
     auto grownRect = [&](int i) {
-        const qreal p = blockProgress[i], g = -10 + (grow + 10) * p;
-        return block[i].adjusted(-g, -g, g, g);
+        QRectF full = block[i].adjusted(-grow, -grow, grow, grow);
+        const qreal p = blockProgress[i];
+        const int a = anchorOf(i);
+        if (p >= 0.999 || a < 0) {
+            return full;
+        }
+        const QRectF &n = block[a];
+        if (beside(n, block[i])) {
+            full.setRight(full.left() + full.width() * p);
+        } else if (beside(block[i], n)) {
+            full.setLeft(full.right() - full.width() * p);
+        } else if (under(n, block[i])) {
+            full.setBottom(full.top() + full.height() * p);
+        } else {
+            full.setTop(full.bottom() - full.height() * p);
+        }
+        return full;
     };
     QPainterPath area;
     area.setFillRule(Qt::WindingFill);
+    qreal strongest = 0;
     for (int i = 0; i < block.size(); ++i) {
+        strongest = qMax(strongest, blockProgress[i]);
         const QRectF &a = block[i];
         area.addRect(grownRect(i));
         for (int j = 0; j < block.size(); ++j) {
             const QRectF &b = block[j];
-            const qreal p = qMin(blockProgress[i], blockProgress[j]);
+            if (!beside(a, b) && !under(a, b)) {
+                continue;
+            }
+            // the bridge: whole as soon as one of the two is already there and wraps the other
+            const bool wrapping = anchorOf(i) == j || anchorOf(j) == i;
+            const qreal p = wrapping ? 1.0 : qMin(blockProgress[i], blockProgress[j]);
             if (p < 0.02) {
                 continue;
             }
             if (beside(a, b)) {
-                // the bridge grows from both cards towards the middle of the gap, and in height with the rings
-                const qreal gap = b.left() - a.right(), half = gap / 2.0 * p, g = -10 + (grow + 10) * p;
-                area.addRect(QRectF(a.right() - 1, a.top() - g, half + 1, a.height() + 2 * g));
-                area.addRect(QRectF(b.left() - half, a.top() - g, half + 1, a.height() + 2 * g));
+                const qreal gap = b.left() - a.right();
+                area.addRect(QRectF(a.right() - 1, a.top() - grow, gap + 2, a.height() + 2 * grow));
                 // a 2x2 group: fill the gap where the four meet
                 for (int k = 0; k < block.size(); ++k) {
                     if (under(a, block[k])) {
                         for (int l = 0; l < block.size(); ++l) {
-                            if (under(b, block[l]) && qMin(p, qMin(blockProgress[k], blockProgress[l])) > 0.98) {
+                            if (under(b, block[l]) && qMin(blockProgress[k], blockProgress[l]) > 0.98 && qMin(blockProgress[i], blockProgress[j]) > 0.98) {
                                 area.addRect(QRectF(a.right(), a.bottom(), gap, block[k].top() - a.bottom()));
                             }
                         }
                     }
                 }
-            }
-            if (under(a, b)) {
-                const qreal gap = b.top() - a.bottom(), half = gap / 2.0 * p, g = -10 + (grow + 10) * p;
-                area.addRect(QRectF(a.left() - g, a.bottom() - 1, a.width() + 2 * g, half + 1));
-                area.addRect(QRectF(a.left() - g, b.top() - half, a.width() + 2 * g, half + 1));
+            } else {
+                const qreal gap = b.top() - a.bottom();
+                area.addRect(QRectF(a.left() - grow, a.bottom() - 1, a.width() + 2 * grow, gap + 2));
             }
         }
+    }
+    if (alpha) {
+        *alpha = strongest; // a block appearing (or going) all together fades
     }
     if (reach) {
         // this card's part: up to half of the gap towards a neighbour of the block, a little more elsewhere
@@ -1786,7 +1819,7 @@ void KItemListWidget::ngPaintCheck(QPainter *painter, QWidget *widget)
     if (!ngRingSelection() || m_ngSelProgress < 0.01) {
         return;
     }
-    const qreal pop = m_ngSelProgress; // the check grows in with the ring
+    const qreal pop = m_ngSelProgress; // the check fades in and out with the ring
     const bool dark = ngIsDark(widget ? widget->palette() : m_styleOption.palette);
     QColor accent = m_styleOption.palette.color(QPalette::Highlight);
     if (dark && accent.lightness() < 150) {
@@ -1798,9 +1831,7 @@ void KItemListWidget::ngPaintCheck(QPainter *painter, QWidget *widget)
     painter->setRenderHint(QPainter::Antialiasing);
     painter->setPen(QPen(QColor(0, 0, 0, 90), 3));
     painter->setBrush(accent);
-    painter->translate(centre);
-    painter->scale(pop, pop);
-    painter->translate(-centre);
+    painter->setOpacity(painter->opacity() * pop);
     painter->drawEllipse(centre, 10, 10);
     painter->setPen(QPen(QColor::fromHsl(accent.hslHue() < 0 ? 0 : accent.hslHue(), 60, 22), 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     painter->setBrush(Qt::NoBrush);
@@ -1854,10 +1885,12 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
             if (selected || m_ngSelProgress > 0.001) {
                 // one outline around the block of selected cards next to each other, with a faint veil inside
                 QRectF reach;
-                const QPainterPath block = ngSelectionBlock(gap, &reach);
+                qreal alpha = 1;
+                const QPainterPath block = ngSelectionBlock(gap, &reach, &alpha);
                 painter->setClipRect(reach, Qt::IntersectClip);
                 QColor veil = accent;
-                veil.setAlphaF(0.07);
+                veil.setAlphaF(0.07 * alpha);
+                ring.setAlphaF(ring.alphaF() * alpha);
                 painter->setPen(QPen(ring, width));
                 painter->setBrush(veil);
                 painter->drawPath(block);
