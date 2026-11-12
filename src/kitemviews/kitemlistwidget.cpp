@@ -982,6 +982,14 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
     } else if (mime.startsWith(QLatin1String("video/"))) {
         simple(ngTr("To MP4", "In MP4"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-c:v"), QStringLiteral("libx264"), QStringLiteral("-crf"), QStringLiteral("23"), QStringLiteral("-c:a"), QStringLiteral("aac"), QStringLiteral("%1.mp4").arg(base)});
         simple(ngTr("Extract the audio (MP3)", "Estrai l'audio (MP3)"), QStringLiteral("ffmpeg"), {QStringLiteral("-i"), localPath, QStringLiteral("-vn"), QStringLiteral("-q:a"), QStringLiteral("2"), QStringLiteral("%1.mp3").arg(base)});
+        // the two tracks apart, untouched (copied, no re-encoding): the picture alone in the same kind of file, the
+        // sound in a Matroska audio file, which holds any codec; both named after the video, so they sit next to it
+        // (two passes: a video without sound still gives its picture; existing files are never overwritten)
+        simple(ngTr("Separate audio and video", "Separa audio e video"), QStringLiteral("sh"),
+               {QStringLiteral("-c"),
+                QStringLiteral("ffmpeg -n -i \"$1\" -map 0:v:0 -c copy -an \"$2\" && if ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 \"$1\" | grep -q .; "
+                               "then ffmpeg -n -i \"$1\" -map 0:a:0 -c copy -vn \"$3\"; fi"),
+                QStringLiteral("sh"), localPath, QStringLiteral("%1 (video).%2").arg(base, suffix), QStringLiteral("%1 (audio).mka").arg(base)});
         if (!ngTranscriber().isEmpty()) {
             simple(ngTr("Transcribe", "Trascrivi"), ngTranscriber(), {localPath});
         }
@@ -997,6 +1005,7 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
                                                {ngTr("To FLAC", "In FLAC"), QStringLiteral("audio-x-generic")},
                                                {ngTr("Extract the audio (MP3)", "Estrai l'audio (MP3)"), QStringLiteral("audio-x-generic")},
                                                {ngTr("Frame to PNG", "Fotogramma in PNG"), QStringLiteral("camera-photo")},
+                                               {ngTr("Separate audio and video", "Separa audio e video"), QStringLiteral("split")},
                                                {ngTr("Transcribe", "Trascrivi"), QStringLiteral("text-x-generic")}};
     for (NgQuickAction &action : actions) {
         action.icon = icons.value(action.label, QStringLiteral("system-run"));
