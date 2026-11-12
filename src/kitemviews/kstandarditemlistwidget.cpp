@@ -633,7 +633,7 @@ void KStandardItemListWidgetInformant::calculateDetailsLayoutItemSizeHints(QVect
     const KItemListStyleOption &option = view->styleOption();
     // dolphin-ng: two text lines per row
     const int textHeight = ngTwoLineList() ? 2 * option.fontMetrics.height() + 4 : option.fontMetrics.height();
-    const qreal height = ngNoIcons() ? option.padding * 2 + textHeight + (ngMark() == NgMark::Object ? 34 : 24) // no icon: as tall as its two lines (a little more for the drawing)
+    const qreal height = ngNoIcons() ? option.padding * 2 + textHeight + (ngMark() == NgMark::Object ? 44 : 24) // no icon: as tall as its two lines (a little more for the drawing)
                                       : option.padding * 2 + qMax(option.iconSize, textHeight);
     logicalHeightHints.fill(std::make_pair(height, false));
     logicalWidthHint = -1.0;
@@ -3215,7 +3215,7 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         // it. The count and the size are written at the bottom left of the front, large; a well-known folder of the
         // home (Downloads, Documents...) carries its own colour (the tint) and a line glyph at the top right
         const qreal width = qMin(band.width() * 0.68, 128 * u); // about 3 : 2, not wider
-        const qreal height = qMin(band.height() - 14 * u, width * 0.76);
+        const qreal height = qMin(band.height() - 12 * u, width * 0.76);
         const QRectF body(band.center().x() - width / 2.0, band.center().y() - height / 2.0 + 2 * u, width, height);
         const qreal hue = tint.hslHueF() < 0 ? 0 : tint.hslHueF();
         const qreal sat = tint.hslHueF() < 0 ? 0 : tint.hslSaturationF();
