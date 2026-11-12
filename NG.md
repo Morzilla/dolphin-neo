@@ -133,6 +133,10 @@ The interface of Dolphin NG is in English, and in Italian on an Italian desktop.
   each other share one outline, with a check), and work in progress, families, the pin and cut files look as
   on the cards. The settings keep the older type marks: a large faint abbreviation (watermark), or a line glyph
   with the abbreviation (tile, pill, bare signs, coloured header).
+- Folders are drawn flat: a darker back with its tab, a lighter front with the item count and (when Dolphin
+  measures folders) the size written large on it. The well-known folders of the home (xdg-user-dirs: Desktop,
+  Downloads, Documents, Pictures, Music, Videos, Templates, Public) are recognised by where they are and take
+  their own colour and a NeoLine glyph on the front; other folders show their pictures or first entries.
 - With the older marks the size has its own column with a bar on a logarithmic scale (1 KiB to 10 GiB).
 - Hovering a row replaces the date with three buttons: open, preview, and the full context menu.
 - The preview is a card under the row: the first lines of text files, the first entries of folders, a thumbnail

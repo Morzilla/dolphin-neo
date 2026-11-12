@@ -57,7 +57,115 @@ namespace
 // dolphin-ng: how the file type is marked at the start of a row (setting MARK).
 // Watermark is the faint icon and large abbreviation; the others pair a small line glyph with the abbreviation.
 void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, const QString &sigla, const QColor &tint, bool dark, int count = -1,
-                          const QString &sizeText = QString(), const QFont *font = nullptr);
+                          const QString &sizeText = QString(), const QFont *font = nullptr, int special = 0);
+
+// dolphin-ng: the well-known folders of the home (xdg-user-dirs), recognised by where they are: 0 for any other
+// folder, else 1 desktop, 2 downloads, 3 documents, 4 pictures, 5 music, 6 videos, 7 templates, 8 public
+int ngSpecialFolder(const QString &path)
+{
+    static QHash<QString, int> known;
+    static bool read = false;
+    if (!read) {
+        read = true;
+        const QString home = QDir::homePath();
+        auto add = [&](const QString &dir, int kind) {
+            const QString clean = QDir::cleanPath(dir);
+            if (!dir.isEmpty() && clean != home) { // an unset directory falls back to the home itself
+                known.insert(clean, kind);
+            }
+        };
+        add(QStandardPaths::writableLocation(QStandardPaths::DesktopLocation), 1);
+        add(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation), 2);
+        add(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation), 3);
+        add(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation), 4);
+        add(QStandardPaths::writableLocation(QStandardPaths::MusicLocation), 5);
+        add(QStandardPaths::writableLocation(QStandardPaths::MoviesLocation), 6);
+        // templates and public share are not in QStandardPaths: read them from user-dirs.dirs
+        QFile dirs(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/user-dirs.dirs"));
+        if (dirs.open(QIODevice::ReadOnly)) {
+            const QStringList lines = QString::fromUtf8(dirs.readAll()).split(QLatin1Char('\n'));
+            for (const QString &line : lines) {
+                const int kind = line.startsWith(QLatin1String("XDG_TEMPLATES_DIR=")) ? 7 : line.startsWith(QLatin1String("XDG_PUBLICSHARE_DIR=")) ? 8 : 0;
+                if (kind) {
+                    QString value = line.section(QLatin1Char('='), 1).trimmed();
+                    value.remove(QLatin1Char('"'));
+                    value.replace(QLatin1String("$HOME"), home);
+                    add(value, kind);
+                }
+            }
+        }
+    }
+    return path.isEmpty() ? 0 : known.value(QDir::cleanPath(path), 0);
+}
+
+// ... and their colours
+QColor ngSpecialFolderColour(int kind)
+{
+    static const QColor colours[] = {QColor(), QColor(0x6a, 0xa0, 0xb8), QColor(0x3f, 0xa7, 0xa0), QColor(0x4a, 0x8f, 0xe0), QColor(0x9b, 0x7b, 0xe0),
+                                     QColor(0xe0, 0x7a, 0x9b), QColor(0xe0, 0x90, 0x4a), QColor(0x9a, 0xa3, 0xad), QColor(0x5b, 0xa3, 0xa3)};
+    return kind > 0 && kind <= 8 ? colours[kind] : QColor();
+}
+
+// ... and their glyphs, in the NeoLine style (a 24 x 24 box, to be stroked)
+QPainterPath ngSpecialFolderGlyph(int kind)
+{
+    QPainterPath p;
+    auto lines = [&p](std::initializer_list<QPointF> points, bool close = false) {
+        bool first = true;
+        for (const QPointF &point : points) {
+            if (first) {
+                p.moveTo(point);
+                first = false;
+            } else {
+                p.lineTo(point);
+            }
+        }
+        if (close) {
+            p.closeSubpath();
+        }
+    };
+    switch (kind) {
+    case 1: // desktop: a screen on its foot
+        p.addRoundedRect(QRectF(3.5, 4.5, 17, 11), 1.5, 1.5);
+        lines({{9, 20}, {15, 20}});
+        lines({{12, 15.5}, {12, 20}});
+        break;
+    case 2: // downloads: an arrow into a tray
+        lines({{12, 3.5}, {12, 14.5}});
+        lines({{8, 10.5}, {12, 14.5}, {16, 10.5}});
+        lines({{4, 15.5}, {4, 20}, {20, 20}, {20, 15.5}});
+        break;
+    case 3: // documents: a page with its corner and two lines
+    case 7: // templates: the same, shorter lines
+        lines({{6.5, 3.5}, {13.5, 3.5}, {17.5, 7.5}, {17.5, 20.5}, {6.5, 20.5}}, true);
+        lines({{13.5, 3.5}, {13.5, 7.5}, {17.5, 7.5}});
+        lines({{9, 12}, {kind == 7 ? 12.0 : 15.0, 12}});
+        lines({{9, 15.5}, {15, 15.5}});
+        break;
+    case 4: // pictures: a frame, a sun, hills
+        p.addRoundedRect(QRectF(3.5, 4.5, 17, 15), 1.5, 1.5);
+        p.addEllipse(QPointF(9, 9.5), 1.6, 1.6);
+        lines({{4, 17}, {9, 12}, {13, 16}, {16, 13}, {20, 17}});
+        break;
+    case 5: // music: two notes on a beam
+        lines({{9, 18.5}, {9, 6}, {20, 3.5}, {20, 15.5}});
+        p.addEllipse(QPointF(6.5, 18.5), 2.5, 2.5);
+        p.addEllipse(QPointF(17.5, 15.5), 2.5, 2.5);
+        break;
+    case 6: // videos: a camera
+        p.addRoundedRect(QRectF(3.5, 5.5, 13, 13), 1.5, 1.5);
+        lines({{16.5, 10}, {20.5, 7.5}, {20.5, 16.5}, {16.5, 14}}, true);
+        break;
+    case 8: // public: a globe
+        p.addEllipse(QPointF(12, 12), 8.5, 8.5);
+        lines({{3.5, 12}, {20.5, 12}});
+        p.addEllipse(QPointF(12, 12), 3.6, 8.5);
+        break;
+    default:
+        break;
+    }
+    return p;
+}
 
 // Object (the default) draws the card's drawing of the file, small, with its type and size written in it.
 enum class NgMark { Watermark, Tile, Pill, Signs, Header, Object };
@@ -821,7 +929,8 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
                 m_ngRowThumb = band;
                 paintNgPreviewObject(painter, band, preview);
             } else {
-                ngPaintContentSketch(painter, band, m_ngCategory, m_ngSigla, m_ngTint, ngIsDark(styleOption().palette), m_ngRowCount, m_ngInfoSize, &m_customizedFont);
+                ngPaintContentSketch(painter, band, m_ngCategory, m_ngSigla, m_ngTint, ngIsDark(styleOption().palette), m_ngRowCount, m_ngInfoSize, &m_customizedFont,
+                                     m_ngCategory == int(NgKind::Folder) ? ngSpecialFolder(data().value("url").toUrl().toLocalFile()) : 0);
             }
             painter->restore();
         } else if (!m_ngRowThumb.isEmpty()) {
@@ -2603,6 +2712,11 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             const bool darkScheme = ngIsDark(styleOption().palette);
             const QColor iconColor = ngIconColor(iconName, m_ngIcon);
             m_ngTint = ngAccent(iconColor.isValid() ? iconColor : m_ngTint, darkScheme);
+            if (isDir) {
+                if (const int special = ngSpecialFolder(values.value("url").toUrl().toLocalFile())) {
+                    m_ngTint = ngAccent(ngSpecialFolderColour(special), darkScheme);
+                }
+            }
             if (!m_ngIcon.isNull() && !m_ngIconFaded) {
                 // watermark: the icon fades out from left to right (done once, after its colour was read)
                 QPainter fade(&m_ngIcon);
@@ -3047,7 +3161,7 @@ QList<QPixmap> ngFolderPictures(const QString &folder, const QStringList &names,
 // text, a table, lines of code, a waveform... The kind comes from the category of the file and, where the category
 // is too wide (audio or video, text or slides), from its extension.
 void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, const QString &sigla, const QColor &tint, bool dark, int count, const QString &sizeText,
-                          const QFont *font)
+                          const QFont *font, int special)
 {
     painter->setRenderHint(QPainter::Antialiasing);
     // CARDS_BADGE=inside: the type and the size are part of the drawing (printed on the box, the type as the page's
@@ -3097,55 +3211,68 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
     };
 
     if (category == int(NgKind::Folder)) {
-        // a folder: the back with its tab, the papers it holds (none when it is empty), the front
-        const qreal width = qMin(band.width() * 0.8, 118 * u), height = 70 * u;
-        const QRectF body(band.center().x() - width / 2.0, band.center().y() - height / 2.0 + 3 * u, width, height);
-        const QColor back = tint.darker(dark ? 165 : 125), front = tint.darker(dark ? 112 : 104);
+        // a flat folder: a darker back whose tab slopes down into its top edge, a lighter front over nearly all of
+        // it. The count and the size are written at the bottom left of the front, large; a well-known folder of the
+        // home (Downloads, Documents...) carries its own colour (the tint) and a line glyph at the top right
+        const qreal width = qMin(band.width() * 0.86, 160 * u);
+        const qreal height = qMin(band.height() - 14 * u, width * 0.72);
+        const QRectF body(band.center().x() - width / 2.0, band.center().y() - height / 2.0 + 2 * u, width, height);
+        const qreal hue = tint.hslHueF() < 0 ? 0 : tint.hslHueF();
+        const qreal sat = tint.hslHueF() < 0 ? 0 : tint.hslSaturationF();
+        const QColor back = QColor::fromHslF(hue, sat * 0.62, 0.40);
+        const QColor front = QColor::fromHslF(hue, sat * 0.78, dark ? 0.70 : 0.72);
+        const QColor frontTop = QColor::fromHslF(hue, sat * 0.78, dark ? 0.74 : 0.76);
+        const QColor ink = QColor::fromHslF(hue, sat * 0.6, 0.15), ink2 = QColor::fromHslF(hue, sat * 0.55, 0.27);
+        const qreal radius = qMin(width, height) * 0.09;
+        const qreal tabDepth = height * 0.16;
+        QPainterPath backShape;
+        backShape.addRoundedRect(QRectF(body.left(), body.top() + tabDepth * 0.6, body.width(), body.height() - tabDepth * 0.6), radius, radius);
+        QPainterPath tab;
+        tab.addRoundedRect(QRectF(body.left(), body.top(), body.width() * 0.34, tabDepth * 1.8), radius * 0.8, radius * 0.8);
+        QPolygonF slope;
+        slope << QPointF(body.left() + body.width() * 0.30, body.top()) << QPointF(body.left() + body.width() * 0.34, body.top())
+              << QPointF(body.left() + body.width() * 0.43, body.top() + tabDepth * 0.95) << QPointF(body.left() + body.width() * 0.30, body.top() + tabDepth * 0.95);
+        QPainterPath slopePath;
+        slopePath.addPolygon(slope);
+        slopePath.closeSubpath();
+        backShape = backShape.united(tab).united(slopePath);
         painter->setPen(Qt::NoPen);
         painter->setBrush(back);
-        painter->drawRoundedRect(QRectF(body.left(), body.top(), body.width() * 0.44, 24 * u), 6 * u, 6 * u);
-        painter->drawRoundedRect(body.adjusted(0, 10 * u, 0, 0), 7 * u, 7 * u);
-        if (count != 0) {
-            painter->setBrush(QColor(255, 255, 255, 150));
-            painter->drawRoundedRect(QRectF(body.left() + 13 * u, body.top() + 15 * u, body.width() - 26 * u, height), 3 * u, 3 * u);
-            painter->setBrush(paper);
-            painter->drawRoundedRect(QRectF(body.left() + 8 * u, body.top() + 21 * u, body.width() - 16 * u, height), 3 * u, 3 * u);
-            if (count > 3 || count < 0) {
-                bar(body.left() + 15 * u, body.top() + 27 * u, body.width() * 0.4, 3.5 * u, faint);
-            }
+        painter->drawPath(backShape);
+        const QRectF cover(body.left(), body.top() + tabDepth, body.width(), body.height() - tabDepth);
+        QLinearGradient shine(cover.topLeft(), cover.bottomLeft());
+        shine.setColorAt(0.0, frontTop);
+        shine.setColorAt(1.0, front);
+        painter->setBrush(shine);
+        painter->drawRoundedRect(cover, radius, radius);
+        if (special > 0) {
+            const qreal side = qMin(cover.height() * 0.36, 30 * u);
+            const QRectF box(cover.right() - side - cover.width() * 0.07, cover.top() + cover.height() * 0.11, side, side);
+            QColor mark = ink;
+            mark.setAlphaF(0.5);
+            painter->save();
+            painter->translate(box.topLeft());
+            painter->scale(side / 24.0, side / 24.0);
+            painter->setPen(QPen(mark, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawPath(ngSpecialFolderGlyph(special));
+            painter->restore();
         }
-        const QRectF cover = body.adjusted(0, 31 * u, 0, 0);
-        painter->setPen(Qt::NoPen);
-        painter->setBrush(front);
-        painter->drawRoundedRect(cover, 7 * u, 7 * u);
-        painter->setPen(QPen(QColor(255, 255, 255, dark ? 60 : 150), 1));
-        painter->drawLine(QPointF(cover.left() + 7 * u, cover.top() + 0.5), QPointF(cover.right() - 7 * u, cover.top() + 0.5));
-        if (info) {
-            // sized from the front itself, so the number and its line always fit on it
-            const QRectF text = cover.adjusted(9 * u, 2 * u, -9 * u, -3 * u);
-            const QString number = count >= 0 ? QString::number(count) : QString();
-            const QString under = count >= 0 ? (sizeText.isEmpty() ? ngTr("items", "elementi") : ngTr("items · ", "elementi · ") + sizeText) : sizeText;
-            // on a light front (plain folders are pale grey) the writing is dark, on a coloured one light
-            const bool lightFront = front.lightnessF() > 0.6;
-            const QColor strong = lightFront ? shade(0.24, 0.6) : shade(0.96, 0.5), soft = lightFront ? shade(0.30, 0.5) : shade(0.90, 0.6);
-            if (count >= 0 && !sizeText.isEmpty()) {
-                // measured: two lines of the same weight, easy to read: "3 items" over "741.1 KiB" (just "3" if the
-                // words do not fit on the front)
-                const qreal half = text.height() / 2.0;
-                QFont probe(*font);
-                probe.setPixelSize(qMax(9, qRound(half * 0.78)));
-                probe.setWeight(QFont::Black);
-                QString first = QString::number(count) + QLatin1Char(' ') + ngTr("items", "elementi");
-                if (QFontMetricsF(probe).horizontalAdvance(first) > text.width()) {
-                    first = QString::number(count);
-                }
-                write(QRectF(text.left(), text.top(), text.width(), half), first, qMax(9.0, half * 0.78), QFont::Black, strong, Qt::AlignLeft | Qt::AlignVCenter);
-                write(QRectF(text.left(), text.top() + half, text.width(), half), sizeText, qMax(9.0, half * 0.72), QFont::Bold, soft, Qt::AlignLeft | Qt::AlignVCenter);
-            } else {
-                const qreal numberHeight = number.isEmpty() ? 0 : text.height() * 0.58, underHeight = text.height() - numberHeight;
-                write(QRectF(text.left(), text.top(), text.width(), numberHeight), number, numberHeight * 0.92, QFont::Black, strong, Qt::AlignLeft | Qt::AlignVCenter);
-                write(QRectF(text.left(), text.top() + numberHeight, text.width(), underHeight), under, qMax(9.0, qMin(underHeight * 0.85, 13 * u)), QFont::Bold, soft,
-                      Qt::AlignLeft | Qt::AlignVCenter);
+        if (info && (count >= 0 || !sizeText.isEmpty())) {
+            const QRectF text = cover.adjusted(cover.width() * 0.08, cover.height() * 0.12, -cover.width() * 0.08, -cover.height() * 0.10);
+            const qreal firstPx = qMax(9.0, cover.height() * 0.23), secondPx = qMax(8.5, cover.height() * 0.185);
+            QString first = count >= 0 ? QString::number(count) + QLatin1Char(' ') + ngTr("items", "elementi") : sizeText;
+            QFont probe(*font);
+            probe.setPixelSize(qRound(firstPx));
+            probe.setWeight(QFont::Black);
+            if (count >= 0 && QFontMetricsF(probe).horizontalAdvance(first) > text.width()) {
+                first = QString::number(count);
+            }
+            const QString second = count >= 0 ? sizeText : QString();
+            const qreal secondHeight = second.isEmpty() ? 0 : secondPx * 1.25;
+            write(QRectF(text.left(), text.bottom() - secondHeight - firstPx * 1.25, text.width(), firstPx * 1.25), first, firstPx, QFont::Black, ink, Qt::AlignLeft | Qt::AlignVCenter);
+            if (!second.isEmpty()) {
+                write(QRectF(text.left(), text.bottom() - secondHeight, text.width(), secondHeight), second, secondPx, QFont::Bold, ink2, Qt::AlignLeft | Qt::AlignVCenter);
             }
         }
     } else if (category == int(NgKind::Sheet)) {
@@ -3633,6 +3760,11 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         iconColor = ngIconColor(m_ngIconName, m_ngIcon);
     }
     m_ngTint = ngAccent(iconColor.isValid() ? iconColor : kind.tint, darkScheme);
+    if (isDir) {
+        if (const int special = ngSpecialFolder(values.value("url").toUrl().toLocalFile())) {
+            m_ngTint = ngAccent(ngSpecialFolderColour(special), darkScheme); // a well-known folder: its own colour
+        }
+    }
 
     QString sizeText = roleText("size", values);
     if (isDir && bytes <= 0) {
@@ -4784,7 +4916,9 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
         // a folder: its own pictures side by side when it has some (the folder preview of the system is a small
         // collage inside a folder shape, of which the band would show a slice), else the folder and its first entries
         const QList<QPixmap> folderPictures =
-            m_ngCategory == int(NgKind::Folder) ? ngFolderPictures(m_ngCardFolderPath, m_ngCardFolderPictures, this) : QList<QPixmap>();
+            m_ngCategory == int(NgKind::Folder) && !ngSpecialFolder(data().value("url").toUrl().toLocalFile())
+            ? ngFolderPictures(m_ngCardFolderPath, m_ngCardFolderPictures, this)
+            : QList<QPixmap>();
         if (!folderPictures.isEmpty()) {
             painter->save();
             painter->setClipPath(band, Qt::IntersectClip);
@@ -4852,7 +4986,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             if (itemCount < 0 && m_ngCategory == int(NgKind::Folder) && m_ngCardPeek.isEmpty() && m_ngCardPeekMore == 0) {
                 itemCount = 0; // nothing was found in it: drawn as an empty folder
             }
-            if (m_ngCategory == int(NgKind::Folder) && !m_ngCardPeek.isEmpty()) {
+            if (m_ngCategory == int(NgKind::Folder) && !m_ngCardPeek.isEmpty() && !ngSpecialFolder(data().value("url").toUrl().toLocalFile())) {
                 // a folder with something in it: the folder on the left, its first entries listed beside it
                 const QRectF left(m_ngCardThumb.left(), m_ngCardThumb.top(), m_ngCardThumb.width() * 0.40, m_ngCardThumb.height());
                 ngPaintContentSketch(painter, left, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, m_ngInfoSize, m_ngInfoInside ? &m_customizedFont : nullptr);
@@ -4893,7 +5027,8 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                                       rest > 0 ? ngTr("+ %1 more", "+ altri %1").arg(rest) : QStringLiteral("…"));
                 }
             } else {
-                ngPaintContentSketch(painter, m_ngCardThumb, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, m_ngInfoSize, m_ngInfoInside ? &m_customizedFont : nullptr);
+                ngPaintContentSketch(painter, m_ngCardThumb, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, m_ngInfoSize, m_ngInfoInside ? &m_customizedFont : nullptr,
+                                     m_ngCategory == int(NgKind::Folder) ? ngSpecialFolder(data().value("url").toUrl().toLocalFile()) : 0);
             }
             painter->restore();
         } else if (!m_pixmap.isNull() && m_ngInfoInside) {
