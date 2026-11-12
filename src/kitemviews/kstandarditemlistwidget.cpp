@@ -2963,6 +2963,11 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         painter->setPen(colour);
         painter->drawText(r, align, QFontMetricsF(f).elidedText(t, Qt::ElideRight, r.width()));
     };
+    // the writing takes the colour of the drawing: a shade of the type colour, lighter or darker
+    auto shade = [&](qreal lightness, qreal saturation) {
+        const qreal hue = tint.hslHueF();
+        return hue < 0 ? QColor::fromHslF(0, 0, lightness) : QColor::fromHslF(hue, qBound<qreal>(0, tint.hslSaturationF() * saturation, 1), lightness);
+    };
     const QString ext = sigla.toLower();
     static const QSet<QString> audio{QStringLiteral("mp3"), QStringLiteral("flac"), QStringLiteral("ogg"), QStringLiteral("wav"), QStringLiteral("opus"), QStringLiteral("m4a"),
                                      QStringLiteral("aac"), QStringLiteral("wma")};
@@ -3015,21 +3020,23 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
             const QRectF text = cover.adjusted(9 * u, 3 * u, -9 * u, -4 * u);
             const QString number = count >= 0 ? QString::number(count) : QString();
             const QString under = count >= 0 ? (sizeText.isEmpty() ? ngTr("items", "elementi") : ngTr("items · ", "elementi · ") + sizeText) : sizeText;
-            write(QRectF(text.left(), text.top(), text.width(), text.height() * 0.6), number, 20 * u, QFont::Black, QColor(255, 255, 255, 240), Qt::AlignLeft | Qt::AlignBottom);
-            write(QRectF(text.left(), text.top() + text.height() * (number.isEmpty() ? 0.25 : 0.6), text.width(), text.height() * 0.4), under, 8.5 * u, QFont::DemiBold,
-                  QColor(255, 255, 255, 200), Qt::AlignLeft | Qt::AlignVCenter);
+            // on a light front (plain folders are pale grey) the writing is dark, on a coloured one light
+            const bool lightFront = front.lightnessF() > 0.6;
+            write(QRectF(text.left(), text.top(), text.width(), text.height() * 0.6), number, 26 * u, QFont::Black, lightFront ? shade(0.24, 0.6) : shade(0.96, 0.5),
+                  Qt::AlignLeft | Qt::AlignBottom);
+            write(QRectF(text.left(), text.top() + text.height() * (number.isEmpty() ? 0.25 : 0.6), text.width(), text.height() * 0.42), under, 11 * u, QFont::Bold,
+                  lightFront ? shade(0.34, 0.5) : shade(0.88, 0.6), Qt::AlignLeft | Qt::AlignVCenter);
         }
     } else if (category == int(NgKind::Sheet)) {
         const QRectF page = sheet(0.62);
-        const qreal left = page.left() + 9 * u, right = page.right() - 9 * u, top = page.top() + 10 * u, rowHeight = 15 * u;
+        const qreal left = page.left() + 9 * u, right = page.right() - 9 * u, top = page.top() + (info ? 32 * u : 10 * u), rowHeight = 15 * u;
+        if (info) {
+            write(QRectF(left, page.top() + 5 * u, right - left, 24 * u), sigla, 22 * u, QFont::Black, shade(0.42, 1.0), Qt::AlignLeft | Qt::AlignVCenter);
+            write(QRectF(left, page.top() + 5 * u, right - left, 24 * u), sizeText, 12 * u, QFont::Bold, shade(0.4, 0.4), Qt::AlignRight | Qt::AlignVCenter);
+        }
         QColor head = tint;
         head.setAlphaF(0.55);
         painter->fillRect(QRectF(left, top, right - left, rowHeight), head);
-        if (info) {
-            painter->fillRect(QRectF(left, top, right - left, rowHeight), tint.darker(115));
-            write(QRectF(left + 5 * u, top, right - left - 10 * u, rowHeight), sigla, 9.5 * u, QFont::Black, QColor(255, 255, 255), Qt::AlignLeft | Qt::AlignVCenter);
-            write(QRectF(left + 5 * u, top, right - left - 10 * u, rowHeight), sizeText, 8 * u, QFont::DemiBold, QColor(255, 255, 255, 220), Qt::AlignRight | Qt::AlignVCenter);
-        }
         painter->setPen(QPen(faint, 1));
         for (int row = 0; row <= 6; ++row) {
             painter->drawLine(QPointF(left, top + row * rowHeight), QPointF(right, top + row * rowHeight));
@@ -3058,9 +3065,9 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
             if (info && (i == 0 || i == 5)) {
                 const QRectF line(editor.left() + 10 * u, y - 4.5 * u, editor.width() - 20 * u, 13 * u);
                 if (i == 0) {
-                    write(line, QStringLiteral("#!") + sigla, 10 * u, QFont::Black, bright, Qt::AlignLeft | Qt::AlignVCenter);
+                    write(line.adjusted(0, -2 * u, 0, 2 * u), QStringLiteral("#!") + sigla, 14 * u, QFont::Black, bright, Qt::AlignLeft | Qt::AlignVCenter);
                 } else {
-                    write(line, QStringLiteral("# ") + sizeText, 9 * u, QFont::DemiBold, QColor(120, 128, 140), Qt::AlignLeft | Qt::AlignVCenter);
+                    write(line.adjusted(0, -2 * u, 0, 2 * u), QStringLiteral("# ") + sizeText, 12 * u, QFont::Bold, shade(0.62, 0.35), Qt::AlignLeft | Qt::AlignVCenter);
                 }
                 continue;
             }
@@ -3083,14 +3090,14 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
             bar(x0 + i * step, middle - height / 2.0, qMax(2.0, step * 0.55), height, wave);
         }
         if (info) {
-            const qreal baseline = band.bottom() - 22 * u;
+            const qreal baseline = band.bottom() - 26 * u;
             QColor rule = tint;
             rule.setAlphaF(0.5);
             painter->setPen(QPen(rule, 1.5));
             painter->drawLine(QPointF(x0, baseline), QPointF(x0 + count * step, baseline));
-            const QRectF text(x0, baseline + 2 * u, count * step, 18 * u);
-            write(text, sigla, 11.5 * u, QFont::Black, tint.lighter(130), Qt::AlignLeft | Qt::AlignVCenter);
-            write(text, sizeText, 9.5 * u, QFont::DemiBold, QColor(214, 218, 225), Qt::AlignRight | Qt::AlignVCenter);
+            const QRectF text(x0, baseline + 2 * u, count * step, 22 * u);
+            write(text, sigla, 15 * u, QFont::Black, shade(0.7, 1.0), Qt::AlignLeft | Qt::AlignVCenter);
+            write(text, sizeText, 12.5 * u, QFont::Bold, shade(0.8, 0.6), Qt::AlignRight | Qt::AlignVCenter);
         }
     } else if (category == int(NgKind::Media)) {
         // a frame of film with the play mark
@@ -3116,9 +3123,9 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         painter->setBrush(tint.lighter(125));
         painter->drawPath(play);
         if (info) {
-            const QRectF text = QRectF(frame.left() + 15 * u, frame.bottom() - 18 * u, frame.width() - 30 * u, 15 * u);
-            write(text, sigla, 9.5 * u, QFont::Black, tint.lighter(140), Qt::AlignLeft | Qt::AlignVCenter);
-            write(text, sizeText, 8 * u, QFont::DemiBold, QColor(220, 223, 228), Qt::AlignRight | Qt::AlignVCenter);
+            const QRectF text = QRectF(frame.left() + 15 * u, frame.bottom() - 21 * u, frame.width() - 30 * u, 18 * u);
+            write(text, sigla, 13 * u, QFont::Black, shade(0.72, 1.0), Qt::AlignLeft | Qt::AlignVCenter);
+            write(text, sizeText, 11 * u, QFont::Bold, shade(0.82, 0.5), Qt::AlignRight | Qt::AlignVCenter);
         }
     } else if (category == int(NgKind::Archive) || category == int(NgKind::Package)) {
         // a parcel: a box with its tape and a label
@@ -3148,11 +3155,8 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         if (info) {
             // printed on the side of the box, in a pale shade of the box itself
             const QRectF side = box.adjusted(category == int(NgKind::Archive) ? 20 * u : 6 * u, 16 * u, -6 * u, 0);
-            const QColor print = QColor::fromHslF(card.hslHueF() < 0 ? 0 : card.hslHueF(), qMin<qreal>(1, card.hslSaturationF() * 0.6), 0.9);
-            write(QRectF(side.left(), side.top(), side.width(), 26 * u), sigla, 22 * u, QFont::Black, print, Qt::AlignHCenter | Qt::AlignVCenter);
-            QColor small = print;
-            small.setAlphaF(0.85);
-            write(QRectF(side.left(), side.top() + 25 * u, side.width(), 16 * u), sizeText, 10 * u, QFont::Bold, small, Qt::AlignHCenter | Qt::AlignVCenter);
+            write(QRectF(side.left(), side.top(), side.width(), 32 * u), sigla, 29 * u, QFont::Black, shade(0.86, 0.95), Qt::AlignHCenter | Qt::AlignVCenter);
+            write(QRectF(side.left(), side.top() + 31 * u, side.width(), 18 * u), sizeText, 13 * u, QFont::Bold, shade(0.8, 0.75), Qt::AlignHCenter | Qt::AlignVCenter);
         }
     } else if (category == int(NgKind::Image)) {
         // a picture that could not be previewed: sky, sun and hills
@@ -3176,9 +3180,9 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         painter->setClipRect(view, Qt::IntersectClip);
         painter->fillPath(hills, tint.darker(115));
         if (info) {
-            const QRectF text(view.left() + 7 * u, view.top() + 66 * u, view.width() - 14 * u, 16 * u);
-            write(text, sigla, 10 * u, QFont::Black, QColor(255, 255, 255, 240), Qt::AlignLeft | Qt::AlignVCenter);
-            write(text, sizeText, 8.5 * u, QFont::DemiBold, QColor(255, 255, 255, 210), Qt::AlignRight | Qt::AlignVCenter);
+            const QRectF text(view.left() + 7 * u, view.top() + 64 * u, view.width() - 14 * u, 20 * u);
+            write(text, sigla, 13 * u, QFont::Black, shade(0.93, 0.6), Qt::AlignLeft | Qt::AlignVCenter);
+            write(text, sizeText, 11 * u, QFont::Bold, shade(0.88, 0.5), Qt::AlignRight | Qt::AlignVCenter);
         }
     } else if (slides.contains(ext)) {
         // a slide: a title and a small chart
@@ -3188,8 +3192,8 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         painter->setBrush(paper);
         painter->drawRoundedRect(slide, 5 * u, 5 * u);
         if (info) {
-            write(QRectF(slide.left() + 10 * u, slide.top() + 6 * u, slide.width() * 0.6, 16 * u), sigla, 14 * u, QFont::Black, tint, Qt::AlignLeft | Qt::AlignVCenter);
-            write(QRectF(slide.left() + 10 * u, slide.top() + 21 * u, slide.width() * 0.6, 11 * u), sizeText, 8.5 * u, QFont::DemiBold, grey, Qt::AlignLeft | Qt::AlignVCenter);
+            write(QRectF(slide.left() + 10 * u, slide.top() + 4 * u, slide.width() * 0.6, 24 * u), sigla, 21 * u, QFont::Black, shade(0.48, 1.0), Qt::AlignLeft | Qt::AlignVCenter);
+            write(QRectF(slide.left() + 10 * u, slide.top() + 27 * u, slide.width() * 0.6, 15 * u), sizeText, 12 * u, QFont::Bold, shade(0.42, 0.4), Qt::AlignLeft | Qt::AlignVCenter);
         } else {
             bar(slide.left() + 10 * u, slide.top() + 11 * u, slide.width() * 0.42, 6 * u, tint);
             bar(slide.left() + 10 * u, slide.top() + 24 * u, slide.width() * 0.30, 4 * u, faint);
@@ -3208,14 +3212,14 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         const QRectF page = sheet(0.56);
         const qreal left = page.left() + 11 * u, width = page.width() - 22 * u;
         if (info) {
-            write(QRectF(left, page.top() + 6 * u, width, 20 * u), sigla, 17 * u, QFont::Black, tint, Qt::AlignLeft | Qt::AlignVCenter);
+            write(QRectF(left, page.top() + 4 * u, width, 26 * u), sigla, 23 * u, QFont::Black, shade(0.48, 1.0), Qt::AlignLeft | Qt::AlignVCenter);
         } else {
             bar(left, page.top() + 14 * u, width * 0.62, 5 * u, tint);
         }
         static const qreal lines[] = {1.0, 1.0, 0.82, 0.0, 1.0, 0.94, 0.6};
         for (int i = 0; i < 7; ++i) {
             if (info && i == 4) {
-                write(QRectF(left, page.top() + 30 * u + i * 10 * u - 4 * u, width, 12 * u), sizeText, 9 * u, QFont::Bold, QColor(96, 102, 112), Qt::AlignLeft | Qt::AlignVCenter);
+                write(QRectF(left, page.top() + 30 * u + i * 10 * u - 6 * u, width, 16 * u), sizeText, 12.5 * u, QFont::Bold, shade(0.42, 0.4), Qt::AlignLeft | Qt::AlignVCenter);
                 break;
             }
             if (lines[i] > 0) {
