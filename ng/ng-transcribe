@@ -49,15 +49,23 @@ W=$(cli) || { note "$(say 'Transcription not set up' 'Trascrizione non configura
 M=$(model) || { note "$(say 'No speech model' 'Manca il modello vocale')" "$(say 'Run once: ng-transcribe --setup' 'Lancia una volta: ng-transcribe --setup')" dialog-warning; exit 1; }
 
 dir=$(dirname "$IN"); name=$(basename "$IN"); base="${name%.*}"
-tmp=$(mktemp --suffix=.wav); trap 'rm -f "$tmp"' EXIT
+tmp=$(mktemp --suffix=.wav); fresh=""; real=""; ticker=""
+# also when stopped (Dolphin NG's stop button ends the whole process group with SIGTERM): no half-made files
+cleanup() {
+    rm -f "$tmp" ${real:+"$real"}
+    [ -n "$ticker" ] && kill "$ticker" 2>/dev/null
+    [ -n "$fresh" ] && [ ! -s "$fresh" ] && rm -f "$fresh"
+}
+trap cleanup EXIT
+trap 'exit 143' TERM INT HUP
 # whisper wants 16 kHz mono PCM
 nice -n 15 ffmpeg -nostdin -loglevel error -y -i "$IN" -vn -ac 1 -ar 16000 -c:a pcm_s16le "$tmp" || { note "$(say 'Could not read the audio' "Impossibile leggere l'audio")" "$name" dialog-error; exit 1; }
 threads=$(( ($(nproc) + 1) / 2 ))
 outputs=(-otxt); case "$(file -b --mime-type "$IN")" in video/*) outputs+=(-osrt) ;; esac
 start=$(date +%s)
 # the transcription file exists from the start (empty), so a file manager can show it next to the audio
-fresh=""; [ -e "$dir/$base.txt" ] || { : > "$dir/$base.txt" && fresh="$dir/$base.txt"; }
-P="${NG_PROGRESS_FILE:-}"; real=/dev/null
+[ -e "$dir/$base.txt" ] || { : > "$dir/$base.txt" && fresh="$dir/$base.txt"; }
+P="${NG_PROGRESS_FILE:-}"
 # whisper tells how far it is only once per 30 s of audio, so between those steps the figure is estimated
 # from the time taken so far and how fast the last transcriptions went (seconds of work per second of audio)
 SPEED="${XDG_CACHE_HOME:-$HOME/.cache}/ng-transcribe/speed"
@@ -74,20 +82,19 @@ if [ -n "$P" ]; then
         done
     ) &
     ticker=$!
-    trap 'rm -f "$tmp" "$real"; kill $ticker 2>/dev/null' EXIT
     progress=(-pp)
 else
     progress=()
 fi
 if nice -n 15 "$W" -m "$M" -f "$tmp" -l auto -t "$threads" -np "${progress[@]}" "${outputs[@]}" -of "$dir/$base" 2> >(
         while IFS= read -r line; do
-            case "$line" in *"progress ="*) n=${line##*= }; n=${n%%%*}; echo $(( ${n// /} )) > "$real" ;; esac
+            case "$line" in *"progress ="*) n=${line##*= }; n=${n%%%*}; echo $(( ${n// /} )) > "${real:-/dev/null}" ;; esac
         done) >/dev/null; then
     secs=$(( $(date +%s) - start ))
     [ -n "$P" ] && echo 100 > "$P"
     mkdir -p "$(dirname "$SPEED")"; awk -v s="$secs" -v a="$audio" 'BEGIN { if (a >= 10) printf "%.2f\n", s / a }' > "$SPEED.new" && [ -s "$SPEED.new" ] && mv "$SPEED.new" "$SPEED"; rm -f "$SPEED.new"
-    note "$(say 'Transcribed' 'Trascritto')" "$base.txt · ${secs} s" text-plain
+    # run by ng-job (Dolphin NG), Plasma already shows the job as finished
+    [ -n "${NG_JOB:-}" ] || note "$(say 'Transcribed' 'Trascritto')" "$base.txt · ${secs} s" text-plain
 else
-    [ -n "$fresh" ] && [ ! -s "$fresh" ] && rm -f "$fresh"
     note "$(say 'Transcription failed' 'Trascrizione non riuscita')" "$name" dialog-error; exit 1
 fi

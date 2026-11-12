@@ -1850,6 +1850,8 @@ bool KItemListController::onRelease(const QPointF &pos, const Qt::KeyboardModifi
                 Q_EMIT ngPreviewRequested(index, rowRect);
             } else if (action >= 10) {
                 Q_EMIT ngQuickActionRequested(index, action - 10);
+            } else if (action == 6) {
+                Q_EMIT ngQuickActionRequested(index, -1); // stop the work on this file
             } else {
                 // the context menu acts on the selection: make it this item
                 m_selectionManager->clearSelection();

@@ -26,6 +26,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFile>
+#include <QCoreApplication>
 #include <QStandardPaths>
 #include <signal.h>
 #include <tuple>
@@ -229,6 +230,68 @@ NgActivity::NgActivity()
 {
     m_timer.setInterval(60);
     connect(&m_timer, &QTimer::timeout, this, &NgActivity::tick);
+    QTimer::singleShot(0, this, &NgActivity::loadProcesses);
+}
+
+static QString ngActivityStateFile(qint64 owner)
+{
+    return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + QStringLiteral("/dolphin-ng-activity-%1").arg(owner);
+}
+
+void NgActivity::saveProcesses()
+{
+    const QString path = ngActivityStateFile(QCoreApplication::applicationPid());
+    if (m_pids.isEmpty()) {
+        QFile::remove(path);
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    // pid, url, label, progress file, whether its results are tied to it: one line each, tab separated
+    for (auto it = m_pids.cbegin(); it != m_pids.cend(); ++it) {
+        if (m_links.contains(it.key())) {
+            continue; // a child waiting with its parent's pid: it comes back with the parent
+        }
+        const QStringList fields{QString::number(it.value()), it.key(), m_entries.value(it.key()).text, m_progressFiles.value(it.key()),
+                                 m_watched.contains(it.key()) ? QStringLiteral("1") : QStringLiteral("0")};
+        file.write(fields.join(QLatin1Char('\t')).toUtf8() + '\n');
+    }
+}
+
+void NgActivity::loadProcesses()
+{
+    // work started by a Dolphin that was closed (or by another window process) and still running
+    const QDir dir(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation));
+    const QStringList files = dir.entryList({QStringLiteral("dolphin-ng-activity-*")}, QDir::Files);
+    for (const QString &name : files) {
+        const qint64 owner = name.section(QLatin1Char('-'), -1).toLongLong();
+        if (owner == QCoreApplication::applicationPid()) {
+            continue;
+        }
+        QFile file(dir.filePath(name));
+        if (!file.open(QIODevice::ReadOnly)) {
+            continue;
+        }
+        const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        file.close();
+        if (owner <= 0 || ::kill(static_cast<pid_t>(owner), 0) != 0) {
+            QFile::remove(file.fileName()); // its Dolphin is gone: this one takes the list over
+        }
+        for (const QString &line : lines) {
+            const QStringList f = line.split(QLatin1Char('\t'));
+            const qint64 pid = f.value(0).toLongLong();
+            if (f.size() < 5 || pid <= 0 || ::kill(static_cast<pid_t>(pid), 0) != 0) {
+                continue;
+            }
+            const QUrl url(f.at(1));
+            setUntilProcessEnds(url, pid, f.at(2), f.at(3));
+            if (f.at(4) == QLatin1String("1")) {
+                watchForChildren(url);
+            }
+        }
+    }
 }
 
 QString NgActivity::key(const QUrl &url)
@@ -256,7 +319,10 @@ void NgActivity::set(const QUrl &url, int percent, const QString &text)
 void NgActivity::clear(const QUrl &url)
 {
     const QString k = key(url);
-    m_pids.remove(k);
+    m_cancellers.remove(k);
+    if (m_pids.remove(k)) {
+        saveProcesses();
+    }
     if (m_entries.remove(k)) {
         parentDone(k);
         Q_EMIT changed();
@@ -301,6 +367,10 @@ void NgActivity::link(const QUrl &parent, const QUrl &child)
         return; // one level only: a child does not get children of its own
     }
     m_links.insert(childKey, {child, parent});
+    m_linkedAt.insert(childKey, QDateTime::currentMSecsSinceEpoch());
+    if (!m_timer.isActive()) {
+        m_timer.start(); // the new file grows in
+    }
     // while the parent is still at work, the new file waits with a turning arc
     if (m_entries.contains(parentKey) && !m_entries.contains(childKey)) {
         const QString waiting = ngTr("On its way…", "In arrivo…");
@@ -337,6 +407,7 @@ void NgActivity::parentDone(const QString &parentKey)
         for (auto it = m_links.begin(); it != m_links.end();) {
             if (key(it->second) == parentKey) {
                 m_entries.remove(it.key());
+                m_linkedAt.remove(it.key());
                 it = m_links.erase(it);
                 removed = true;
             } else {
@@ -405,6 +476,80 @@ void NgActivity::setUntilProcessEnds(const QUrl &url, qint64 pid, const QString 
     if (!progressFile.isEmpty()) {
         m_progressFiles.insert(key(url), progressFile);
     }
+    saveProcesses();
+}
+
+bool NgActivity::canCancel(const QUrl &url) const
+{
+    const QString k = key(url);
+    return m_entries.contains(k) && !m_links.contains(k) && (m_pids.contains(k) || m_cancellers.contains(k));
+}
+
+void NgActivity::setCanceller(const QUrl &url, const std::function<void()> &cancel)
+{
+    m_cancellers.insert(key(url), cancel);
+}
+
+void NgActivity::cancel(const QUrl &url)
+{
+    const QString k = key(url);
+    if (m_pids.contains(k)) {
+        // a quick action runs in its own session (detached): stop the whole group, the programs it started too
+        const pid_t pid = static_cast<pid_t>(m_pids.value(k));
+        ::kill(-pid, SIGTERM);
+        ::kill(pid, SIGTERM);
+    } else if (m_cancellers.contains(k)) {
+        const auto cancelIt = m_cancellers.take(k);
+        cancelIt();
+    } else {
+        return;
+    }
+    // what it was making is not coming: untie it now
+    bool untied = false;
+    for (auto it = m_links.begin(); it != m_links.end();) {
+        if (key(it->second) == k) {
+            m_entries.remove(it.key());
+            m_pids.remove(it.key());
+            it = m_links.erase(it);
+            untied = true;
+        } else {
+            ++it;
+        }
+    }
+    m_watched.remove(k);
+    if (m_entries.contains(k)) {
+        m_entries[k].text = ngTr("Stopping…", "Annullamento…");
+        m_entries[k].percent = -1;
+    }
+    if (untied) {
+        Q_EMIT linksChanged();
+    }
+    Q_EMIT changed();
+}
+
+qreal NgActivity::growth(const QUrl &url) const
+{
+    if (m_linkedAt.isEmpty()) {
+        return 1;
+    }
+    const QString k = key(url);
+    qint64 at = m_linkedAt.value(k, 0);
+    if (!at) {
+        for (auto it = m_links.cbegin(); it != m_links.cend(); ++it) {
+            if (key(it->second) == k) {
+                at = qMax(at, m_linkedAt.value(it.key(), 0));
+            }
+        }
+    }
+    return at ? qBound<qreal>(0, (QDateTime::currentMSecsSinceEpoch() - at) / 420.0, 1) : 1;
+}
+
+bool NgActivity::growing() const
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    return std::any_of(m_linkedAt.cbegin(), m_linkedAt.cend(), [now](qint64 at) {
+        return now - at < 600;
+    });
 }
 
 qreal NgActivity::phase() const
@@ -416,12 +561,15 @@ void NgActivity::tick()
 {
     // processes started for quick actions: done when they are gone (they are detached: no zombie stays behind)
     static int slow = 0;
+    bool saveLater = false;
     if (++slow >= 8) {
         slow = 0;
         for (auto it = m_pids.begin(); it != m_pids.end();) {
             if (::kill(static_cast<pid_t>(it.value()), 0) != 0) {
                 m_entries.remove(it.key());
+                m_cancellers.remove(it.key());
                 parentDone(it.key());
+                saveLater = true;
                 if (m_progressFiles.contains(it.key())) {
                     QFile::remove(m_progressFiles.take(it.key()));
                 }
@@ -443,9 +591,18 @@ void NgActivity::tick()
             }
         }
     }
+    if (saveLater) {
+        saveProcesses();
+    }
+    const bool grows = growing();
+    if (grows) {
+        Q_EMIT changed();
+    }
     if (m_entries.isEmpty()) {
-        m_timer.stop();
-        Q_EMIT changed(); // one last repaint, to take the marks away
+        if (!grows) {
+            m_timer.stop();
+            Q_EMIT changed(); // one last repaint, to take the marks away
+        }
         return;
     }
     bool turning = false;

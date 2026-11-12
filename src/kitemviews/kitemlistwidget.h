@@ -18,6 +18,7 @@
 #include <QGraphicsWidget>
 #include <QStyle>
 #include <QTimer>
+#include <functional>
 #include <QUrl>
 #include <QHash>
 
@@ -91,6 +92,13 @@ public:
     /** every tie, as (child, parent) */
     QList<std::pair<QUrl, QUrl>> links() const;
     bool hasLinks() const;
+    /** 0..1: how far the file has come in since it was tied to its family (1 when it is settled or not tied) */
+    qreal growth(const QUrl &url) const;
+
+    /** the work on \a url can be stopped: a process of a quick action, or a job with a canceller */
+    bool canCancel(const QUrl &url) const;
+    void setCanceller(const QUrl &url, const std::function<void()> &cancel);
+    void cancel(const QUrl &url);
 
 Q_SIGNALS:
     void changed();
@@ -106,6 +114,12 @@ private:
     void parentDone(const QString &parentKey);
     QHash<QString, std::pair<QUrl, QUrl>> m_links; // child key -> (child, parent)
     QHash<QString, QUrl> m_watched; // parent key -> parent
+    QHash<QString, qint64> m_linkedAt; // child key -> when it was tied (ms since epoch): it grows in
+    QHash<QString, std::function<void()>> m_cancellers;
+    /* processes of quick actions outlive Dolphin: they are written down, so a Dolphin started later shows them */
+    void saveProcesses();
+    void loadProcesses();
+    bool growing() const;
     QTimer m_timer;
     qreal m_phase = 0;
 };

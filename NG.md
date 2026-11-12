@@ -46,6 +46,16 @@ itself; extractions and downloads started by other applications come next.
 |---|---|
 | ![Work in progress on cards](ng/screenshots/activity-cards.png) | ![Work in progress on rows](ng/screenshots/activity-rows.png) |
 
+A file made from another one (a transcription, an extracted folder, a converted copy, a copy in the same folder)
+stands right after it while the work runs, whatever the sort order, and both sit in one tinted bubble: the source
+shows the percentage, the new file waits with "On its way…". The bubble goes two minutes after the work ends.
+The × next to the caption stops the work. Quick actions run through `ng/ng-job`, which also shows them in Plasma's
+notifications (with the percentage and a stop button), so they stay visible, and keep running, when Dolphin NG is
+closed; a Dolphin NG opened later shows them on the files again. A program can report its percentage by writing a
+number to the file named in `$NG_PROGRESS_FILE`.
+
+![A transcription and a conversion, each next to the file it comes from](ng/screenshots/family-cards.png)
+
 **Transcribe**, on audio and video files, writes the spoken text next to the file (and subtitles for videos), with
 [whisper.cpp](https://github.com/ggml-org/whisper.cpp) on your computer: nothing is uploaded. Run
 `ng/ng-transcribe --setup` once (it builds whisper.cpp in `~/.local/src` and downloads the speech model, about

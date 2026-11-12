@@ -110,6 +110,8 @@ LAUNCH
 chmod +x "$COMMAND"
 # speech to text for the "Transcribe" quick action (needs "ng-transcribe --setup" once)
 ln -sf "$ROOT/ng/ng-transcribe" "$(dirname "$COMMAND")/ng-transcribe"
+# quick actions run through it: they show in Plasma's notifications, also with Dolphin NG closed
+ln -sf "$ROOT/ng/ng-job" "$(dirname "$COMMAND")/ng-job"
 cat > "$DESKTOP" <<ENTRY
 [Desktop Entry]
 Type=Application

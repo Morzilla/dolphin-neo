@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""ng-job --title TITLE --file PATH -- PROGRAM [ARGS...]
+
+Runs PROGRAM and shows it in Plasma as a job in progress (the progress in the notifications and on the
+Dolphin NG icon in the task manager), with the percentage the program writes to $NG_PROGRESS_FILE and a
+button to stop it. So the work stays visible after Dolphin NG is closed. Dolphin NG runs its quick
+actions through it. Without Plasma it just runs the program.
+
+Stopping (from Plasma, or from Dolphin NG, which ends the whole process group) ends PROGRAM and
+everything it started.
+"""
+import os
+import signal
+import subprocess
+import sys
+
+try:
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio, GLib
+except Exception:  # no GLib bindings: no job in Plasma, the work still runs
+    Gio = GLib = None
+
+
+def italian():
+    return any(os.environ.get(v, '').startswith('it') for v in ('LANGUAGE', 'LC_ALL', 'LC_MESSAGES', 'LANG'))
+
+
+def tr(english, italian_text):
+    return italian_text if italian() else english
+
+
+def main():
+    args = sys.argv[1:]
+    title = path = ''
+    while args and args[0] != '--':
+        if args[0] == '--title' and len(args) > 1:
+            title, args = args[1], args[2:]
+        elif args[0] == '--file' and len(args) > 1:
+            path, args = args[1], args[2:]
+        else:
+            args = args[1:]
+    command = args[1:] if args[:1] == ['--'] else args
+    if not command:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+
+    # in a session of its own (Dolphin NG starts it detached), so stopping the group stops everything
+    if os.getpgid(0) != os.getpid():
+        try:
+            os.setsid()
+        except OSError:
+            pass
+    os.environ['NG_JOB'] = '1'  # the program can leave the final notice to the job
+    child = subprocess.Popen(command)
+
+    stopped = {'by': None}
+
+    def stop_all(*_):
+        if stopped['by'] is None:
+            stopped['by'] = 'signal'
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        try:
+            os.killpg(0, signal.SIGTERM)
+        except OSError:
+            child.terminate()
+
+    signal.signal(signal.SIGTERM, stop_all)
+    signal.signal(signal.SIGINT, stop_all)
+
+    view = None
+    bus = None
+    if Gio is not None:
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            reply = bus.call_sync('org.kde.kuiserver', '/JobViewServer', 'org.kde.JobViewServerV2', 'requestView',
+                                  GLib.Variant('(sia{sv})', ('dolphin-ng', 1, {})),  # 1: it can be stopped
+                                  GLib.VariantType('(o)'), Gio.DBusCallFlags.NONE, 3000, None)
+            view = reply.unpack()[0]
+        except Exception:
+            view = None
+
+    def update(props):
+        if view is None:
+            return
+        try:
+            bus.call_sync('org.kde.kuiserver', view, 'org.kde.JobViewV3', 'update', GLib.Variant('(a{sv})', (props,)),
+                          None, Gio.DBusCallFlags.NONE, 2000, None)
+        except Exception:
+            pass
+
+    def terminate(code, message):
+        if view is None:
+            return
+        try:
+            bus.call_sync('org.kde.kuiserver', view, 'org.kde.JobViewV3', 'terminate',
+                          GLib.Variant('(usa{sv})', (code, message, {})), None, Gio.DBusCallFlags.NONE, 2000, None)
+        except Exception:
+            pass
+
+    if view is None:
+        return child.wait()
+
+    name = os.path.basename(path.rstrip('/')) if path else ''
+    folder = os.path.dirname(os.path.abspath(path)) if path else os.getcwd()
+    update({
+        'title': GLib.Variant('s', title or os.path.basename(command[0])),
+        'infoMessage': GLib.Variant('s', name),
+        'descriptionLabel1': GLib.Variant('s', tr('File', 'File')),
+        'descriptionValue1': GLib.Variant('s', name),
+        'destUrl': GLib.Variant('s', 'file://' + folder),
+    })
+
+    def cancel_requested(*_):
+        stopped['by'] = 'plasma'
+        stop_all()
+
+    bus.signal_subscribe('org.kde.kuiserver', 'org.kde.JobViewV3', 'cancelRequested', view, None,
+                         Gio.DBusSignalFlags.NONE, cancel_requested)
+
+    loop = GLib.MainLoop()
+    progress_file = os.environ.get('NG_PROGRESS_FILE', '')
+    last = {'percent': -1}
+
+    def poll():
+        if progress_file:
+            try:
+                with open(progress_file) as f:
+                    percent = int(f.read(16).strip() or -1)
+                if 0 <= percent <= 100 and percent != last['percent']:
+                    last['percent'] = percent
+                    update({'percent': GLib.Variant('u', percent)})
+            except (OSError, ValueError):
+                pass
+        code = child.poll()
+        if code is None:
+            return True
+        if stopped['by']:
+            terminate(1, '')  # 1: stopped by the user (KJob::KilledJobError): no error shown
+        elif code == 0:
+            update({'percent': GLib.Variant('u', 100)})
+            terminate(0, '')
+        else:
+            terminate(100, tr('It did not work (exit code %d)', 'Non è riuscito (codice %d)') % code)
+        loop.quit()
+        return False
+
+    GLib.timeout_add(500, poll)
+    # signals from Python handlers are only seen when the loop wakes up: wake it up often enough
+    GLib.timeout_add(200, lambda: True)
+    loop.run()
+    return child.returncode if child.returncode is not None and child.returncode >= 0 else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

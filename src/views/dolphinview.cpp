@@ -73,6 +73,7 @@
 #include <KJobTrackerInterface>
 #include <kio/jobtracker.h>
 #include <QProcess>
+#include <QPointer>
 #include <QStandardPaths>
 #include <QCursor>
 #include <KApplicationTrader>
@@ -109,9 +110,15 @@ public:
         if (auto *del = qobject_cast<KIO::DeleteJob *>(job)) {
             // deleting: the files being deleted, from the start
             m_label.insert(job, ngTr("Deleting", "Eliminazione"));
+            const QPointer<KJob> guard(job);
             for (const QUrl &url : del->urls()) {
                 m_urls[job].insert(url);
                 NgActivity::self()->set(url, 0, m_label.value(job));
+                NgActivity::self()->setCanceller(url, [guard] {
+                    if (guard) {
+                        guard->kill(KJob::EmitResult);
+                    }
+                });
             }
             return;
         }
@@ -124,7 +131,14 @@ public:
                                     : (copy->operationMode() == KIO::CopyJob::Move ? ngTr("Moving", "Spostamento") : ngTr("Copying", "Copia")));
         // both ends: the file leaving (seen in its folder) and the one arriving (seen in the destination)
         const bool copying = copy->operationMode() == KIO::CopyJob::Copy && !toTrash;
-        auto mark = [this, job, copying](KIO::Job *, const QUrl &from, const QUrl &to) {
+        const QPointer<KJob> guard(job);
+        auto stop = [guard] {
+            if (guard) {
+                guard->kill(KJob::EmitResult);
+            }
+        };
+        auto mark = [this, job, copying, stop](KIO::Job *, const QUrl &from, const QUrl &to) {
+            NgActivity::self()->setCanceller(from, stop);
             if (copying && from.adjusted(QUrl::RemoveFilename) == to.adjusted(QUrl::RemoveFilename)) {
                 // a copy in the same folder: the copy is born from the original, next to it, and waits with a
                 // turning arc while the original shows how far it is
@@ -135,6 +149,7 @@ public:
                 NgActivity::self()->link(from, to);
                 return;
             }
+            NgActivity::self()->setCanceller(to, stop);
             for (const QUrl &url : {from, to}) {
                 m_urls[job].insert(url);
                 NgActivity::self()->set(url, m_percent.value(job, 0), m_label.value(job));
@@ -237,6 +252,9 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
             const QStringList f = entry.split(QLatin1Char('|'));
             if (f.size() >= 2 && f.at(1) != QLatin1String("-")) {
                 NgActivity::self()->set(QUrl::fromLocalFile(f.at(0)), f.at(1).toInt(), f.value(2));
+            }
+            if (f.value(4) == QLatin1String("stop")) { // a fifth field "stop": shows the stop button
+                NgActivity::self()->setCanceller(QUrl::fromLocalFile(f.at(0)), [] { });
             }
             if (f.size() >= 4 && !f.at(3).isEmpty()) { // "/path/child|-1|On its way|/path/parent": tied to its parent
                 NgActivity::self()->link(QUrl::fromLocalFile(f.at(3)), QUrl::fromLocalFile(f.at(0)));
@@ -2801,6 +2819,10 @@ void DolphinView::applyViewProperties(const ViewProperties &props)
 
 void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
 {
+    if (number == -1 && !item.isNull()) {
+        NgActivity::self()->cancel(item.url()); // the stop button on the file at work
+        return;
+    }
     if (item.isNull() || !item.isLocalFile()) {
         return;
     }
@@ -2823,8 +2845,20 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
         const QString progressFile = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation)
             + QStringLiteral("/dolphin-ng-progress-%1-%2").arg(QCoreApplication::applicationPid()).arg(++count);
         QProcess process;
-        process.setProgram(program);
-        process.setArguments(arguments);
+        // through ng-job, when there: Plasma shows the work (with its percentage and a stop button) in the
+        // notifications and on the Dolphin NG icon, also after Dolphin NG is closed
+        static const QString jobRunner = [] {
+            QString p = QStandardPaths::findExecutable(QStringLiteral("ng-job"));
+            const QString local = QDir::homePath() + QStringLiteral("/.local/bin/ng-job");
+            return p.isEmpty() && QFileInfo(local).isExecutable() ? local : p;
+        }();
+        if (jobRunner.isEmpty()) {
+            process.setProgram(program);
+            process.setArguments(arguments);
+        } else {
+            process.setProgram(jobRunner);
+            process.setArguments(QStringList{QStringLiteral("--title"), label, QStringLiteral("--file"), itemUrl.toLocalFile(), QStringLiteral("--"), program} + arguments);
+        }
         process.setWorkingDirectory(folder);
         QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
         environment.insert(QStringLiteral("NG_PROGRESS_FILE"), progressFile);

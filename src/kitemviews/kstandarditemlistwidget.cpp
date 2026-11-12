@@ -659,6 +659,25 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
 {
     const_cast<KStandardItemListWidget *>(this)->triggerCacheRefreshing();
 
+    // dolphin-ng: a file just tied to the one it is made from grows into its place
+    painter->save();
+    const auto restoreGrow = qScopeGuard([painter] {
+        painter->restore();
+    });
+    if (NgActivity::self()->hasLinks()) {
+        const QUrl url = data().value("url").toUrl();
+        const qreal grow = NgActivity::self()->growth(url);
+        if (grow < 1 && NgActivity::self()->parentOf(url).isValid()) {
+            const qreal eased = 1 - std::pow(1 - grow, 3);
+            const QPointF centre = rect().center();
+            const qreal scale = (m_layout == CardsLayout ? 0.55 : 0.85) + (m_layout == CardsLayout ? 0.45 : 0.15) * eased;
+            painter->translate(centre);
+            painter->scale(scale, scale);
+            painter->translate(-centre);
+            painter->setOpacity(painter->opacity() * eased);
+        }
+    }
+
     if (m_layout == CardsLayout) {
         // dolphin-ng: the card draws everything itself; the base paints the selection and hover over its sheet
         paintNgFamily(painter);
@@ -1124,6 +1143,10 @@ QRectF KStandardItemListWidget::textFocusRect() const
 
 int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
 {
+    // 6: the stop button on a file at work
+    if (!m_ngCancelRect.isEmpty() && m_ngCancelRect.adjusted(-3, -3, 3, 3).contains(pos)) {
+        return 6;
+    }
     // 5: the pointer is on a name that was shortened to fit (hover only: the full name is shown as a tip)
     auto onShortenedName = [this, &pos] {
         const TextInfo *name = m_textInfo.value("text");
@@ -3838,8 +3861,9 @@ void KStandardItemListWidget::paintNgFamily(QPainter *painter)
     QColor accent = styleOption().palette.color(QPalette::Highlight);
     accent = QColor::fromHslF(accent.hslHueF() < 0 ? 0.55 : accent.hslHueF(), qMax<qreal>(accent.hslSaturationF(), 0.65), 0.62);
     QColor fill = accent, border = accent;
-    fill.setAlphaF(cards ? 0.18 : 0.13);
-    border.setAlphaF(0.60);
+    const qreal in = 1 - std::pow(1 - activity->growth(data().value("url").toUrl()), 3);
+    fill.setAlphaF((cards ? 0.18 : 0.13) * in);
+    border.setAlphaF(0.60 * in);
     const qreal radius = cards ? 16 : 7;
     QPainterPath path;
     path.addRoundedRect(bubble.adjusted(-pad, -pad, pad, pad).adjusted(0.75, 0.75, -0.75, -0.75), radius, radius);
@@ -3857,6 +3881,7 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
     const QUrl url = data().value("url").toUrl();
     NgActivity *activity = NgActivity::self();
     m_ngShowedActivity = activity->contains(url);
+    m_ngCancelRect = QRectF();
     if (!m_ngShowedActivity) {
         return;
     }
@@ -3865,6 +3890,19 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
     QColor accent = styleOption().palette.color(QPalette::Highlight);
     accent = QColor::fromHslF(accent.hslHueF() < 0 ? 0.55 : accent.hslHueF(), qMax<qreal>(accent.hslSaturationF(), 0.65), 0.62);
     const bool busy = e.percent < 0;
+    const bool waiting = busy && activity->parentOf(url).isValid(); // a file being made from another one: it waits, quietly
+    const bool stoppable = activity->canCancel(url);
+    // the stop button: a small round button with a cross
+    auto stopButton = [&](const QRectF &box) {
+        painter->setPen(QPen(QColor(255, 255, 255, 40), 1));
+        painter->setBrush(QColor(18, 20, 24, 235));
+        painter->drawEllipse(box);
+        const qreal d = box.width() * 0.2;
+        painter->setPen(QPen(QColor(235, 238, 242), qMax<qreal>(1.4, box.width() * 0.09), Qt::SolidLine, Qt::RoundCap));
+        painter->drawLine(box.center() + QPointF(-d, -d), box.center() + QPointF(d, d));
+        painter->drawLine(box.center() + QPointF(d, -d), box.center() + QPointF(-d, d));
+        m_ngCancelRect = box;
+    };
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
 
@@ -3901,6 +3939,32 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
         QPainterPath clip;
         clip.addRoundedRect(card, 12, 12);
         painter->setClipPath(clip, Qt::IntersectClip);
+        if (waiting) {
+            // only a veil, what is coming, and a short light running along the foot of the preview
+            painter->fillRect(area, QColor(10, 11, 14, 70));
+            QFont f(m_customizedFont);
+            f.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.62)));
+            f.setWeight(QFont::DemiBold);
+            const QFontMetricsF fm(f);
+            const QString shown = fm.elidedText(e.text, Qt::ElideRight, area.width() - 28);
+            const qreal w = fm.horizontalAdvance(shown) + 18;
+            const QRectF label(area.center().x() - w / 2, area.top() + (area.height() - 34 - fm.height() - 6) / 2, w, fm.height() + 6);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(18, 20, 24, 215));
+            painter->drawRoundedRect(label, label.height() / 2, label.height() / 2);
+            painter->setFont(f);
+            painter->setPen(QColor(235, 238, 242));
+            painter->drawText(label, Qt::AlignCenter, shown);
+            const qreal runner = area.width() * 0.3;
+            const qreal x = area.left() - runner + (area.width() + runner) * activity->phase();
+            QLinearGradient light(x, 0, x + runner, 0);
+            light.setColorAt(0, Qt::transparent);
+            light.setColorAt(0.5, accent);
+            light.setColorAt(1, Qt::transparent);
+            painter->fillRect(QRectF(x, area.bottom() - 3, runner, 3), light);
+            painter->restore();
+            return;
+        }
         painter->fillRect(area, QColor(10, 11, 14, 165));
         // the ring and, under it, what is going on: both above the type and size badges at the foot of the band
         QFont labelFont(m_customizedFont);
@@ -3926,6 +3990,12 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
             painter->setFont(labelFont);
             painter->setPen(QColor(235, 238, 242));
             painter->drawText(label, Qt::AlignCenter, shown);
+            if (stoppable) {
+                stopButton(QRectF(label.right() + 5, label.top(), label.height(), label.height()));
+            }
+        } else if (stoppable) {
+            const qreal side = qMax<qreal>(18, radius * 0.7);
+            stopButton(QRectF(area.center().x() + radius + width + 4, top, side, side));
         }
         // and a line of the same colour along the bottom edge of the preview
         if (!busy) {
@@ -3939,7 +4009,9 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
         painter->setClipPath(clip, Qt::IntersectClip);
         QColor fill = accent;
         fill.setAlphaF(0.20);
-        if (busy) {
+        if (busy && waiting) {
+            // a file being made: no sweep, the caption says it
+        } else if (busy) {
             // a soft band sweeping across
             const qreal w = row.width() * 0.25;
             const qreal x = row.left() - w + (row.width() + w) * activity->phase();
@@ -3969,6 +4041,9 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
             painter->setFont(f);
             painter->setPen(accent.lighter(135));
             painter->drawText(pill, Qt::AlignCenter, fm.elidedText(caption, Qt::ElideRight, pill.width() - 14));
+            if (stoppable) {
+                stopButton(QRectF(pill.left() - pill.height() - 4, pill.top(), pill.height(), pill.height()));
+            }
         }
     }
     painter->restore();
