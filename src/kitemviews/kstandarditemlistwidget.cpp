@@ -1616,8 +1616,8 @@ void KStandardItemListWidget::hoveredChanged(bool hovered)
         update(); // dolphin-ng: the card shows its actions while hovered
     }
 
-    // dolphin-ng: actions of the hovered row
-    if (m_layout == DetailsLayout && ngNoIcons()) {
+    // dolphin-ng: actions of the hovered row (not on rows drawn like the cards: they have the pill of quick actions)
+    if (m_layout == DetailsLayout && ngNoIcons() && !m_ngObjectRow) {
         if (hovered) {
             if (!m_ngActions) {
                 auto controllerOf = [this]() -> KItemListController * {
@@ -3126,10 +3126,24 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         }
     } else if (category == int(NgKind::Sheet)) {
         const QRectF page = sheet(0.62);
-        const qreal left = page.left() + 9 * u, right = page.right() - 9 * u, top = page.top() + (info ? 32 * u : 10 * u), rowHeight = 15 * u;
+        const qreal left = page.left() + 9 * u, right = page.right() - 9 * u, rowHeight = 15 * u;
+        qreal top = page.top() + (info ? 32 * u : 10 * u);
         if (info) {
+            // the size beside the title, or under it when the page is too narrow for both (a small drawing)
+            QFont titleFont(*font), sizeFont(*font);
+            titleFont.setPixelSize(qMax(7, qRound(22 * u)));
+            titleFont.setWeight(QFont::Black);
+            titleFont.setLetterSpacing(QFont::PercentageSpacing, 104);
+            sizeFont.setPixelSize(qMax(7, qRound(12 * u)));
+            sizeFont.setWeight(QFont::Bold);
+            const bool beside = QFontMetricsF(titleFont).horizontalAdvance(sigla) + QFontMetricsF(sizeFont).horizontalAdvance(sizeText) + 8 * u <= right - left;
             write(QRectF(left, page.top() + 5 * u, right - left, 24 * u), sigla, 22 * u, QFont::Black, shade(0.42, 1.0), Qt::AlignLeft | Qt::AlignVCenter);
-            write(QRectF(left, page.top() + 5 * u, right - left, 24 * u), sizeText, 12 * u, QFont::Bold, shade(0.4, 0.4), Qt::AlignRight | Qt::AlignVCenter);
+            if (beside) {
+                write(QRectF(left, page.top() + 5 * u, right - left, 24 * u), sizeText, 12 * u, QFont::Bold, shade(0.4, 0.4), Qt::AlignRight | Qt::AlignVCenter);
+            } else {
+                write(QRectF(left, page.top() + 27 * u, right - left, 15 * u), sizeText, 12 * u, QFont::Bold, shade(0.4, 0.4), Qt::AlignLeft | Qt::AlignVCenter);
+                top += 14 * u;
+            }
         }
         QColor head = tint;
         head.setAlphaF(0.55);
@@ -4050,8 +4064,9 @@ bool KStandardItemListWidget::ngRingSelection() const
 
 qreal KStandardItemListWidget::ngBlockInset() const
 {
-    // drawn rows: the card of the row sits 3 px inside the item, and so does its ring
-    return m_layout == DetailsLayout && m_ngObjectRow && ngRowStyle() != NgRowStyle::Open ? 3 : 0;
+    // drawn rows fill the width of the view and the first one touches its top: the ring is drawn on the edge of
+    // the row's card (3 px inside the item), all of it inside the item, or the view would cut it off
+    return m_layout == DetailsLayout && m_ngObjectRow ? 7 : 0;
 }
 
 bool KStandardItemListWidget::ngNoHover() const

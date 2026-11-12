@@ -1884,9 +1884,9 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal 
                 top = (own.top() - b.bottom()) / 2.0;
             }
         }
-        *reach = QRectF(-left, -top, own.width() + left + right, own.height() + top + bottom);
+        *reach = QRectF(inset - left, inset - top, own.width() + left + right, own.height() + top + bottom);
     }
-    return ngRoundedOutline(area.simplified(), ngSelectionRadius() + grow).translated(-own.topLeft());
+    return ngRoundedOutline(area.simplified(), ngSelectionRadius() + grow).translated(-pos()); // in the item's own coordinates
 }
 
 void KItemListWidget::ngPaintCheck(QPainter *painter, QWidget *widget)
