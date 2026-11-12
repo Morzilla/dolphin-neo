@@ -3259,20 +3259,37 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
             painter->restore();
         }
         if (info && (count >= 0 || !sizeText.isEmpty())) {
-            const QRectF text = cover.adjusted(cover.width() * 0.08, cover.height() * 0.12, -cover.width() * 0.08, -cover.height() * 0.10);
-            const qreal firstPx = qMax(9.0, cover.height() * 0.23), secondPx = qMax(8.5, cover.height() * 0.185);
-            QString first = count >= 0 ? QString::number(count) + QLatin1Char(' ') + ngTr("items", "elementi") : sizeText;
-            QFont probe(*font);
-            probe.setPixelSize(qRound(firstPx));
-            probe.setWeight(QFont::Black);
-            if (count >= 0 && QFontMetricsF(probe).horizontalAdvance(first) > text.width()) {
-                first = QString::number(count);
+            // the count large, its word smaller on the same baseline ("19 items"), the size under them; when the word
+            // does not fit, the number alone (never an ellipsis)
+            const QRectF text = cover.adjusted(cover.width() * 0.09, cover.height() * 0.10, -cover.width() * 0.07, -cover.height() * 0.12);
+            QFont numberFont(*font), wordFont(*font), sizeFont(*font);
+            numberFont.setPixelSize(qMax(10, qRound(cover.height() * 0.30)));
+            numberFont.setWeight(QFont::Black);
+            wordFont.setPixelSize(qMax(8, qRound(cover.height() * 0.15)));
+            wordFont.setWeight(QFont::DemiBold);
+            sizeFont.setPixelSize(qMax(8, qRound(cover.height() * 0.165)));
+            sizeFont.setWeight(QFont::Bold);
+            const QFontMetricsF numberFm(numberFont), wordFm(wordFont), sizeFm(sizeFont);
+            qreal bottom = text.bottom();
+            if (!sizeText.isEmpty()) {
+                painter->setFont(sizeFont);
+                painter->setPen(ink2);
+                painter->drawText(QPointF(text.left(), bottom - sizeFm.descent()), sizeFm.elidedText(sizeText, Qt::ElideRight, text.width()));
+                bottom -= sizeFm.height() + cover.height() * 0.02;
             }
-            const QString second = count >= 0 ? sizeText : QString();
-            const qreal secondHeight = second.isEmpty() ? 0 : secondPx * 1.25;
-            write(QRectF(text.left(), text.bottom() - secondHeight - firstPx * 1.25, text.width(), firstPx * 1.25), first, firstPx, QFont::Black, ink, Qt::AlignLeft | Qt::AlignVCenter);
-            if (!second.isEmpty()) {
-                write(QRectF(text.left(), text.bottom() - secondHeight, text.width(), secondHeight), second, secondPx, QFont::Bold, ink2, Qt::AlignLeft | Qt::AlignVCenter);
+            if (count >= 0) {
+                const QString number = QString::number(count);
+                const qreal baseline = bottom - numberFm.descent();
+                painter->setFont(numberFont);
+                painter->setPen(ink);
+                painter->drawText(QPointF(text.left(), baseline), number);
+                const QString word = count == 1 ? ngTr("item", "elemento") : ngTr("items", "elementi");
+                const qreal wordLeft = text.left() + numberFm.horizontalAdvance(number) + wordFm.height() * 0.3;
+                if (wordLeft + wordFm.horizontalAdvance(word) <= text.right()) {
+                    painter->setFont(wordFont);
+                    painter->setPen(ink2);
+                    painter->drawText(QPointF(wordLeft, baseline), word);
+                }
             }
         }
     } else if (category == int(NgKind::Sheet)) {
