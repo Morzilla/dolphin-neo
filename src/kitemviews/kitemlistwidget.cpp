@@ -231,6 +231,8 @@ NgActivity::NgActivity()
 {
     m_timer.setInterval(60);
     connect(&m_timer, &QTimer::timeout, this, &NgActivity::tick);
+    m_sweep.setInterval(1000);
+    connect(&m_sweep, &QTimer::timeout, this, &NgActivity::sweepFamilies);
     QTimer::singleShot(0, this, &NgActivity::loadProcesses);
 }
 
@@ -372,6 +374,9 @@ void NgActivity::link(const QUrl &parent, const QUrl &child)
     }
     m_links.insert(childKey, {child, parent});
     m_linkedAt.insert(childKey, QDateTime::currentMSecsSinceEpoch());
+    if (!m_sweep.isActive()) {
+        m_sweep.start();
+    }
     if (!m_timer.isActive()) {
         m_timer.start(); // the new file grows in
     }
@@ -402,38 +407,62 @@ void NgActivity::parentDone(const QString &parentKey)
             m_watched.remove(parentKey);
         }
     });
-    // the bubble stays a little after the work, so the result is easy to find, then the files go back in order
-    QTimer::singleShot(30000, this, [this, parentKey] {
-        if (m_entries.contains(parentKey)) {
-            return; // at work again
+    // the end of the tie itself is left to sweepFamilies(), which looks at every family once a second
+}
+
+void NgActivity::sweepFamilies()
+{
+    // a family whose files are all idle (the parent and its children no longer at work) keeps its bubble 30 s,
+    // so the result is easy to find; then the bubble fades out and the files go back in order. Checked every
+    // second, whatever way the family was made or its work ended
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QSet<QString> parents;
+    for (const auto &l : std::as_const(m_links)) {
+        parents.insert(key(l.second));
+    }
+    bool removed = false;
+    for (const QString &parentKey : std::as_const(parents)) {
+        bool busy = m_entries.contains(parentKey) || m_watched.contains(parentKey);
+        for (auto it = m_links.cbegin(); it != m_links.cend() && !busy; ++it) {
+            busy = key(it->second) == parentKey && m_pids.contains(it.key());
         }
-        // first the bubble fades out, then the ties go and the files go back in order
-        m_fadingSince.insert(parentKey, QDateTime::currentMSecsSinceEpoch());
-        if (!m_timer.isActive()) {
-            m_timer.start();
+        if (busy) {
+            m_idleSince.remove(parentKey);
+            m_fadingSince.remove(parentKey);
+            continue;
         }
-        QTimer::singleShot(560, this, [this, parentKey] {
-        m_fadingSince.remove(parentKey);
-        if (m_entries.contains(parentKey)) {
-            return;
-        }
-        bool removed = false;
-        for (auto it = m_links.begin(); it != m_links.end();) {
-            if (key(it->second) == parentKey) {
-                m_entries.remove(it.key());
-                m_linkedAt.remove(it.key());
-                it = m_links.erase(it);
-                removed = true;
-            } else {
-                ++it;
+        const qint64 idle = m_idleSince.value(parentKey, 0);
+        if (!idle) {
+            m_idleSince.insert(parentKey, now);
+        } else if (!m_fadingSince.contains(parentKey) && now - idle >= 30000) {
+            m_fadingSince.insert(parentKey, now);
+            if (!m_timer.isActive()) {
+                m_timer.start(); // repaints while it fades
+            }
+        } else if (m_fadingSince.contains(parentKey) && now - m_fadingSince.value(parentKey) >= 520) {
+            m_fadingSince.remove(parentKey);
+            m_idleSince.remove(parentKey);
+            for (auto it = m_links.begin(); it != m_links.end();) {
+                if (key(it->second) == parentKey) {
+                    m_entries.remove(it.key());
+                    m_linkedAt.remove(it.key());
+                    it = m_links.erase(it);
+                    removed = true;
+                } else {
+                    ++it;
+                }
             }
         }
-        if (removed) {
-            Q_EMIT linksChanged();
-            Q_EMIT changed();
-        }
-        });
-    });
+    }
+    if (m_links.isEmpty()) {
+        m_sweep.stop();
+        m_idleSince.clear();
+        m_fadingSince.clear();
+    }
+    if (removed) {
+        Q_EMIT linksChanged();
+        Q_EMIT changed();
+    }
 }
 
 qreal NgActivity::fading(const QUrl &url) const

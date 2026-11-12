@@ -128,6 +128,9 @@ private:
     QString m_hoveredStop;
     QHash<QString, QColor> m_familyColours;
     QHash<QString, qint64> m_fadingSince; // family (parent key) -> when its bubble began to fade out
+    QHash<QString, qint64> m_idleSince; // family (parent key) -> since when none of its files is at work
+    QTimer m_sweep; // once a second while there are ties: ends the ties of families idle for a while
+    void sweepFamilies();
     /* processes of quick actions outlive Dolphin: they are written down, so a Dolphin started later shows them */
     void saveProcesses();
     void loadProcesses();
