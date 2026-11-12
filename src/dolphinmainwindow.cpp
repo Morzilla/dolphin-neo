@@ -2081,6 +2081,19 @@ void DolphinMainWindow::setupActions()
     actionCollection()->setDefaultShortcut(invertSelection, Qt::CTRL | Qt::SHIFT | Qt::Key_A);
     connect(invertSelection, &QAction::triggered, this, &DolphinMainWindow::invertSelection);
 
+    // dolphin-ng: pin the selection to the top of the folder, or unpin it if it is all pinned already
+    QAction *ngPin = actionCollection()->addAction(QStringLiteral("ng_pin"));
+    ngPin->setText(ngTr("Pin to the Top / Unpin", "Fissa in alto / Togli dall'alto"));
+    ngPin->setIcon(QIcon::fromTheme(QStringLiteral("window-pin")));
+    actionCollection()->setDefaultShortcut(ngPin, Qt::CTRL | Qt::ALT | Qt::Key_P);
+    connect(ngPin, &QAction::triggered, this, [this] {
+        if (DolphinViewContainer *container = activeViewContainer()) {
+            DolphinView *view = container->view();
+            const KFileItemList items = view->selectedItems();
+            view->ngSetPinned(items, !view->ngAllPinned(items));
+        }
+    });
+
     QMenu *toggleSelectionModeActionMenu = new QMenu(this);
     toggleSelectionModeActionMenu->addAction(selectAllAction);
     toggleSelectionModeActionMenu->addAction(invertSelection);

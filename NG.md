@@ -75,6 +75,14 @@ a sheet with a footer, a video a frame on a strip of film.
 `ng/ng-transcribe --setup` once (it builds whisper.cpp in `~/.local/src` and downloads the speech model, about
 550 MB); the action appears when that is done.
 
+## Pinned to the top
+
+Right-click → **Pin to the Top** (or Ctrl+Alt+P on the selection) keeps files and folders at the top of their
+folder, before everything else, whatever the sorting; among themselves they follow the chosen order. A small red
+pushpin marks them. The mark is kept with the file itself, as the extended attribute `user.ng.pinned`, so it
+follows the file when it is moved or renamed (it is not kept on file systems without extended attributes, such
+as FAT). Right-click → **Unpin from the Top** takes it away.
+
 ## Settings
 
 Everything is a setting, on a graphical page: tabs, a tile with a drawing of each choice, switches, and a sketch of

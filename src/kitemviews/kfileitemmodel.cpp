@@ -405,6 +405,11 @@ QHash<QByteArray, QVariant> KFileItemModel::data(int index) const
                 data->values.insert("expandedParentsCount", expandedParentsCount);
             }
         }
+        if (data->ngPinned) {
+            data->values.insert("ngPinned", true); // dolphin-ng: the widget draws a pin
+        } else {
+            data->values.remove("ngPinned");
+        }
 
         return data->values;
     }
@@ -1303,6 +1308,40 @@ void KFileItemModel::loadSortingSettings()
     m_collator.compare(QString(), QString());
 }
 
+void KFileItemModel::ngSetPinned(const KFileItemList &items, bool pinned)
+{
+    KItemRangeList ranges;
+    for (const KFileItem &item : items) {
+        const int i = index(item.url());
+        if (i < 0 || !item.isLocalFile()) {
+            continue;
+        }
+        KFileMetaData::UserMetaData metadata(item.localPath());
+        if (!metadata.isSupported()) {
+            continue; // (a file system without extended attributes, e.g. FAT)
+        }
+        metadata.setAttribute(QStringLiteral("ng.pinned"), pinned ? QStringLiteral("1") : QString());
+        ItemData *data = m_itemData.at(i);
+        data->ngPinned = pinned;
+        if (pinned) {
+            data->values.insert("ngPinned", true);
+        } else {
+            data->values.remove("ngPinned");
+        }
+        ranges.append(KItemRange(i, 1));
+    }
+    if (!ranges.isEmpty()) {
+        Q_EMIT itemsChanged(ranges, {"ngPinned"});
+        m_resortAllItemsTimer->start();
+    }
+}
+
+bool KFileItemModel::ngIsPinned(const KFileItem &item) const
+{
+    const int i = index(item.url());
+    return i >= 0 && m_itemData.at(i)->ngPinned;
+}
+
 void KFileItemModel::ngRebuildFamilies()
 {
     m_ngParents.clear();
@@ -1998,6 +2037,11 @@ QList<KFileItemModel::ItemData *> KFileItemModel::createItemDataList(const QUrl 
         ItemData *itemData = new ItemData();
         itemData->item = item;
         itemData->parent = parentItem;
+        if (item.isLocalFile()) {
+            // dolphin-ng: pinned to the top? (an extended attribute of the file)
+            KFileMetaData::UserMetaData metadata(item.localPath());
+            itemData->ngPinned = metadata.isSupported() && metadata.hasAttribute(QStringLiteral("ng.pinned"));
+        }
         itemDataList.append(itemData);
     }
 
@@ -2439,6 +2483,11 @@ bool KFileItemModel::lessThan(const ItemData *a, const ItemData *b, const QColla
             a = keyA;
             b = keyB;
         }
+    }
+
+    // dolphin-ng: what is pinned comes first, before the folders, whatever the sorting
+    if (a->ngPinned != b->ngPinned) {
+        return a->ngPinned;
     }
 
     // Show hidden files and folders last

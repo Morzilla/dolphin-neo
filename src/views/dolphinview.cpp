@@ -2819,6 +2819,24 @@ void DolphinView::applyViewProperties(const ViewProperties &props)
     Q_EMIT viewSettingsChanged(props.isDefaults());
 }
 
+void DolphinView::ngSetPinned(const KFileItemList &items, bool pinned)
+{
+    m_model->ngSetPinned(items, pinned);
+}
+
+bool DolphinView::ngAllPinned(const KFileItemList &items) const
+{
+    if (items.isEmpty()) {
+        return false;
+    }
+    for (const KFileItem &item : items) {
+        if (!m_model->ngIsPinned(item)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
 {
     if (number == -1 && !item.isNull()) {

@@ -17,6 +17,7 @@
 #include "settings/dolphinsettingsdialog.h"
 #include "trash/dolphintrash.h"
 #include "views/dolphinview.h"
+#include "kitemviews/kitemlistwidget.h" // dolphin-ng: ngTr
 
 #include <KActionCollection>
 #include <KFileItemListProperties>
@@ -310,6 +311,17 @@ void DolphinContextMenu::addItemContextMenu()
     }
 
     insertDefaultItemActions(selectedItemsProps);
+
+    // dolphin-ng: pin to the top of the folder, or unpin (the whole selection)
+    if (DolphinViewContainer *container = m_mainWindow->activeViewContainer(); container && selectedItemsProps.isLocal()) {
+        DolphinView *view = container->view();
+        const KFileItemList items = m_selectedItems;
+        const bool all = view->ngAllPinned(items);
+        addAction(QIcon::fromTheme(all ? QStringLiteral("window-unpin") : QStringLiteral("window-pin")),
+                  all ? ngTr("Unpin from the Top", "Togli dall'alto") : ngTr("Pin to the Top", "Fissa in alto"), this, [view, items, all] {
+                      view->ngSetPinned(items, !all);
+                  });
+    }
 
     addAdditionalActions(selectedItemsProps);
 

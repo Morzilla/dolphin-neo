@@ -166,6 +166,10 @@ public:
      * selected.
      */
     KFileItemList selectedItems() const;
+    /** dolphin-ng: pin the items to the top of the folder (or unpin them) */
+    void ngSetPinned(const KFileItemList &items, bool pinned);
+    /** dolphin-ng: true if all of them are pinned */
+    bool ngAllPinned(const KFileItemList &items) const;
 
     /**
      * Returns the number of selected items (this is faster than

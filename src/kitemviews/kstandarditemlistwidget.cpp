@@ -717,6 +717,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         KItemListWidget::paint(painter, option, widget);
         paintNgCard(painter, widget);
         paintNgFold(painter);
+        paintNgPin(painter);
         ngPaintCheck(painter, widget);
         paintNgActivity(painter);
         return;
@@ -1112,6 +1113,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         painter->restore();
     }
 
+    paintNgPin(painter);
     paintNgActivity(painter);
 
 #ifdef KSTANDARDITEMLISTWIDGET_DEBUG
@@ -4099,6 +4101,51 @@ void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter)
         painter->drawLine(QPointF(footer.left() + 6, footer.top() + 0.5), QPointF(footer.right() - 6, footer.top() + 0.5));
         writeLine(QRectF(footer.left() + 8, footer.top(), footer.width() - 16, foot), foot, shade(0.45, 1.0), QColor(107, 114, 128));
     }
+}
+
+void KStandardItemListWidget::paintNgPin(QPainter *painter)
+{
+    if (!data().value("ngPinned").toBool()) {
+        return;
+    }
+    // a red pushpin on a small dark (or light) disc: at the top right corner of a card, on the corner of the icon
+    // elsewhere. Red like a real pin, so it never reads as the selection or as the colour of a type.
+    const bool dark = ngIsDark(styleOption().palette);
+    qreal radius;
+    QPointF centre;
+    if (m_layout == CardsLayout) {
+        radius = 11;
+        centre = QPointF(rect().right() - 16, rect().top() + 16);
+    } else if (ngTwoLineList()) {
+        // two-line rows: on the corner of the small preview, or of the row where the type mark is
+        radius = 9;
+        centre = m_ngRowThumb.isEmpty() ? QPointF(rect().left() + 13, rect().top() + 13) : QPointF(m_ngRowThumb.left() + 2, m_ngRowThumb.top() + 2);
+    } else {
+        const QRectF icon = m_iconRect;
+        radius = qBound(6.0, icon.height() * 0.22, 10.0);
+        centre = QPointF(icon.right() - radius * 0.35, icon.top() + radius * 0.35);
+    }
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(QPen(dark ? QColor(0, 0, 0, 110) : QColor(0, 0, 0, 40), 1.2));
+    painter->setBrush(dark ? QColor(22, 23, 27, 235) : QColor(252, 252, 252, 245));
+    painter->drawEllipse(centre, radius, radius);
+
+    const qreal s = radius * 0.62;
+    const QColor red = dark ? QColor(255, 104, 92) : QColor(224, 62, 52);
+    painter->translate(centre);
+    painter->rotate(40);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(red);
+    painter->drawRoundedRect(QRectF(-0.46 * s, -1.0 * s, 0.92 * s, 0.32 * s), 0.12 * s, 0.12 * s); // the head
+    QPolygonF body;
+    body << QPointF(-0.27 * s, -0.7 * s) << QPointF(0.27 * s, -0.7 * s) << QPointF(0.40 * s, 0.06 * s) << QPointF(-0.40 * s, 0.06 * s);
+    painter->drawPolygon(body);
+    painter->drawRoundedRect(QRectF(-0.64 * s, 0.02 * s, 1.28 * s, 0.24 * s), 0.1 * s, 0.1 * s); // the collar
+    QColor needle = dark ? QColor(214, 218, 226) : QColor(92, 96, 104);
+    painter->setPen(QPen(needle, qMax(1.0, 0.16 * s), Qt::SolidLine, Qt::RoundCap));
+    painter->drawLine(QPointF(0, 0.3 * s), QPointF(0, 1.05 * s));
+    painter->restore();
 }
 
 void KStandardItemListWidget::paintNgFold(QPainter *painter)

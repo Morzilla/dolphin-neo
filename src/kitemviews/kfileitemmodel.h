@@ -375,6 +375,7 @@ private:
         KFileItem item;
         QHash<QByteArray, QVariant> values;
         ItemData *parent;
+        bool ngPinned = false; // dolphin-ng: pinned to the top of the folder, whatever the sorting
     };
 
     enum RemoveItemsBehavior {
@@ -447,6 +448,12 @@ private:
      *         \b. The item-data may have different parent-items.
      */
     bool lessThan(const ItemData *a, const ItemData *b, const QCollator &collator) const;
+public:
+    /** dolphin-ng: pin items to the top of their folder (whatever the sorting) or unpin them. Kept with the file
+     *  itself, as the extended attribute user.ng.pinned, so it follows it when moved or renamed. */
+    void ngSetPinned(const KFileItemList &items, bool pinned);
+    bool ngIsPinned(const KFileItem &item) const;
+private:
     /** dolphin-ng: finds again, for every tie in NgActivity, the items of the child and of its parent */
     void ngRebuildFamilies();
     /** dolphin-ng: child item -> parent item, for the files tied together (a file sorts right after its parent) */
