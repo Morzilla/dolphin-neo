@@ -64,23 +64,55 @@ else
 fi
 
 # ---- 1. build dependencies
+# Every dnf/apt transaction is simulated first. If it would remove packages, downgrade them, or upgrade the desktop
+# itself (Plasma, KWin, KDE Frameworks, Qt, the display stack) it is not run: you see what would change and decide
+# (default: no). On Fedora, installing a -devel package once pulled a whole newer Plasma and removed the packages
+# of the running X11 session.
+CORE='^(plasma|kwin|kf6-|libkf6|kf5-|qt6|libqt6|qt5|libqt5|libplasma|kdecoration|libkdecorations|libkworkspace|kscreen|powerdevil|sddm|breeze|kde-|xorg|xwayland|mesa|systemd|glibc|dbus)'
+safe_pkgs() { # dnf|apt-get, command and packages (without -y)
+    local manager="$1" sim changes answer
+    shift
+    if [ "$manager" = dnf ]; then
+        sim=$(LC_ALL=C sudo dnf "$@" --assumeno 2>&1 || true)
+        changes=$(awk -v core="$CORE" '
+            /^[A-Z][A-Za-z ]*:$/ { sec = $0; next }
+            /^$/ { sec = ""; next }
+            /^ [^ ]/ && sec != "" {
+                if (sec ~ /^(Removing|Downgrading|Replacing)/) print $1 "  " tolower(substr(sec, 1, length(sec) - 1))
+                else if (sec ~ /^Upgrading/ && $1 ~ core) print $1 "  upgrading"
+            }' <<<"$sim")
+    else
+        sim=$(LC_ALL=C sudo apt-get -s "$@" 2>&1 || true)
+        changes=$(awk -v core="$CORE" '/^Remv / { print $2 "  removing" } /^Inst [^ ]+ \[/ && $2 ~ core { print $2 "  upgrading" }' <<<"$sim")
+    fi
+    if [ -n "$changes" ]; then
+        echo "  !! \"$manager $*\" would change packages of the desktop itself:" >&2
+        printf '%s\n' "$changes" | head -n 25 | sed 's/^/       /' >&2
+        echo "  It is safer to update the whole system first (then run this again), or to install by hand." >&2
+        answer=""
+        { read -r -p "  Go on with this anyway? [y/N] " answer </dev/tty; } 2>/dev/null || true
+        case "$answer" in y*|Y*|s*|S*) ;; *) echo "  skipped: $manager $*" >&2; return 1 ;; esac
+    fi
+    if [ "$manager" = dnf ]; then sudo dnf "$@" -y; else sudo apt-get "$@" -y; fi
+}
+
 if [ "$DEPS" = 1 ]; then
     say "installing the build dependencies (sudo)"
     if command -v dnf >/dev/null; then
         # A partly updated system can end up with mixed KDE Frameworks versions: update first if in doubt.
-        sudo dnf install -y git cmake gcc-c++ extra-cmake-modules 'dnf-command(builddep)' poppler-utils qt6-qtmultimedia-devel ImageMagick
+        safe_pkgs dnf install git cmake gcc-c++ extra-cmake-modules 'dnf-command(builddep)' poppler-utils qt6-qtmultimedia-devel ImageMagick || true
         # ffmpeg-free conflicts with the RPM Fusion ffmpeg many people have
-        command -v ffmpeg >/dev/null || sudo dnf install -y ffmpeg-free || true
-        sudo dnf builddep -y dolphin
-        [ "$THEME" = 1 ] && sudo dnf install -y kvantum || true
+        command -v ffmpeg >/dev/null || safe_pkgs dnf install ffmpeg-free || true
+        safe_pkgs dnf builddep dolphin || { echo "Dolphin's build dependencies were not installed." >&2; exit 1; }
+        [ "$THEME" = 1 ] && safe_pkgs dnf install kvantum || true
     elif command -v apt-get >/dev/null; then
         sudo apt-get update
-        sudo apt-get install -y git cmake g++ extra-cmake-modules poppler-utils qt6-multimedia-dev imagemagick ffmpeg
-        sudo apt-get build-dep -y dolphin || {
+        safe_pkgs apt-get install git cmake g++ extra-cmake-modules poppler-utils qt6-multimedia-dev imagemagick ffmpeg || true
+        safe_pkgs apt-get build-dep dolphin || {
             echo "apt could not install Dolphin's build dependencies: enable the source repositories (deb-src) and run this again." >&2
             exit 1
         }
-        [ "$THEME" = 1 ] && sudo apt-get install -y qt6-style-kvantum || true
+        [ "$THEME" = 1 ] && safe_pkgs apt-get install qt6-style-kvantum || true
     elif command -v pacman >/dev/null; then
         sudo pacman -S --needed --noconfirm git cmake extra-cmake-modules base-devel poppler qt6-multimedia qt6-multimedia-ffmpeg imagemagick ffmpeg \
             kio kparts knewstuff kcmutils kdbusaddons kiconthemes ktextwidgets kcrash kbookmarks kcompletion \
@@ -145,7 +177,7 @@ if [ "$THEME" = 1 ]; then
         if command -v kwriteconfig6 >/dev/null; then
             kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key library org.kde.kwin.aurorae.v2
             kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key theme __aurorae__svg__Motto-Neo-Aurorae
-            (qdbus6 org.kde.KWin /KWin reconfigure || qdbus org.kde.KWin /KWin reconfigure) >/dev/null 2>&1 || true
+            dbus-send --session --type=method_call --dest=org.kde.KWin /KWin org.kde.KWin.reconfigure 2>/dev/null || true
         fi
     fi
 fi
