@@ -229,6 +229,7 @@ private:
     void paintNgCard(QPainter *painter, QWidget *widget);
     void paintNgActivity(QPainter *painter); // work in progress on this file (NgActivity): a ring on cards, a fill on rows
     void paintNgFamily(QPainter *painter); // files tied together (NgActivity families): one bubble around them
+    void paintNgFold(QPainter *painter); // CARDS_BADGE=fold: the folded glass corner with the type and size
     qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
                              const QList<int> &origin = {});
     void paintNgActionPill(QPainter *painter, const QColor &text, bool dark);
@@ -354,6 +355,13 @@ private:
     QPixmap m_ngBadgeGlass; // the blurred piece of the picture under a glass badge
     qint64 m_ngBadgeGlassKey = 0;
     int m_ngBadgeGlassShade = 70; // how dark the veil over it is: more over a light picture, so the white text reads
+    // CARDS_BADGE=fold: type and size written on the back of the band's corner, folded over like a page in glass
+    QString m_ngFoldType;
+    QString m_ngFoldSize;
+    qreal m_ngFoldFill = 0; // 0..1, how heavy the file is (log scale): the larger, the larger the fold
+    QPixmap m_ngFoldGlass; // the blurred piece of the picture under the fold
+    qint64 m_ngFoldGlassKey = 0;
+    QRect m_ngFoldGlassSource;
     QRectF m_ngCardFab; // Tessera: the main action on its own, astride the bottom edge of the picture band
     qreal m_ngReveal = 0.0; // Tessera: how far the hover pill has faded in (0..1)
     QPointer<QVariantAnimation> m_ngRevealAnimation;

@@ -684,6 +684,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         paintNgCardSheet(painter);
         KItemListWidget::paint(painter, option, widget);
         paintNgCard(painter, widget);
+        paintNgFold(painter);
         paintNgActivity(painter);
         return;
     }
@@ -3322,6 +3323,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     m_ngCount.clear();
     m_ngAgo.clear();
     m_ngCardEye = QRectF();
+    m_ngFoldType.clear();
     m_ngCardEyeInPill = false;
     m_ngCardMenu = QRectF();
     m_ngCardActions.clear();
@@ -3565,6 +3567,13 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         if (ngSetting("CARDS_BADGE").toLower() == QLatin1String("row")) {
             // the chips in a row of their own under the name
             y = chipRow(x0, y, right, {m_ngSigla, sizeText, countText}, 1) + 8;
+        } else if (ngSetting("CARDS_BADGE").toLower() == QLatin1String("fold")) {
+            // no chips: the corner of the band folds over, with the type and the size on its back (paintNgFold)
+            m_ngFoldType = m_ngSigla;
+            m_ngFoldSize = !sizeText.isEmpty() ? sizeText : countText;
+            const int count = values.value("count").toInt();
+            m_ngFoldFill = bytes > 0 ? qBound(0.04, (std::log10(qreal(bytes)) - 2) / 7.0, 1.0)
+                                     : (isDir ? qBound(0.04, std::log10(qreal(count) + 1) / 3.0, 1.0) : 0.04);
         } else {
             // the chips (type, size, items) sit on the band, at its bottom right: laid out from the left, then moved
             const int first = m_ngChips.count();
@@ -3821,6 +3830,110 @@ void KStandardItemListWidget::moveEvent(QGraphicsSceneMoveEvent *event)
     if (m_ngShowedFamily) {
         update();
     }
+}
+
+void KStandardItemListWidget::paintNgFold(QPainter *painter)
+{
+    if (m_ngFoldType.isEmpty() || m_layout != CardsLayout || m_ngCardThumb.height() < 40) {
+        return;
+    }
+    const QRectF band = m_ngCardThumb;
+    // the type and the size first: the fold is made large enough to hold them
+    QFont typeFont(m_customizedFont);
+    typeFont.setPixelSize(qMax(11, qRound(m_customizedFontMetrics.height() * 0.78)));
+    typeFont.setWeight(QFont::Black);
+    QFont sizeFont(m_customizedFont);
+    sizeFont.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.6)));
+    sizeFont.setWeight(QFont::DemiBold);
+    const QFontMetricsF typeFm(typeFont), sizeFm(sizeFont);
+    const qreal textWidth = qMax(typeFm.horizontalAdvance(m_ngFoldType), m_ngFoldSize.isEmpty() ? 0.0 : sizeFm.horizontalAdvance(m_ngFoldSize));
+    const qreal textHeight = typeFm.height() + (m_ngFoldSize.isEmpty() ? 0 : sizeFm.height()) + 4;
+    // the fold grows with the weight of the file
+    const qreal k = 0.8 + 0.5 * m_ngFoldFill;
+    qreal h = qMax(textHeight * 2.0, band.height() * 0.46) * k;
+    h = qMin(h, band.height() * 0.8);
+    // at the height of the text the fold must still be wide enough for it
+    qreal w = qMax(h * 1.3, (textWidth + 10) / qMax(0.2, 1 - textHeight / h));
+    w = qMin(w, band.width() * 0.62);
+    const QPointF corner = band.bottomRight();
+    const QPointF a(corner.x() - w, corner.y()), b(corner.x(), corner.y() - h);
+    QPainterPath fold;
+    fold.moveTo(corner);
+    fold.lineTo(a);
+    fold.lineTo(b);
+    fold.closeSubpath();
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setClipRect(band, Qt::IntersectClip);
+    // the shadow it casts on the page, along the crease
+    const QLineF crease(a, b);
+    const QPointF away = QPointF(-crease.dy(), crease.dx()) / crease.length(); // perpendicular, towards the page
+    for (int i = 1; i <= 6; ++i) {
+        QPainterPath shade;
+        const QPointF d = away * (i * 1.4);
+        shade.moveTo(corner);
+        shade.lineTo(a + d * (a.y() == corner.y() ? 0 : 1) + QPointF(-i * 1.4, 0));
+        shade.lineTo(b + QPointF(0, -i * 1.4));
+        shade.closeSubpath();
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(0, 0, 0, 16));
+        painter->drawPath(shade);
+    }
+    // frosted glass: the piece of the picture under the fold, blurred, tinted with the type and lit
+    painter->setClipPath(fold, Qt::IntersectClip);
+    const QRectF box = fold.boundingRect();
+    if (m_ngCardPreview && !m_pixmap.isNull()) {
+        const qreal dpr = m_pixmap.devicePixelRatio();
+        const QRect source = QRectF((box.topLeft() - m_pixmapPos) * dpr, box.size() * dpr).toAlignedRect().intersected(m_pixmap.rect());
+        if (m_ngFoldGlassKey != m_pixmap.cacheKey() || m_ngFoldGlassSource != source) {
+            const QPixmap part = m_pixmap.copy(source);
+            m_ngFoldGlass = part.isNull() ? QPixmap()
+                                          : part.scaled(qMax(1, part.width() / 9), qMax(1, part.height() / 9), Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                                                .scaled(part.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            m_ngFoldGlassKey = m_pixmap.cacheKey();
+            m_ngFoldGlassSource = source;
+        }
+        if (!m_ngFoldGlass.isNull()) {
+            painter->drawPixmap(box, m_ngFoldGlass, QRectF(m_ngFoldGlass.rect()));
+        }
+        painter->fillRect(box, QColor(0, 0, 0, 40));
+    } else {
+        painter->fillRect(box, QColor(22, 24, 28, 170));
+    }
+    QColor tint = m_ngTint;
+    tint.setAlpha(70);
+    painter->fillRect(box, tint);
+    QLinearGradient light(b, corner);
+    light.setColorAt(0, QColor(255, 255, 255, 80));
+    light.setColorAt(0.6, QColor(255, 255, 255, 18));
+    light.setColorAt(1, QColor(255, 255, 255, 6));
+    painter->fillRect(box, light);
+    painter->setClipping(false);
+    painter->setClipRect(band, Qt::IntersectClip);
+    // the crease, a line of light
+    painter->setPen(QPen(QColor(255, 255, 255, 190), 1.5, Qt::SolidLine, Qt::RoundCap));
+    painter->drawLine(a, b);
+    // the type and the size, on the back of the fold
+    const qreal right = corner.x() - 7;
+    const qreal sizeBase = corner.y() - 6 - sizeFm.descent();
+    const qreal typeBase = sizeBase - sizeFm.ascent() - 1 - typeFm.descent();
+    auto shadowed = [&](const QFont &font, const QFontMetricsF &fm, qreal baseline, const QString &text, const QColor &colour) {
+        painter->setFont(font);
+        const QPointF at(right - fm.horizontalAdvance(text), baseline);
+        painter->setPen(QColor(0, 0, 0, 140));
+        painter->drawText(at + QPointF(0, 1), text);
+        painter->setPen(colour);
+        painter->drawText(at, text);
+    };
+    QColor typeColour = QColor::fromHslF(m_ngTint.hslHueF() < 0 ? 0 : m_ngTint.hslHueF(), qMin<qreal>(1, m_ngTint.hslSaturationF()), 0.86);
+    if (m_ngTint.hslHueF() < 0) {
+        typeColour = QColor(240, 242, 245);
+    }
+    shadowed(typeFont, typeFm, typeBase, m_ngFoldType, typeColour);
+    if (!m_ngFoldSize.isEmpty()) {
+        shadowed(sizeFont, sizeFm, sizeBase, m_ngFoldSize, QColor(246, 247, 249));
+    }
+    painter->restore();
 }
 
 void KStandardItemListWidget::paintNgFamily(QPainter *painter)

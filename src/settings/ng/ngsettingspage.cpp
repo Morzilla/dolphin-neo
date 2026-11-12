@@ -429,6 +429,24 @@ void ngDrawChoice(QPainter &painter, const QRectF &rect, const QString &key, con
         painter.setBrush(QColor(255, 255, 255, 30));
         painter.drawEllipse(QRectF(capsule.right() - d - 2, capsule.top() + 2, d, d));
     } else if (key == QLatin1String("badge")) {
+        if (id == QLatin1String("fold")) {
+            // a picture with its bottom right corner folded over, in glass
+            painter.fillRect(rect, ngPictureBrush(rect));
+            const QPointF corner = rect.bottomRight(), a(corner.x() - 40, corner.y()), b(corner.x(), corner.y() - 30);
+            QPainterPath fold;
+            fold.moveTo(corner);
+            fold.lineTo(a);
+            fold.lineTo(b);
+            fold.closeSubpath();
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(0, 0, 0, 60));
+            painter.drawPath(fold.translated(-2, -2));
+            painter.setBrush(QColor(255, 255, 255, 110));
+            painter.drawPath(fold);
+            painter.setPen(QPen(QColor(255, 255, 255, 220), 1.2));
+            painter.drawLine(a, b);
+            return;
+        }
         if (id == QLatin1String("row")) {
             // the picture above, the two chips in their own row under it
             const QRectF picture(rect.left(), rect.top(), rect.width(), rect.height() * 0.5);
@@ -1133,8 +1151,10 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_cardsBadge->addItem(QString(), QString());
     m_cardsBadge->addItem(QString(), QStringLiteral("glass"));
     m_cardsBadge->addItem(QString(), QStringLiteral("row"));
+    m_cardsBadge->addItem(QString(), QStringLiteral("fold"));
     tilesFor(m_cardsBadge, QStringLiteral("badge"), ngTr("Type and size (Tessera)", "Tipo e dimensione (Tessera)"),
-             {{ngTr("Solid badge", "Etichetta piena"), {}}, {ngTr("Glass badge", "Etichetta di vetro"), {}}, {ngTr("A row of their own", "Riga separata"), {}}}, 5);
+             {{ngTr("Solid badge", "Etichetta piena"), {}}, {ngTr("Glass badge", "Etichetta di vetro"), {}}, {ngTr("A row of their own", "Riga separata"), {}},
+              {ngTr("Folded corner", "Angolo piegato"), ngTr("In glass; larger for heavier files", "In vetro; più grande per i file pesanti")}}, 5);
     m_activitySize = new QComboBox(this);
     m_activitySize->addItem(QString(), QStringLiteral("small"));
     m_activitySize->addItem(QString(), QString());
