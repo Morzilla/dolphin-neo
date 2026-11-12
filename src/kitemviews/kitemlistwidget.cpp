@@ -401,8 +401,8 @@ void NgActivity::parentDone(const QString &parentKey)
             m_watched.remove(parentKey);
         }
     });
-    // the bubble stays a while after the work, so the result is easy to find, then the files go back in order
-    QTimer::singleShot(120000, this, [this, parentKey] {
+    // the bubble stays a little after the work, so the result is easy to find, then the files go back in order
+    QTimer::singleShot(30000, this, [this, parentKey] {
         if (m_entries.contains(parentKey)) {
             return; // at work again
         }

@@ -48,7 +48,7 @@ itself; extractions and downloads started by other applications come next.
 
 A file made from another one (a transcription, an extracted folder, a converted copy, a copy in the same folder)
 stands right after it while the work runs, whatever the sort order, and both sit in one tinted bubble: the source
-shows the percentage, the new file waits with "On its way…". The bubble goes two minutes after the work ends.
+shows the percentage, the new file waits with "On its way…". The bubble goes 30 seconds after the work ends; when the pair wraps to the next row, both pieces stay open towards the edge.
 The × next to the caption stops the work. Quick actions run through `ng/ng-job`, which also shows them in Plasma's
 notifications (with the percentage and a stop button), so they stay visible, and keep running, when Dolphin NG is
 closed; a Dolphin NG opened later shows them on the files again. A program can report its percentage by writing a

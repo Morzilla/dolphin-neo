@@ -4194,6 +4194,14 @@ void KStandardItemListWidget::paintNgFamily(QPainter *painter)
             } else if (sameColumn && r.bottom() <= own.top() + 1 && own.top() - r.bottom() < 40) {
                 bubble = bubble.united(r);
                 clipTop = (r.bottom() + own.top()) / 2;
+            } else if (cards && r.top() >= own.bottom() - 1 && r.left() < own.left()) {
+                // the family goes on at the start of the next row: this piece stays open towards the right edge
+                bubble = bubble.adjusted(0, 0, 80, 0);
+                clipRight = own.right() + pad + 1;
+            } else if (cards && r.bottom() <= own.top() + 1 && r.right() > own.right()) {
+                // it began at the end of the row above: open towards the left edge
+                bubble = bubble.adjusted(-80, 0, 0, 0);
+                clipLeft = own.left() - pad - 1;
             }
         }
     }
