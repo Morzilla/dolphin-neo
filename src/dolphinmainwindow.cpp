@@ -80,6 +80,7 @@
 #include <kwidgetsaddons_version.h>
 
 #include <QApplication>
+#include <QProxyStyle>
 #include <QPainter>
 #include <QClipboard>
 #include <QCloseEvent>
@@ -117,6 +118,30 @@ const int MaxNumberOfNavigationentries = 12;
 // The maximum number of "Go to Tab" shortcuts
 const int MaxActivateTabShortcuts = 9;
 }
+
+// dolphin-ng: the separators between the docks and the view: 4 px, invisible, still draggable
+class NgSeparatorStyle : public QProxyStyle
+{
+public:
+    explicit NgSeparatorStyle(const QString &base)
+        : QProxyStyle(base)
+    {
+    }
+    int pixelMetric(PixelMetric metric, const QStyleOption *option, const QWidget *widget) const override
+    {
+        if (metric == PM_DockWidgetSeparatorExtent) {
+            return 4;
+        }
+        return QProxyStyle::pixelMetric(metric, option, widget);
+    }
+    void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget) const override
+    {
+        if (element == PE_IndicatorDockWidgetResizeHandle) {
+            return;
+        }
+        QProxyStyle::drawPrimitive(element, option, painter, widget);
+    }
+};
 
 DolphinMainWindow::DolphinMainWindow()
     : KXmlGuiWindow(nullptr)
@@ -204,9 +229,18 @@ DolphinMainWindow::DolphinMainWindow()
         centralLayout->addWidget(m_tabWidget, 1);
         setCentralWidget(central);
     }
-    // dolphin-ng: the handle between the panels and the view stays usable but draws nothing
+    // dolphin-ng: the handle between the panels and the view stays usable but draws nothing. Done with a proxy style
+    // on this window alone (a style is not passed on to the children): a style sheet on the window wrapped the style
+    // of every widget in it, and KCapacityBar (the free space in the status bar), which asks the style for its own
+    // element, no longer found it and fell back to a dark smudge of its own
     auto applyNgWindowSettings = [this] {
-        setStyleSheet(ngTwoLineList() ? QStringLiteral("QMainWindow::separator { background: transparent; width: 4px; height: 4px; }") : QString());
+        if (ngTwoLineList() != (dynamic_cast<NgSeparatorStyle *>(style()) != nullptr)) {
+            if (ngTwoLineList()) {
+                setStyle(new NgSeparatorStyle(QApplication::style()->name()));
+            } else {
+                setStyle(nullptr);
+            }
+        }
         const bool translucent = !DolphinDockWidget::ngGlassPlain() && !DolphinDockWidget::ngGlassImageMode();
         if (translucent != testAttribute(Qt::WA_TranslucentBackground)) {
             setAttribute(Qt::WA_TranslucentBackground, translucent); // Qt re-creates the native window for this
