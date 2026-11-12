@@ -3017,14 +3017,16 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         painter->setPen(QPen(QColor(255, 255, 255, dark ? 60 : 150), 1));
         painter->drawLine(QPointF(cover.left() + 7 * u, cover.top() + 0.5), QPointF(cover.right() - 7 * u, cover.top() + 0.5));
         if (info) {
-            const QRectF text = cover.adjusted(9 * u, 3 * u, -9 * u, -4 * u);
+            // sized from the front itself, so the number and its line always fit on it
+            const QRectF text = cover.adjusted(9 * u, 2 * u, -9 * u, -3 * u);
             const QString number = count >= 0 ? QString::number(count) : QString();
             const QString under = count >= 0 ? (sizeText.isEmpty() ? ngTr("items", "elementi") : ngTr("items · ", "elementi · ") + sizeText) : sizeText;
+            const qreal numberHeight = number.isEmpty() ? 0 : text.height() * 0.6, underHeight = text.height() - numberHeight;
             // on a light front (plain folders are pale grey) the writing is dark, on a coloured one light
             const bool lightFront = front.lightnessF() > 0.6;
-            write(QRectF(text.left(), text.top(), text.width(), text.height() * 0.6), number, 26 * u, QFont::Black, lightFront ? shade(0.24, 0.6) : shade(0.96, 0.5),
-                  Qt::AlignLeft | Qt::AlignBottom);
-            write(QRectF(text.left(), text.top() + text.height() * (number.isEmpty() ? 0.25 : 0.6), text.width(), text.height() * 0.42), under, 11 * u, QFont::Bold,
+            write(QRectF(text.left(), text.top(), text.width(), numberHeight), number, numberHeight * 0.92, QFont::Black, lightFront ? shade(0.24, 0.6) : shade(0.96, 0.5),
+                  Qt::AlignLeft | Qt::AlignVCenter);
+            write(QRectF(text.left(), text.top() + numberHeight, text.width(), underHeight), under, qMin(underHeight * 0.8, 11 * u), QFont::Bold,
                   lightFront ? shade(0.34, 0.5) : shade(0.88, 0.6), Qt::AlignLeft | Qt::AlignVCenter);
         }
     } else if (category == int(NgKind::Sheet)) {
