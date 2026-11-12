@@ -7,6 +7,8 @@ operations are Dolphin's own.
 This is a personal experiment, not a KDE project, and it is not meant to replace your distribution's Dolphin:
 it installs into your home directory next to it.
 
+**A tour of the features, with screenshots: [FEATURES.md](FEATURES.md).**
+
 | List, cards | List, open rows |
 |---|---|
 | ![list with cards](ng/screenshots/list-cards.png) | ![list with open rows](ng/screenshots/list-open.png) |
