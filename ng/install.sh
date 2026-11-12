@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-or-later
 # dolphin-ng: download, build and install everything.
 #
 #   ng/install.sh                 from a clone of the repository

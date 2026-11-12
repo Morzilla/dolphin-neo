@@ -1,4 +1,4 @@
-> **This is dolphin-ng**, an experimental fork of Dolphin with a different file list. What changes, how to build it and what is unfinished: [NG.md](NG.md). The rest of this file is Dolphin's own README.
+> **This is dolphin-ng**, an experimental fork of Dolphin with a different file list. What changes, how to build it and what is unfinished: [NG.md](NG.md). Like Dolphin, dolphin-ng is free software under the GNU General Public License, version 2 or (at your option) any later version (GPL-2.0-or-later): see [LICENSE](LICENSE), [COPYING](COPYING) and [LICENSES/](LICENSES/). The rest of this file is Dolphin's own README.
 
 # Dolphin
 

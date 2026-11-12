@@ -82,3 +82,10 @@ path = "doc/*.docbook"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "KDE Contributors"
 SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# dolphin-ng: screenshots and example settings of the fork
+[[annotations]]
+path = ["ng/screenshots/*.png", "ng/*.example"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "dolphin-ng contributors"
+SPDX-License-Identifier = "GPL-2.0-or-later"

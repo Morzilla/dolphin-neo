@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-2.0-or-later
 # ng-transcribe FILE: writes the spoken text of an audio or video file next to it, as FILE-base.txt (and, for
 # videos, FILE-base.srt subtitles). Runs on this computer with whisper.cpp: nothing is uploaded.
 #

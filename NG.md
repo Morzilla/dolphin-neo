@@ -157,5 +157,5 @@ counts) from KFileMetaData.
 
 ## Licence
 
-Like Dolphin: GPL-2.0-or-later. See `LICENSES/`. The theme in `ng/theme/` derives from L4ki's Motto themes and is
+Like Dolphin: GPL-2.0-or-later, the whole fork, including the scripts in `ng/` (`LICENSE` holds the text). See also `COPYING` and `LICENSES/`. The theme in `ng/theme/` derives from L4ki's Motto themes and is
 GPL-3.0; see its README.
