@@ -95,6 +95,8 @@ public:
     bool hasLinks() const;
     /** 0..1: how far the file has come in since it was tied to its family (1 when it is settled or not tied) */
     qreal growth(const QUrl &url) const;
+    /** 1..0: how much of the family's bubble is left while it fades out after the work (1 when not fading) */
+    qreal fading(const QUrl &url) const;
 
     /** the work on \a url can be stopped: a process of a quick action, or a job with a canceller */
     bool canCancel(const QUrl &url) const;
@@ -125,6 +127,7 @@ private:
     QHash<QString, std::function<void()>> m_cancellers;
     QString m_hoveredStop;
     QHash<QString, QColor> m_familyColours;
+    QHash<QString, qint64> m_fadingSince; // family (parent key) -> when its bubble began to fade out
     /* processes of quick actions outlive Dolphin: they are written down, so a Dolphin started later shows them */
     void saveProcesses();
     void loadProcesses();

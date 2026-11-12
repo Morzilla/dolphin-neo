@@ -407,6 +407,16 @@ void NgActivity::parentDone(const QString &parentKey)
         if (m_entries.contains(parentKey)) {
             return; // at work again
         }
+        // first the bubble fades out, then the ties go and the files go back in order
+        m_fadingSince.insert(parentKey, QDateTime::currentMSecsSinceEpoch());
+        if (!m_timer.isActive()) {
+            m_timer.start();
+        }
+        QTimer::singleShot(560, this, [this, parentKey] {
+        m_fadingSince.remove(parentKey);
+        if (m_entries.contains(parentKey)) {
+            return;
+        }
         bool removed = false;
         for (auto it = m_links.begin(); it != m_links.end();) {
             if (key(it->second) == parentKey) {
@@ -422,7 +432,18 @@ void NgActivity::parentDone(const QString &parentKey)
             Q_EMIT linksChanged();
             Q_EMIT changed();
         }
+        });
     });
+}
+
+qreal NgActivity::fading(const QUrl &url) const
+{
+    if (m_fadingSince.isEmpty()) {
+        return 1;
+    }
+    const QString family = familyOf(url);
+    const qint64 since = m_fadingSince.value(family, 0);
+    return since ? qBound<qreal>(0, 1 - (QDateTime::currentMSecsSinceEpoch() - since) / 500.0, 1) : 1;
 }
 
 QUrl NgActivity::parentOf(const QUrl &child) const
@@ -577,8 +598,9 @@ qreal NgActivity::growth(const QUrl &url) const
 
 bool NgActivity::growing() const
 {
+    // (also while a bubble fades out: the same repaints)
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    return std::any_of(m_linkedAt.cbegin(), m_linkedAt.cend(), [now](qint64 at) {
+    return !m_fadingSince.isEmpty() || std::any_of(m_linkedAt.cbegin(), m_linkedAt.cend(), [now](qint64 at) {
         return now - at < 600;
     });
 }

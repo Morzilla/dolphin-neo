@@ -4236,7 +4236,7 @@ void KStandardItemListWidget::paintNgFamily(QPainter *painter)
     const qreal saturation = kindColour.hslHueF() < 0 ? 0.0 : qMax<qreal>(kindColour.hslSaturationF(), 0.55);
     QColor accent = QColor::fromHslF(hue, saturation, ngIsDark(styleOption().palette) ? 0.64 : 0.5);
     QColor fill = accent, border = accent;
-    const qreal in = 1 - std::pow(1 - activity->growth(data().value("url").toUrl()), 3);
+    const qreal in = (1 - std::pow(1 - activity->growth(data().value("url").toUrl()), 3)) * activity->fading(data().value("url").toUrl());
     fill.setAlphaF((cards ? 0.18 : 0.13) * in);
     border.setAlphaF(0.60 * in);
     const qreal radius = cards ? 16 : 7;
