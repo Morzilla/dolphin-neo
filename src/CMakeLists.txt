@@ -91,6 +91,7 @@ target_sources(dolphinprivate PRIVATE
     kitemviews/kstandarditemlistview.cpp
     kitemviews/private/kdirectorycontentscounter.cpp
     kitemviews/private/kdirectorycontentscounterworker.cpp
+    kitemviews/private/ngfacts.cpp
     kitemviews/private/kfileitemclipboard.cpp
     kitemviews/private/kfileitemmodelfilter.cpp
     kitemviews/private/kitemlistheaderwidget.cpp
@@ -146,6 +147,7 @@ target_sources(dolphinprivate PRIVATE
     kitemviews/kstandarditemlistview.h
     kitemviews/private/kdirectorycontentscounter.h
     kitemviews/private/kdirectorycontentscounterworker.h
+    kitemviews/private/ngfacts.h
     kitemviews/private/kfileitemclipboard.h
     kitemviews/private/kfileitemmodelfilter.h
     kitemviews/private/kitemlistheaderwidget.h

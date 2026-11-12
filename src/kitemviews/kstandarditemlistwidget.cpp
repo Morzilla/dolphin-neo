@@ -13,6 +13,7 @@
 #include "kitemlistcontroller.h"
 #include "kitemlistselectionmanager.h"
 #include "private/kfileitemclipboard.h"
+#include "private/ngfacts.h"
 #include "private/kitemlistroleeditor.h"
 #include "private/kitemviewsutils.h"
 #include "private/kpixmapmodifier.h"
@@ -2102,7 +2103,7 @@ void KStandardItemListWidget::updatePixmapCache()
                 const qreal column = qMin(widgetSize.height() * 1.3, widgetSize.width() * 0.38);
                 cardPicture = QSizeF(column, column);
             } else if (m_layout == CardsLayout && ngCardStyle() == NgCardStyle::Dossier) {
-                const qreal column = qMin(qRound(widgetSize.height() * 0.46) * 1.35, widgetSize.width() * 0.32);
+                const qreal column = qMin(qRound(widgetSize.height() * 0.38) * 1.6, widgetSize.width() * 0.34);
                 cardPicture = QSizeF(column, column);
             }
             if (cardPicture.isValid()) {
@@ -3076,7 +3077,8 @@ void KStandardItemListWidget::drawSiblingsInformation(QPainter *painter)
 // the list row shows. Three looks, chosen with ngCardStyle():
 //   Tessera   a thumbnail band on top, then the name, chips and a label/value list
 //   Scheda    the icon in a column on the left, the name and two lines of text on the right
-//   Dossier   the list row folded: icon and name, chips, the dates on the left, the big "ago" on the right
+//   Dossier   the identity card: a header with the object and the name, then what is inside the file (three facts,
+//             or the kinds a folder holds), where it came from, and the dates on one line
 // The base class paints the selection and the hover over the sheet drawn by paintNgCardSheet().
 
 namespace
@@ -3759,6 +3761,10 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     m_ngCardTexts.clear();
     m_ngBarRect = QRectF();
     m_ngBarFraction = -1;
+    m_ngDossierShapes.clear();
+    m_ngDossierRules.clear();
+    m_ngDossierSignRect = QRectF();
+    m_ngDossierSign.clear();
     m_ngCount.clear();
     m_ngAgo.clear();
     m_ngCardEye = QRectF();
@@ -3836,6 +3842,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     QDateTime created = ngDateTimeOf(values.value("creationtime"));
     QList<NgQuickAction> quickActions;
     QString kindWords; // dolphin-ng: "PDF document", "Folder"... (Scheda and Dossier)
+    const NgFileFacts *facts = nullptr; // Dossier: what is inside the file, where it came from
     m_ngCardHeader = QRectF();
     if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
         if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
@@ -3851,6 +3858,21 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
                     quickActions = ngQuickActionsFor(fileItem.localPath(), fileItem.mimetype());
                 }
                 kindWords = fileItem.isDir() ? ngTr("Folder", "Cartella") : fileItem.mimeComment();
+                if (look == NgCardStyle::Dossier && fileItem.isLocalFile()) {
+                    // what the Dossier tells beyond the dates: read in the background, the card is laid out again then
+                    const qint64 newest = qMax(fileItem.time(KFileItem::ModificationTime).toSecsSinceEpoch(), values.value("ngNewest").toLongLong());
+                    m_ngFactsPath = fileItem.localPath();
+                    facts = NgFacts::instance()->facts(m_ngFactsPath, fileItem.mimetype(), fileItem.isDir(), newest, fileItem.isDir() ? 0 : qint64(fileItem.size()));
+                    if (!facts && !m_ngFactsHooked) {
+                        m_ngFactsHooked = true;
+                        connect(NgFacts::instance(), &NgFacts::ready, this, [this](const QString &path) {
+                            if (path == m_ngFactsPath) {
+                                invalidateCache();
+                                update();
+                            }
+                        });
+                    }
+                }
                 m_ngCardPeek.clear();
                 m_ngCardPeekMore = 0;
                 m_ngCardFolderPath.clear();
@@ -4152,16 +4174,18 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         // | object  Name                         |  (the header, in the colour of the type)
         // |         Kind in words    [actions]   |
         // +--------------------------------------+
-        // Created   12/11/26            MODIFIED
-        // Modified  12/11/26               today
-        //                            created today
+        //  24       | 5.312      | 9 min            what is inside: three facts, large, with their word
+        //  pages    | words      | to read          (folders: a bar of the kinds they hold and its legend)
+        //  ⤓ Downloaded from example.com  ★★★★      where it came from, who made it, tags and rating
+        //  ------------------------------------
+        //  Modified today 14:02      created 3 Nov
         m_ngInfoInside = true;
         m_ngInfoSize = sizeText;
         const qreal x0 = card.left() + pad;
         const qreal right = card.right() - pad;
-        const qreal headerHeight = qRound(card.height() * 0.46);
+        const qreal headerHeight = qRound(card.height() * 0.38);
         m_ngCardHeader = QRectF(card.left(), card.top(), card.width(), headerHeight);
-        const qreal column = showPicture ? qRound(qMin(headerHeight * 1.35, card.width() * 0.32)) : 0;
+        const qreal column = showPicture ? qRound(qMin(headerHeight * 1.6, card.width() * 0.34)) : 0;
         if (showPicture) {
             m_ngCardThumb = QRectF(card.left() + 6, card.top() + 4, column, headerHeight - 4);
             m_ngCardIconSide = qMax(16.0, qMin(column, m_ngCardThumb.height()) - 8);
@@ -4174,57 +4198,154 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         const QString kind = !kindWords.isEmpty() ? kindWords : typeText;
         putText(smallFm.elidedText(kind, Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 2);
         if (!quickActions.isEmpty()) {
-            // with the pointer, on the lower edge of the header (never over the dates)
+            // with the pointer, on the lower edge of the header (never over the facts)
             ngLayoutActionPill(quickActions, x1, m_ngCardHeader.bottom() - actionHeight / 2.0, card.right() - 8, actionHeight, chipFm, true);
             m_ngCardHoverPill = true;
         }
-        QFont bigFont = m_customizedFont;
-        bigFont.setPointSizeF(bigFont.pointSizeF() * 1.45);
-        bigFont.setWeight(QFont::DemiBold);
-        const QFontMetricsF bigFm(bigFont);
-        QFont tiny = m_customizedFont;
-        tiny.setPointSizeF(m_customizedFont.pointSizeF() * 0.72);
-        tiny.setLetterSpacing(QFont::PercentageSpacing, 108);
-        const QFontMetricsF tinyFm(tiny);
-        const qreal bottom = card.bottom() - pad * 0.8;
-        // the right block: when it was modified, big
-        qreal rightBlockWidth = 0;
-        if (modified.isValid()) {
-            const QString label = ngTr("MODIFIED", "MODIFICATO");
-            const QString ago = ngAgoText(modified);
+
+        // ---- the dates, one small line at the foot under a hairline
+        const qreal bottom = card.bottom() - pad * 0.75;
+        const qreal datesTop = bottom - smallFm.height();
+        if (modified.isValid() || created.isValid()) {
+            m_ngDossierRules.append(QLineF(x0, datesTop - 5.5, right, datesTop - 5.5));
+            const QDate today = QDate::currentDate();
+            auto when = [&locale, &today](const QDateTime &time) {
+                QString text = ngAgoText(time);
+                if (time.date().daysTo(today) <= 1) {
+                    text += QLatin1Char(' ') + locale.toString(time.time(), QStringLiteral("HH:mm"));
+                }
+                return text;
+            };
             const QString createdText = created.isValid() ? ngTr("created %1", "creato %1").arg(ngAgoText(created)) : QString();
-            rightBlockWidth = qMax(bigFm.horizontalAdvance(ago), qMax(tinyFm.horizontalAdvance(label), smallFm.horizontalAdvance(createdText)));
-            qreal by = bottom - (tinyFm.height() + bigFm.height() + smallFm.height());
-            putText(label, QPointF(right - tinyFm.horizontalAdvance(label), by + tinyFm.ascent()), tiny, 2);
-            by += tinyFm.height();
-            putText(ago, QPointF(right - bigFm.horizontalAdvance(ago), by + bigFm.ascent()), bigFont, 1);
-            by += bigFm.height();
-            putText(createdText, QPointF(right - smallFm.horizontalAdvance(createdText), by + smallFm.ascent()), small, 2);
-        }
-        // the left block: the dates, labelled as on the other cards
-        QList<std::pair<QString, QDateTime>> lines;
-        if (created.isValid()) {
-            lines.append({ngTr("Created", "Creato"), created});
-        }
-        if (modified.isValid()) {
-            lines.append({ngTr("Modified", "Modificato"), modified});
-        }
-        qreal labelWidth = 0;
-        for (const auto &line : std::as_const(lines)) {
-            labelWidth = qMax(labelWidth, smallFm.horizontalAdvance(line.first));
-        }
-        labelWidth += 9;
-        const qreal textWidth = (right - rightBlockWidth - 14) - (x0 + labelWidth);
-        if (textWidth > fh * 3) {
-            qreal ly = bottom - lines.count() * (smallFm.height() + 1);
-            for (const auto &line : std::as_const(lines)) {
-                putText(line.first, QPointF(x0, ly + smallFm.ascent()), small, 2);
-                putText(smallFm.elidedText(locale.toString(line.second.date(), QLocale::ShortFormat), Qt::ElideRight, textWidth), QPointF(x0 + labelWidth, ly + smallFm.ascent()),
-                        small, 0);
-                ly += smallFm.height() + 1;
+            const qreal createdWidth = smallFm.horizontalAdvance(createdText);
+            if (!createdText.isEmpty()) {
+                putText(createdText, QPointF(right - createdWidth, datesTop + smallFm.ascent()), small, 2);
+            }
+            if (modified.isValid()) {
+                putRich(ngTr("Modified", "Modificato") + QStringLiteral(" \x01") + when(modified) + QStringLiteral("\x02"), x0, datesTop + smallFm.ascent(),
+                        right - x0 - createdWidth - 12, small, 2);
             }
         }
-    }
+
+        // ---- what is inside
+        y = m_ngCardHeader.bottom() + pad * 0.75;
+        QFont valueFont = m_customizedFont;
+        valueFont.setPointSizeF(m_customizedFont.pointSizeF() * 1.3);
+        valueFont.setWeight(QFont::Bold);
+        const QFontMetricsF valueFm(valueFont);
+        QFont wordFont = m_customizedFont;
+        wordFont.setPointSizeF(m_customizedFont.pointSizeF() * 0.82);
+        const QFontMetricsF wordFm(wordFont);
+        const qreal originHeight = qMax(smallFm.height(), chipHeight);
+        // the facts and the origin line sit in the middle of the room between the header and the dates
+        const bool hasOrigin = facts
+            && ((!facts->lastName.isEmpty() && facts->lastWhen.isValid()) || !facts->origin.isEmpty() || !facts->who.isEmpty() || facts->rating > 0
+                || !facts->tags.isEmpty());
+        {
+            const qreal factsHeight = !facts ? 0 : !facts->mix.isEmpty() ? 2 + 7 + 6 + smallFm.height() : valueFm.height() + wordFm.height();
+            const qreal content = factsHeight + (hasOrigin ? 6 + originHeight : 0);
+            const qreal room = (datesTop - 6) - m_ngCardHeader.bottom();
+            y = m_ngCardHeader.bottom() + qMax(pad * 0.5, (room - content) / 2.0);
+        }
+        qreal factsBottom = y;
+        if (facts && !facts->mix.isEmpty()) {
+            // a folder: a bar of the kinds it holds, the legend below
+            int total = 0;
+            for (const NgMixPart &part : facts->mix) {
+                total += part.count;
+            }
+            const qreal barHeight = 7;
+            const qreal gap = 2;
+            const qreal usable = right - x0 - gap * (facts->mix.count() - 1);
+            qreal bx = x0;
+            for (const NgMixPart &part : facts->mix) {
+                const qreal width = qMax(3.0, usable * part.count / total);
+                m_ngDossierShapes.append({QRectF(bx, y + 2, qMin(width, right - bx), barHeight), part.colour});
+                bx += width + gap;
+                if (bx >= right) {
+                    break;
+                }
+            }
+            qreal lx = x0;
+            const qreal ly = y + 2 + barHeight + 6;
+            const qreal dot = qRound(wordFm.height() * 0.42);
+            for (const NgMixPart &part : facts->mix) {
+                const qreal width = dot + 5 + smallFm.horizontalAdvance(part.label);
+                if (lx + width > right) {
+                    break;
+                }
+                m_ngDossierShapes.append({QRectF(lx, ly + (smallFm.height() - dot) / 2.0, dot, dot), part.colour});
+                putText(part.label, QPointF(lx + dot + 5, ly + smallFm.ascent()), small, 0);
+                lx += width + 12;
+            }
+            factsBottom = ly + smallFm.height();
+        } else if (facts && !facts->facts.isEmpty()) {
+            // three columns whatever the count, so that the facts line up from card to card
+            const qreal columnWidth = (right - x0) / 3.0;
+            for (int i = 0; i < facts->facts.count() && i < 3; ++i) {
+                const qreal cx = x0 + i * columnWidth + (i > 0 ? 10 : 0);
+                const qreal width = columnWidth - (i > 0 ? 14 : 4);
+                if (i > 0) {
+                    m_ngDossierRules.append(QLineF(x0 + i * columnWidth, y + 3, x0 + i * columnWidth, y + valueFm.height() + wordFm.height() - 2));
+                }
+                const NgFact &fact = facts->facts.at(i);
+                putText(valueFm.elidedText(fact.value, Qt::ElideRight, width), QPointF(cx, y + valueFm.ascent()), valueFont, 1);
+                putText(wordFm.elidedText(fact.word, Qt::ElideRight, width), QPointF(cx, y + valueFm.height() + wordFm.ascent()), wordFont, 2);
+            }
+            factsBottom = y + valueFm.height() + wordFm.height();
+        }
+
+        // ---- where it came from: the site, or who made it; then the rating and the tags while they fit
+        const qreal originTop = factsBottom + 6;
+        if (hasOrigin && originTop + originHeight <= datesTop - 4) {
+            const qreal baseline = originTop + (originHeight - smallFm.height()) / 2.0 + smallFm.ascent();
+            QString line;
+            QString sign;
+            if (!facts->lastName.isEmpty() && facts->lastWhen.isValid()) {
+                line = ngTr("Last changed: ", "Ultimo toccato: ") + QStringLiteral("\x01") + facts->lastName + QStringLiteral("\x02 · ") + ngAgoText(facts->lastWhen);
+                sign = QStringLiteral("chronometer");
+            } else if (!facts->origin.isEmpty()) {
+                line = ngTr("Downloaded from ", "Scaricato da ") + QStringLiteral("\x01") + facts->origin + QStringLiteral("\x02");
+                sign = QStringLiteral("download");
+            } else if (!facts->who.isEmpty()) {
+                const QString lead = facts->whoKind == NgFileFacts::Author ? ngTr("By ", "Di ") : facts->whoKind == NgFileFacts::Program ? ngTr("Made with ", "Creato con ") : QString();
+                line = lead + QStringLiteral("\x01") + facts->who + QStringLiteral("\x02");
+                sign = facts->whoKind == NgFileFacts::Camera ? QStringLiteral("camera-photo") : facts->whoKind == NgFileFacts::Artist ? QStringLiteral("view-media-artist") : QStringLiteral("user");
+            }
+            qreal lineRight = right;
+            // the rating: five stars on the right
+            if (facts->rating > 0) {
+                QString stars;
+                for (int i = 0; i < 5; ++i) {
+                    stars += facts->rating >= (i + 1) * 2 ? QChar(0x2605) : QChar(0x2606);
+                }
+                const qreal width = smallFm.horizontalAdvance(stars);
+                putText(stars, QPointF(lineRight - width, baseline), small, 3);
+                lineRight -= width + 8;
+            }
+            qreal lx = x0;
+            if (!line.isEmpty()) {
+                const qreal side = qRound(smallFm.height() * 0.85);
+                m_ngDossierSign = sign;
+                m_ngDossierSignRect = QRectF(lx, originTop + (originHeight - side) / 2.0, side, side);
+                lx += side + 6;
+                const qreal room = facts->tags.isEmpty() ? lineRight - lx : qMin(lineRight - lx, smallFm.horizontalAdvance(line) + 30);
+                putRich(line, lx, baseline, room, small, 2);
+                QString plain = line;
+                plain.remove(QLatin1Char('\x01')).remove(QLatin1Char('\x02'));
+                lx += qMin(room, smallFm.horizontalAdvance(plain)) + 10;
+            }
+            if (!facts->tags.isEmpty() && lx < lineRight - 30) {
+                if (line.isEmpty()) {
+                    const qreal side = qRound(smallFm.height() * 0.85);
+                    m_ngDossierSign = QStringLiteral("tag");
+                    m_ngDossierSignRect = QRectF(lx, originTop + (originHeight - side) / 2.0, side, side);
+                    lx += side + 6;
+                }
+                chipRow(lx, originTop + (originHeight - chipHeight) / 2.0, lineRight, facts->tags, facts->tags.count());
+            }
+        }
+}
 }
 
 void KStandardItemListWidget::ngPlaceCardPixmap()
@@ -5267,10 +5388,34 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
         painter->drawRoundedRect(QRectF(m_ngBarRect.left(), m_ngBarRect.top(), qMax(4.0, m_ngBarRect.width() * m_ngBarFraction), m_ngBarRect.height()), 2, 2);
     }
 
+    // ---- the Dossier's hairlines, the folder's bar and the sign before the origin line
+    if (!m_ngDossierRules.isEmpty()) {
+        QColor rule = text;
+        rule.setAlphaF(0.10);
+        painter->setPen(QPen(rule, 1));
+        painter->drawLines(m_ngDossierRules);
+    }
+    if (!m_ngDossierShapes.isEmpty()) {
+        painter->setPen(Qt::NoPen);
+        for (const auto &shape : std::as_const(m_ngDossierShapes)) {
+            painter->setBrush(shape.second);
+            const qreal radius = qMin(shape.first.height(), shape.first.width()) / 2.5;
+            painter->drawRoundedRect(shape.first, radius, radius);
+        }
+    }
+    if (!m_ngDossierSignRect.isEmpty()) {
+        const QIcon sign = QIcon::fromTheme(m_ngDossierSign);
+        if (!sign.isNull()) {
+            painter->setOpacity(0.6);
+            sign.paint(painter, m_ngDossierSignRect.toAlignedRect());
+            painter->setOpacity(1.0);
+        }
+    }
+
     // ---- the texts
     for (const NgCardText &entry : std::as_const(m_ngCardTexts)) {
         painter->setFont(entry.font);
-        painter->setPen(entry.tone == 1 ? text : entry.tone == 2 ? dim : m_additionalInfoTextColor);
+        painter->setPen(entry.tone == 1 ? text : entry.tone == 2 ? dim : entry.tone == 3 ? QColor(232, 192, 72) : m_additionalInfoTextColor);
         painter->drawText(entry.pos, entry.text);
     }
 

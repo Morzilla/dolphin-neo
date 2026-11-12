@@ -22,8 +22,12 @@ card with its details, in a grid that follows the width of the window. Three loo
 |---|---|
 | ![Tessera cards](ng/screenshots/features/tessera.png) | ![Scheda cards](ng/screenshots/features/scheda.png) |
 
-**Dossier** gives each file a header in the colour of its kind, the dates below and how long ago it was modified,
-large:
+**Dossier** is the file's identity card: a header in the colour of its kind, then what is inside the file, three
+facts large with their word (pages, words and reading time; size in pixels, when a photo was taken and with what
+aperture; duration, resolution and frame rate; files and unpacked size of a ZIP; lines and encoding of a text), where
+it came from ("Downloaded from …", the camera, the artist, the author), its tags and rating, and the dates on one
+line at the foot. A folder shows a bar of the kinds it holds and the entry changed last. The facts are read in the
+background with KFileMetaData (no Baloo needed), only for the cards on screen:
 
 ![Dossier cards](ng/screenshots/features/dossier.png)
 

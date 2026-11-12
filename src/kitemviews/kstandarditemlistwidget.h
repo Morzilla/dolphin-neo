@@ -348,6 +348,14 @@ private:
     QList<NgCardText> m_ngCardTexts;
     QRectF m_ngCardThumb; // the thumbnail band (Tessera) or the icon area
     QRectF m_ngCardHeader; // Dossier: the header in the colour of the type
+    // Dossier: the folder's bar and its legend (filled shapes), the hairlines between the facts and above the dates,
+    // the small sign before the origin line; the file whose facts the card waits for
+    QList<std::pair<QRectF, QColor>> m_ngDossierShapes;
+    QList<QLineF> m_ngDossierRules;
+    QRectF m_ngDossierSignRect;
+    QString m_ngDossierSign;
+    QString m_ngFactsPath;
+    bool m_ngFactsHooked = false;
     qreal m_ngCardIconSide = 0; // side of the icon when the pixmap is not a preview
     bool m_ngCardPreview = false; // the pixmap is a preview, not the icon of the type
     bool m_ngCardWatermark = false; // the type is drawn as the background instead of the icon

@@ -494,7 +494,7 @@ QSize KFileItemListView::availableIconSize() const
         }
         if (ngCardStyle() == NgCardStyle::Dossier) {
             // the object in the header (see KStandardItemListWidget::updateCardsLayoutTextCache())
-            const qreal column = qMin(qRound(card.height() * 0.46) * 1.35, card.width() * 0.32);
+            const qreal column = qMin(qRound(card.height() * 0.38) * 1.6, card.width() * 0.34);
             return QSize(qRound(column), qRound(column * 2.4));
         }
     }
