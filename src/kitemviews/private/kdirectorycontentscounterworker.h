@@ -30,6 +30,8 @@ Q_SIGNALS:
      */
     void result(const QString &path, int count, long long size);
     void intermediateResult(const QString &path, int count, long long size);
+    /** dolphin-ng: the newest modification (seconds since the epoch) of anything inside the folder that was walked */
+    void newestModified(const QString &path, qint64 secs);
     void finished();
 
 public Q_SLOTS:

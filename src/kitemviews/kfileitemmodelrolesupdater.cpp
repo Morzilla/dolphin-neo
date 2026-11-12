@@ -120,6 +120,15 @@ KFileItemModelRolesUpdater::KFileItemModelRolesUpdater(KFileItemModel *model, QO
 
     m_directoryContentsCounter = new KDirectoryContentsCounter(m_model, this);
     connect(m_directoryContentsCounter, &KDirectoryContentsCounter::result, this, &KFileItemModelRolesUpdater::slotDirectoryContentsCountReceived);
+    // dolphin-ng: the newest modification inside a folder, so that sorting by date can count what is in it
+    connect(m_directoryContentsCounter, &KDirectoryContentsCounter::newestModified, this, [this](const QString &path, qint64 secs) {
+        const int index = m_model->index(QUrl::fromLocalFile(path));
+        if (index >= 0 && m_model->data(index).value("ngNewest").toLongLong() != secs) {
+            QHash<QByteArray, QVariant> data;
+            data.insert("ngNewest", QVariant::fromValue<qlonglong>(secs));
+            setModelData(index, data);
+        }
+    });
 
     const auto plugins = KPluginMetaData::findPlugins(QStringLiteral("kf6/overlayicon"), {}, KPluginMetaData::AllowEmptyMetaData);
     for (const KPluginMetaData &data : plugins) {

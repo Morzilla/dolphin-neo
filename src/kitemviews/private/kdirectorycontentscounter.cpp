@@ -112,6 +112,7 @@ KDirectoryContentsCounter::KDirectoryContentsCounter(KFileItemModel *model, QObj
 
     connect(s_worker, &KDirectoryContentsCounterWorker::result, this, &KDirectoryContentsCounter::slotResult);
     connect(s_worker, &KDirectoryContentsCounterWorker::intermediateResult, this, &KDirectoryContentsCounter::result);
+    connect(s_worker, &KDirectoryContentsCounterWorker::newestModified, this, &KDirectoryContentsCounter::newestModified);
     connect(s_worker, &KDirectoryContentsCounterWorker::finished, this, &KDirectoryContentsCounter::scheduleNext);
 
     m_dirWatcher = new KDirWatch(this);

@@ -61,6 +61,7 @@ private:
     QCheckBox *m_devices;
     QCheckBox *m_sidebarFilters;
     QCheckBox *m_sidebarPinned;
+    QCheckBox *m_folderContentDate;
     // sidebar: picture
     KUrlRequester *m_image;
     QSlider *m_glass;

@@ -455,6 +455,8 @@ public:
     bool ngIsPinned(const KFileItem &item) const;
 private:
     const ItemData *ngGroupData(int index) const;
+    /** dolphin-ng: when it was modified; a folder: the newest of itself and what is inside it (SORT_FOLDERS_BY_CONTENT) */
+    long long ngModifiedSecs(const ItemData *data) const;
 public:
 private:
     /** dolphin-ng: finds again, for every tie in NgActivity, the items of the child and of its parent */

@@ -7,6 +7,8 @@
 
 #include "kdirectorycontentscounterworker.h"
 
+#include <algorithm>
+
 // Required includes for countDirectoryContents():
 #if defined(Q_OS_WIN) || defined(Q_OS_HAIKU)
 #include <QDir>
@@ -39,6 +41,7 @@ void KDirectoryContentsCounterWorker::walkDir(const QString &dirPath, bool count
     }
 
     FTSENT *node;
+    qint64 newest = 0; // dolphin-ng: the newest modification inside (as deep as the walk goes)
     long long totalSize = -1;
     int totalCount = -1;
     QElapsedTimer timer;
@@ -71,6 +74,10 @@ void KDirectoryContentsCounterWorker::walkDir(const QString &dirPath, bool count
                 fts_set(tree, node, FTS_SKIP);
             }
             continue;
+        }
+
+        if (node->fts_level >= 1 && node->fts_statp) {
+            newest = std::max<qint64>(newest, node->fts_statp->st_mtim.tv_sec);
         }
 
         if (info == FTS_F) {
@@ -114,6 +121,9 @@ void KDirectoryContentsCounterWorker::walkDir(const QString &dirPath, bool count
     }
 
     if (!m_stopping) {
+        if (newest > 0) {
+            Q_EMIT newestModified(dirPath, newest);
+        }
         Q_EMIT result(dirPath, totalCount, totalSize);
     }
 }

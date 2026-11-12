@@ -688,8 +688,10 @@ QList<QPair<int, QVariant>> KFileItemModel::groups() const
             m_groups = sizeRoleGroups();
             break;
         case ModificationTimeRole:
-            m_groups = timeRoleGroups([](const ItemData *item) {
-                return item->item.time(KFileItem::ModificationTime);
+            m_groups = timeRoleGroups([this](const ItemData *item) {
+                // dolphin-ng: as sorted, a folder by the newest thing inside it
+                const long long secs = ngModifiedSecs(item);
+                return secs > 0 ? QDateTime::fromSecsSinceEpoch(secs) : item->item.time(KFileItem::ModificationTime);
             });
             break;
         case CreationTimeRole:
@@ -1336,6 +1338,15 @@ void KFileItemModel::loadSortingSettings()
     // Workaround for bug https://bugreports.qt.io/browse/QTBUG-69361
     // Force the clean state of QCollator in single thread to avoid thread safety problems in sort
     m_collator.compare(QString(), QString());
+}
+
+long long KFileItemModel::ngModifiedSecs(const ItemData *data) const
+{
+    const long long own = data->item.entry().numberValue(KIO::UDSEntry::UDS_MODIFICATION_TIME, -1);
+    if (!data->item.isDir() || ngSetting("SORT_FOLDERS_BY_CONTENT").toLower() == QLatin1String("off")) {
+        return own;
+    }
+    return std::max<long long>(own, data->values.value("ngNewest").toLongLong());
 }
 
 const KFileItemModel::ItemData *KFileItemModel::ngGroupData(int index) const
@@ -2202,6 +2213,7 @@ void KFileItemModel::emitItemsChangedAndTriggerResorting(const KItemRangeList &i
     // role has not changed at all because the file name can be used as a fallback.
     if (changedRoles.contains(sortRole()) || changedRoles.contains(roleForType(NameRole))
         || (changedRoles.contains("count") && sortRole() == "size") // "count" is used in the "size" sort role, so this might require a resorting.
+        || (changedRoles.contains("ngNewest") && (sortRole() == "modificationtime" || (groupedSorting() && groupRole() == "modificationtime"))) // dolphin-ng
         || (groupedSorting() && !rawGroupRole().isEmpty() && changedRoles.contains(groupRole()))) {
         for (const KItemRange &range : itemRanges) {
             bool needsResorting = false;
@@ -2655,8 +2667,9 @@ int KFileItemModel::sortRoleCompare(const ItemData *a, const ItemData *b, const 
     }
 
     case ModificationTimeRole: {
-        const long long dateTimeA = itemA.entry().numberValue(KIO::UDSEntry::UDS_MODIFICATION_TIME, -1);
-        const long long dateTimeB = itemB.entry().numberValue(KIO::UDSEntry::UDS_MODIFICATION_TIME, -1);
+        // dolphin-ng: a folder counts as modified when the newest thing inside it was
+        const long long dateTimeA = ngModifiedSecs(a);
+        const long long dateTimeB = ngModifiedSecs(b);
         if (dateTimeA < dateTimeB) {
             return -1;
         } else if (dateTimeA > dateTimeB) {

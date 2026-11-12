@@ -1161,6 +1161,9 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_icons = toggle(ngTr("Classic icon instead of the type mark", "Icona classica invece del segno del tipo"));
     m_ago = toggle(ngTr("Days elapsed, under the date", "Giorni trascorsi, sotto la data"));
     m_rowDates = toggle(ngTr("Created and modified, with the days elapsed", "Creato e modificato, con i giorni trascorsi"));
+    m_folderContentDate = toggle(ngTr("Folders sorted by date: by the newest thing inside them", "Cartelle ordinate per data: secondo l'ultima modifica del contenuto"));
+    m_folderContentDate->setToolTip(ngTr("Sorted by date modified, a folder counts as modified when something inside it was (its own date changes only when files are added or removed).",
+                                         "Ordinando per data di modifica, una cartella vale come modificata quando lo è qualcosa al suo interno (la sua data cambia solo quando si aggiungono o tolgono file)."));
     m_folderSizes = toggle(ngTr("Folders: space used by the contents", "Cartelle: spazio occupato dal contenuto"));
     m_folderSizes->setToolTip(ngTr("Measures the contents of folders (Dolphin's setting “Folder size: size of contents”, with its depth limit). Otherwise only the number of items.", "Misura il contenuto delle cartelle (impostazione di Dolphin «Dimensione delle cartelle: dimensione del contenuto», con il suo limite di profondità). Altrimenti solo il numero di elementi."));
     {
@@ -1298,7 +1301,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_sideRow->setEnabled(m_glassPanel->isEnabled() && m_backdrop->isEnabled());
     quickSideRow->setEnabled(m_quickView->isChecked());
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters, m_sidebarPinned, m_rowWash}) {
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters, m_sidebarPinned, m_rowWash, m_folderContentDate}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
@@ -1412,6 +1415,7 @@ void NgSettingsPage::loadSettings()
     m_devices->setChecked(ngSetting("DEVICES").toLower() == QLatin1String("show"));
     m_sidebarFilters->setChecked(ngSetting("SIDEBAR_FILTERS").toLower() != QLatin1String("hide"));
     m_sidebarPinned->setChecked(ngSetting("SIDEBAR_PINNED").toLower() != QLatin1String("hide"));
+    m_folderContentDate->setChecked(ngSetting("SORT_FOLDERS_BY_CONTENT").toLower() != QLatin1String("off"));
 
     m_twoLines->setChecked(ngSetting("LIST").toLower() != QLatin1String("columns"));
     static const NgRowStyle order[] = {NgRowStyle::Card, NgRowStyle::Open, NgRowStyle::Line, NgRowStyle::Stripe, NgRowStyle::None};
@@ -1474,6 +1478,7 @@ void NgSettingsPage::applySettings()
     setNgSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
     setNgSetting("SIDEBAR_FILTERS", m_sidebarFilters->isChecked() ? QString() : QStringLiteral("hide"));
     setNgSetting("SIDEBAR_PINNED", m_sidebarPinned->isChecked() ? QString() : QStringLiteral("hide"));
+    setNgSetting("SORT_FOLDERS_BY_CONTENT", m_folderContentDate->isChecked() ? QString() : QStringLiteral("off"));
 
     setNgSetting("LIST", m_twoLines->isChecked() ? QString() : QStringLiteral("columns"));
     if (m_rows->isEnabled()) {
@@ -1535,6 +1540,7 @@ void NgSettingsPage::restoreDefaults()
     m_tiles->setChecked(true);
     m_sidebarFilters->setChecked(true);
     m_sidebarPinned->setChecked(true);
+    m_folderContentDate->setChecked(true);
     m_cards->setCurrentIndex(0);
     m_cardsFit->setCurrentIndex(0);
     m_cardsInfo->setCurrentIndex(0);

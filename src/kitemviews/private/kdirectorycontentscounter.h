@@ -50,6 +50,8 @@ Q_SIGNALS:
      * Size calculation depends on parameter ContentDisplaySettings::recursiveDirectorySizeLimit
      */
     void result(const QString &path, int count, long long size);
+    /** dolphin-ng: the newest modification inside the folder (see KDirectoryContentsCounterWorker) */
+    void newestModified(const QString &path, qint64 secs);
 
     void requestDirectoryContentsCount(const QString &path, KDirectoryContentsCounterWorker::Options options, int maxRecursiveLevel);
 
