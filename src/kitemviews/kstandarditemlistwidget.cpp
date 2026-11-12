@@ -4334,7 +4334,10 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
         // left, the stop button at its end (red under the pointer). Its size: ACTIVITY_SIZE small, medium, large.
         const QString sizeChoice = ngSetting("ACTIVITY_SIZE").toLower();
         const qreal k = sizeChoice == QLatin1String("small") ? 0.85 : sizeChoice == QLatin1String("large") ? 1.25 : 1.0;
-        const qreal h = qRound(qBound<qreal>(30, m_customizedFontMetrics.height() * 2.1, 52) * k);
+        // responsive: as tall as the card allows (about a seventh of its width, a third of the preview), never
+        // smaller than a line of text needs; the setting scales it
+        const qreal fromCard = qMin(area.width() * 0.15, area.height() * 0.36);
+        const qreal h = qRound(qBound<qreal>(m_customizedFontMetrics.height() * 1.7, fromCard, 64) * k);
         const qreal inset = qRound(h * 0.13);
         const qreal d = h - 2 * inset; // the ring and the stop button
         const qreal gap = qRound(h * 0.26);
