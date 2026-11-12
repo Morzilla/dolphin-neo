@@ -3359,7 +3359,7 @@ qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &qu
         NgChip chip;
         chip.text = (action.main && labelled) ? action.label : QString();
         chip.rect = QRectF(cx, y + inner, item.width, actionHeight - 2 * inner);
-        chip.tinted = action.main;
+        chip.tinted = action.main || (action.program == QLatin1String("@pin") && data().value("ngPinned").toBool()); // a pinned item: its pin lit
         m_ngCardActions.append(chip);
         m_ngCardActionIndex.append(origin.isEmpty() ? item.index : origin.value(item.index, item.index)); // a part of the list keeps its numbering
         // rendered once per icon and kept: this runs for every card at every layout
