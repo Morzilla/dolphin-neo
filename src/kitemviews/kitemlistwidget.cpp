@@ -40,6 +40,9 @@
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <KFileMetaData/UserMetaData>
+#include <QMimeDatabase>
+#include <QRegularExpression>
+#include <climits>
 
 KItemListWidgetInformant::KItemListWidgetInformant() = default;
 
@@ -829,9 +832,16 @@ void NgActivity::tick()
     }
 }
 
+static int s_ngActionsGeneration = 0; // dolphin-ng: grows when the quick actions editor applied
+
 QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &mime)
 {
     static QHash<QString, QList<NgQuickAction>> cache;
+    static int generation = 0;
+    if (generation != s_ngActionsGeneration) {
+        generation = s_ngActionsGeneration;
+        cache.clear();
+    }
     const QString key = localPath + QLatin1Char('|') + mime;
     auto it = cache.constFind(key);
     if (it == cache.constEnd()) {
@@ -862,6 +872,7 @@ static QString ngTranscriber()
 static NgQuickAction ngPinAction()
 {
     NgQuickAction pin;
+    pin.id = QStringLiteral("pin");
     pin.label = ngTr("Pin to the top / Unpin", "Fissa in alto / Togli dall'alto");
     pin.program = QStringLiteral("@pin");
     pin.icon = QStringLiteral("ng-pin");
@@ -899,29 +910,8 @@ void ngDrawPin(QPainter *painter, const QRectF &box, const QColor &ink, bool fil
     painter->restore();
 }
 
-static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime)
+static const QSet<QString> &ngArchiveMimes()
 {
-    QList<NgQuickAction> actions;
-    if (localPath.isEmpty() || mime.isEmpty()) {
-        return actions;
-    }
-    if (mime == QLatin1String("inode/directory")) {
-        // a folder: only cut and copy (a click opens it, there is nothing to convert or extract)
-        NgQuickAction cut;
-        cut.label = ngTr("Cut", "Taglia");
-        cut.program = QStringLiteral("@cut");
-        cut.icon = QStringLiteral("edit-cut");
-        NgQuickAction copy;
-        copy.label = ngTr("Copy", "Copia");
-        copy.program = QStringLiteral("@copy");
-        copy.icon = QStringLiteral("edit-copy");
-        return {cut, copy, ngPinAction()};
-    }
-    const QFileInfo info(localPath);
-    const QString base = info.completeBaseName();
-    const QString suffix = info.suffix();
-    const QString lowerSuffix = suffix.toLower();
-    const bool isImage = mime.startsWith(QLatin1String("image/")) && !mime.contains(QLatin1String("svg"));
     static const QSet<QString> archives{QStringLiteral("application/zip"),
                                         QStringLiteral("application/x-tar"),
                                         QStringLiteral("application/x-compressed-tar"),
@@ -935,6 +925,282 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
                                         QStringLiteral("application/x-bzip"),
                                         QStringLiteral("application/x-xz"),
                                         QStringLiteral("application/zstd")};
+    return archives;
+}
+
+void ngQuickActionsChanged()
+{
+    ++s_ngActionsGeneration;
+}
+
+QStringList ngActionKinds()
+{
+    return {QStringLiteral("image"), QStringLiteral("pdf"), QStringLiteral("audio"), QStringLiteral("video"), QStringLiteral("archive"), QStringLiteral("all")};
+}
+
+QString ngActionKindName(const QString &kind)
+{
+    if (kind == QLatin1String("image")) {
+        return ngTr("Images", "Immagini");
+    } else if (kind == QLatin1String("pdf")) {
+        return QStringLiteral("PDF");
+    } else if (kind == QLatin1String("audio")) {
+        return QStringLiteral("Audio");
+    } else if (kind == QLatin1String("video")) {
+        return QStringLiteral("Video");
+    } else if (kind == QLatin1String("archive")) {
+        return ngTr("Archives", "Archivi");
+    } else if (kind == QLatin1String("all")) {
+        return ngTr("Every file", "Tutti i file");
+    }
+    return kind; // a pattern: "*.md", "text/markdown"
+}
+
+QString ngActionKindOf(const QString &mime)
+{
+    if (mime.startsWith(QLatin1String("image/")) && !mime.contains(QLatin1String("svg"))) {
+        return QStringLiteral("image");
+    } else if (ngArchiveMimes().contains(mime)) {
+        return QStringLiteral("archive");
+    } else if (mime == QLatin1String("application/pdf")) {
+        return QStringLiteral("pdf");
+    } else if (mime.startsWith(QLatin1String("audio/"))) {
+        return QStringLiteral("audio");
+    } else if (mime.startsWith(QLatin1String("video/"))) {
+        return QStringLiteral("video");
+    }
+    return QString();
+}
+
+QList<NgActionInfo> ngBuiltinActions(const QString &kind)
+{
+    auto info = [&kind](const char *id, const QString &label, const char *icon, const char *command) {
+        NgActionInfo a;
+        a.id = QString::fromLatin1(id);
+        a.label = label;
+        a.icon = QString::fromLatin1(icon);
+        a.command = QString::fromLatin1(command);
+        a.kind = kind;
+        return a;
+    };
+    if (kind == QLatin1String("image")) {
+        return {info("resize", ngTr("Resize", "Ridimensiona"), "view-fullscreen", "magick {file} -resize {choice} {name}-{choice}.{ext}"),
+                info("gif-mp4", ngTr("To MP4 (GIF)", "In MP4 (GIF)"), "video-x-generic", "ffmpeg -i {file} -movflags faststart -pix_fmt yuv420p {name}.mp4")};
+    } else if (kind == QLatin1String("pdf")) {
+        return {info("pdf-png", ngTr("To PNG", "In PNG"), "image-x-generic", "pdftoppm -png -r 150 {file} {name}"),
+                info("pdf-text", ngTr("Extract the text", "Estrai il testo"), "text-plain", "pdftotext -layout {file} {name}.txt")};
+    } else if (kind == QLatin1String("audio")) {
+        return {info("transcribe", ngTr("Transcribe", "Trascrivi"), "text-x-generic", "ng-transcribe {file}"),
+                info("to-mp3", ngTr("To MP3", "In MP3"), "audio-x-generic", "ffmpeg -i {file} -q:a 2 {name}.mp3"),
+                info("to-flac", ngTr("To FLAC", "In FLAC"), "audio-x-generic", "ffmpeg -i {file} {name}.flac")};
+    } else if (kind == QLatin1String("video")) {
+        return {info("to-mp4", ngTr("To MP4", "In MP4"), "video-x-generic", "ffmpeg -i {file} -c:v libx264 -crf 23 -c:a aac {name}.mp4"),
+                info("video-mp3", ngTr("Extract the audio (MP3)", "Estrai l'audio (MP3)"), "audio-x-generic", "ffmpeg -i {file} -vn -q:a 2 {name}.mp3"),
+                info("separate", ngTr("Separate audio and video", "Separa audio e video"), "split", "ffmpeg -i {file} -an -c copy \"{name} (video).{ext}\"; ffmpeg -i {file} -vn -c copy \"{name} (audio).mka\""),
+                info("transcribe", ngTr("Transcribe", "Trascrivi"), "text-x-generic", "ng-transcribe {file}"),
+                info("frame", ngTr("Frame to PNG", "Fotogramma in PNG"), "camera-photo", "ffmpeg -ss 1 -i {file} -frames:v 1 {name}-1s.png")};
+    } else if (kind == QLatin1String("archive")) {
+        return {info("extract", ngTr("Extract here", "Estrai qui"), "folder-download", "ark --batch --autosubfolder {file}")};
+    } else if (kind == QLatin1String("all")) {
+        return {info("app", ngTr("The other application for the type", "L'altra applicazione per il tipo"), "applications-other", ""),
+                info("openwith", ngTr("Open with…", "Apri con…"), "overflow-menu", ""),
+                info("cut", ngTr("Cut", "Taglia"), "edit-cut", ""),
+                info("copy", ngTr("Copy", "Copia"), "edit-copy", ""),
+                info("pin", ngTr("Pin to the top", "Fissa in alto"), "ng-pin", "")};
+    }
+    return {};
+}
+
+QString ngActionsFolder()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/dolphin-ng/actions");
+}
+
+QList<NgActionInfo> ngCustomActions()
+{
+    static int generation = -1;
+    static QList<NgActionInfo> cached;
+    if (generation == s_ngActionsGeneration) {
+        return cached;
+    }
+    generation = s_ngActionsGeneration;
+    cached.clear();
+    const QDir folder(ngActionsFolder());
+    const QStringList files = folder.entryList({QStringLiteral("*.desktop")}, QDir::Files, QDir::Name);
+    for (const QString &file : files) {
+        const KConfig config(folder.filePath(file), KConfig::SimpleConfig);
+        const KConfigGroup entry = config.group(QStringLiteral("Desktop Entry"));
+        NgActionInfo a;
+        a.id = QStringLiteral("custom:") + QFileInfo(file).completeBaseName();
+        a.label = entry.readEntry("Name");
+        a.icon = entry.readEntry("Icon", QStringLiteral("system-run"));
+        a.command = entry.readEntry("X-NG-Command");
+        a.kind = entry.readEntry("X-NG-Kind");
+        a.choices = entry.readEntry("X-NG-Choices", QStringList());
+        a.confirm = entry.readEntry("X-NG-Confirm", false);
+        a.custom = true;
+        if (!a.label.isEmpty() && !a.command.isEmpty() && !a.kind.isEmpty()) {
+            cached.append(a);
+        }
+    }
+    return cached;
+}
+
+bool ngWriteCustomAction(const NgActionInfo &action)
+{
+    if (!action.id.startsWith(QLatin1String("custom:"))) {
+        return false;
+    }
+    QDir().mkpath(ngActionsFolder());
+    KConfig config(ngActionsFolder() + QLatin1Char('/') + action.id.mid(7) + QStringLiteral(".desktop"), KConfig::SimpleConfig);
+    KConfigGroup entry = config.group(QStringLiteral("Desktop Entry"));
+    entry.writeEntry("Type", QStringLiteral("Service"));
+    entry.writeEntry("Name", action.label);
+    entry.writeEntry("Icon", action.icon);
+    entry.writeEntry("X-NG-Kind", action.kind);
+    entry.writeEntry("X-NG-Command", action.command);
+    if (action.choices.isEmpty()) {
+        entry.deleteEntry("X-NG-Choices");
+    } else {
+        entry.writeEntry("X-NG-Choices", action.choices);
+    }
+    entry.writeEntry("X-NG-Confirm", action.confirm);
+    return config.sync();
+}
+
+namespace
+{
+// does a pattern ("*.md;*.markdown", "text/markdown") take this file?
+bool ngPatternTakes(const QString &pattern, const QString &fileName, const QString &mime)
+{
+    const QStringList parts = pattern.split(QRegularExpression(QStringLiteral("[;,]\\s*")), Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        const QString p = part.trimmed();
+        if (p.contains(QLatin1Char('/'))) {
+            if (p == mime || (p.endsWith(QLatin1String("/*")) && mime.startsWith(p.left(p.length() - 1)))) {
+                return true;
+            }
+            static QMimeDatabase db;
+            if (db.mimeTypeForName(mime).inherits(p)) {
+                return true;
+            }
+        } else if (QRegularExpression(QRegularExpression::wildcardToRegularExpression(p), QRegularExpression::CaseInsensitiveOption).match(fileName).hasMatch()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// a user's action for one file: run with sh, the placeholders as positional parameters (so a name with spaces
+// or quotes is passed as it is, inside quotes or not)
+NgQuickAction ngQuickActionFromCustom(const NgActionInfo &info, const QString &localPath)
+{
+    const QFileInfo file(localPath);
+    // each placeholder becomes its parameter, quoted for where it stands: "$1" outside quotes, ${1} inside double
+    // quotes, '"$1"' inside single quotes
+    static const QStringList names{QStringLiteral("{file}"), QStringLiteral("{name}"), QStringLiteral("{ext}"), QStringLiteral("{dir}"), QStringLiteral("{choice}")};
+    QString command;
+    QChar quote; // the open quote, if any
+    const QString &source = info.command;
+    for (int i = 0; i < source.length(); ++i) {
+        const QChar c = source.at(i);
+        if (c == QLatin1Char('\\') && quote != QLatin1Char('\'') && i + 1 < source.length()) {
+            command += c;
+            command += source.at(++i);
+            continue;
+        }
+        if ((c == QLatin1Char('"') || c == QLatin1Char('\'')) && (quote.isNull() || quote == c)) {
+            quote = quote.isNull() ? c : QChar();
+            command += c;
+            continue;
+        }
+        int which = -1;
+        if (c == QLatin1Char('{')) {
+            for (int n = 0; n < names.count(); ++n) {
+                if (QStringView(source).mid(i).startsWith(names.at(n))) {
+                    which = n;
+                    break;
+                }
+            }
+        }
+        if (which < 0) {
+            command += c;
+            continue;
+        }
+        const QString number = QString::number(which + 1);
+        command += quote.isNull() ? QStringLiteral("\"$%1\"").arg(number)
+            : quote == QLatin1Char('"') ? QStringLiteral("${%1}").arg(number)
+                                         : QStringLiteral("'\"$%1\"'").arg(number);
+        i += names.at(which).length() - 1;
+    }
+    NgQuickAction action;
+    action.id = info.id;
+    action.label = info.label;
+    action.icon = info.icon;
+    action.program = QStringLiteral("sh");
+    action.confirm = info.confirm;
+    auto arguments = [&](const QString &choice) {
+        return QStringList{QStringLiteral("-c"), command, QStringLiteral("sh"), localPath, file.completeBaseName(), file.suffix(), file.absolutePath(), choice};
+    };
+    if (!info.choices.isEmpty() && info.command.contains(QLatin1String("{choice}"))) {
+        for (const QString &choice : info.choices) {
+            action.choices.append({choice, arguments(choice)});
+        }
+    } else {
+        action.arguments = arguments(QString());
+    }
+    return action;
+}
+
+// the order, the switched-off ones and the main one of a list, as the editor left them
+QString ngApplyListSettings(QList<NgQuickAction> &list, const QString &kind)
+{
+    const KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG QuickActions"));
+    const QStringList off = group.readEntry(QStringLiteral("Off_") + kind, QStringList());
+    const QStringList order = group.readEntry(QStringLiteral("Order_") + kind, QStringList());
+    list.erase(std::remove_if(list.begin(), list.end(),
+                              [&off](const NgQuickAction &a) {
+                                  return off.contains(a.id);
+                              }),
+               list.end());
+    if (!order.isEmpty()) {
+        std::stable_sort(list.begin(), list.end(), [&order](const NgQuickAction &a, const NgQuickAction &b) {
+            const int ia = order.indexOf(a.id), ib = order.indexOf(b.id);
+            return (ia < 0 ? INT_MAX : ia) < (ib < 0 ? INT_MAX : ib);
+        });
+    }
+    return group.readEntry(QStringLiteral("Main_") + kind, QString());
+}
+} // namespace
+
+static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime)
+{
+    QList<NgQuickAction> actions;
+    if (localPath.isEmpty() || mime.isEmpty()) {
+        return actions;
+    }
+    if (mime == QLatin1String("inode/directory")) {
+        // a folder: only cut and copy (a click opens it, there is nothing to convert or extract)
+        NgQuickAction cut;
+        cut.id = QStringLiteral("cut");
+        cut.label = ngTr("Cut", "Taglia");
+        cut.program = QStringLiteral("@cut");
+        cut.icon = QStringLiteral("edit-cut");
+        NgQuickAction copy;
+        copy.id = QStringLiteral("copy");
+        copy.label = ngTr("Copy", "Copia");
+        copy.program = QStringLiteral("@copy");
+        copy.icon = QStringLiteral("edit-copy");
+        QList<NgQuickAction> general{cut, copy, ngPinAction()};
+        ngApplyListSettings(general, QStringLiteral("all"));
+        return general;
+    }
+    const QFileInfo info(localPath);
+    const QString base = info.completeBaseName();
+    const QString suffix = info.suffix();
+    const QString lowerSuffix = suffix.toLower();
+    const bool isImage = mime.startsWith(QLatin1String("image/")) && !mime.contains(QLatin1String("svg"));
+    const QSet<QString> &archives = ngArchiveMimes();
     auto simple = [&actions](const QString &label, const QString &program, const QStringList &arguments) {
         NgQuickAction action;
         action.label = label;
@@ -1007,8 +1273,59 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
                                                {ngTr("Frame to PNG", "Fotogramma in PNG"), QStringLiteral("camera-photo")},
                                                {ngTr("Separate audio and video", "Separa audio e video"), QStringLiteral("split")},
                                                {ngTr("Transcribe", "Trascrivi"), QStringLiteral("text-x-generic")}};
+    const QString kind = ngActionKindOf(mime);
+    static const QHash<QString, QString> ids{{ngTr("Resize", "Ridimensiona"), QStringLiteral("resize")},
+                                             {ngTr("Extract here", "Estrai qui"), QStringLiteral("extract")},
+                                             {ngTr("To PNG", "In PNG"), QStringLiteral("pdf-png")},
+                                             {ngTr("Extract the text", "Estrai il testo"), QStringLiteral("pdf-text")},
+                                             {ngTr("To MP3", "In MP3"), QStringLiteral("to-mp3")},
+                                             {ngTr("To FLAC", "In FLAC"), QStringLiteral("to-flac")},
+                                             {ngTr("Extract the audio (MP3)", "Estrai l'audio (MP3)"), QStringLiteral("video-mp3")},
+                                             {ngTr("Frame to PNG", "Fotogramma in PNG"), QStringLiteral("frame")},
+                                             {ngTr("Separate audio and video", "Separa audio e video"), QStringLiteral("separate")},
+                                             {ngTr("Transcribe", "Trascrivi"), QStringLiteral("transcribe")}};
     for (NgQuickAction &action : actions) {
         action.icon = icons.value(action.label, QStringLiteral("system-run"));
+        action.id = action.label == ngTr("To MP4", "In MP4") ? (kind == QLatin1String("image") ? QStringLiteral("gif-mp4") : QStringLiteral("to-mp4"))
+                                                              : ids.value(action.label);
+    }
+    // the user's own: those of the kind join its list; those of a pattern follow, in a list of their own
+    const QString fileName = QFileInfo(localPath).fileName();
+    const QList<NgActionInfo> custom = ngCustomActions();
+    QString main;
+    if (!kind.isEmpty()) {
+        for (const NgActionInfo &info : custom) {
+            if (info.kind == kind) {
+                actions.append(ngQuickActionFromCustom(info, localPath));
+            }
+        }
+        main = ngApplyListSettings(actions, kind);
+    }
+    QStringList patterns;
+    for (const NgActionInfo &info : custom) {
+        if (!ngActionKinds().contains(info.kind) && !patterns.contains(info.kind) && ngPatternTakes(info.kind, fileName, mime)) {
+            patterns.append(info.kind);
+        }
+    }
+    for (const QString &pattern : std::as_const(patterns)) {
+        QList<NgQuickAction> own;
+        for (const NgActionInfo &info : custom) {
+            if (info.kind == pattern) {
+                own.append(ngQuickActionFromCustom(info, localPath));
+            }
+        }
+        const QString patternMain = ngApplyListSettings(own, pattern);
+        if (main.isEmpty() && kind.isEmpty()) {
+            main = patternMain;
+        }
+        actions.append(own);
+    }
+    // the main one first, with its label: the one the editor marked, otherwise the first
+    for (int i = 1; i < actions.count(); ++i) {
+        if (!main.isEmpty() && actions.at(i).id == main) {
+            actions.move(i, 0);
+            break;
+        }
     }
     if (!actions.isEmpty()) {
         actions[0].main = true;
@@ -1031,6 +1348,7 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
             }
             seenIcons.insert(services.at(n)->icon());
             NgQuickAction action;
+            action.id = QStringLiteral("app");
             action.label = ngTr("Open with %1", "Apri con %1").arg(services.at(n)->name());
             action.program = QStringLiteral("@app");
             action.arguments = {services.at(n)->storageId()};
@@ -1038,16 +1356,19 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
             list.append(action);
         }
         NgQuickAction openWith;
+        openWith.id = QStringLiteral("openwith");
         openWith.label = ngTr("Open with…", "Apri con…");
         openWith.program = QStringLiteral("@openwith");
         openWith.icon = QStringLiteral("overflow-menu");
         list.append(openWith);
         NgQuickAction cut;
+        cut.id = QStringLiteral("cut");
         cut.label = ngTr("Cut", "Taglia");
         cut.program = QStringLiteral("@cut");
         cut.icon = QStringLiteral("edit-cut");
         list.append(cut);
         NgQuickAction copy;
+        copy.id = QStringLiteral("copy");
         copy.label = ngTr("Copy", "Copia");
         copy.program = QStringLiteral("@copy");
         copy.icon = QStringLiteral("edit-copy");
@@ -1055,8 +1376,20 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
         list.append(ngPinAction());
         apps = appsForMime.insert(mime, list);
     }
+    // what every file has, with the user's actions for every file before cut and copy
+    QList<NgQuickAction> general = *apps;
+    int before = 0;
+    while (before < general.count() && general.at(before).id != QLatin1String("cut")) {
+        ++before;
+    }
+    for (const NgActionInfo &info : custom) {
+        if (info.kind == QLatin1String("all")) {
+            general.insert(before++, ngQuickActionFromCustom(info, localPath));
+        }
+    }
+    ngApplyListSettings(general, QStringLiteral("all"));
     int at = actions.isEmpty() ? 0 : 1;
-    for (const NgQuickAction &action : *apps) {
+    for (const NgQuickAction &action : std::as_const(general)) {
         actions.insert(at++, action);
     }
     return actions;

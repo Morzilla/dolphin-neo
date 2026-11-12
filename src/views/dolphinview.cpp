@@ -2951,6 +2951,15 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
         menu.exec(QCursor::pos());
         return;
     }
+    if (action.confirm
+        && KMessageBox::questionTwoActions(window(),
+                                           ngTr("Run “%1” on “%2”?", "Eseguire «%1» su «%2»?").arg(action.label, item.name()),
+                                           action.label,
+                                           KGuiItem(ngTr("Run", "Esegui"), QStringLiteral("system-run")),
+                                           KStandardGuiItem::cancel())
+            != KMessageBox::PrimaryAction) {
+        return;
+    }
     if (action.choices.isEmpty()) {
         run(action.label, action.program, action.arguments);
         return;

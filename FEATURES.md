@@ -66,6 +66,17 @@ their progress on the file (see below).
 
 While Ctrl or Shift is held (making a selection) the actions stay hidden and the click selects.
 
+**Your own actions.** Settings → Configure Dolphin → **NG quick actions** lists the kinds of files and their actions:
+drag to change the order (the first one shows its name in the pill), untick to switch one off, mark another one as
+the main action. *Add* makes an action of your own from a command, from one of the service menus already installed
+(the right-click ones) or from an application. A command runs with `sh` in the file's folder, with `{file}`,
+`{name}`, `{ext}`, `{dir}` and `{choice}` (an optional small menu, e.g. `75%, 50%, 25%`) quoted for you, inside
+quotes or not; what it makes next to the file shows up beside it like the built-in ones. An action can ask before it
+runs. Kinds of your own go by extension or type (`*.md`, `text/markdown`). The actions are `.desktop` files in
+`~/.config/dolphin-ng/actions`, easy to copy and share.
+
+![The quick actions editor](ng/screenshots/features/actions-editor.png)
+
 ## Work in progress, on the files themselves
 
 A copy, a conversion or a transcription shows on the file it works on: a capsule with the percentage, what is going

@@ -239,13 +239,41 @@ DOLPHIN_EXPORT bool ngCardsStretch();
 
 /** dolphin-ng: a command that makes sense for a file of its kind (resize or convert a picture, extract an archive...). */
 struct NgQuickAction {
+    QString id; // stable: "to-mp3", "cut"... or "custom:<file>" for the user's own (see ngActionsFolder())
     QString label;
     QString program;
     QStringList arguments; // used when there are no choices
     QString icon; // theme icon name (for "@app": the icon of the application)
     bool main = false; // the typical action of this kind of file: shown first, with its label
     QList<std::pair<QString, QStringList>> choices; // a menu: label and arguments, all run with the program
+    bool confirm = false; // ask before running it
 };
+
+/**
+ * dolphin-ng: the quick actions as the editor (Settings > NG quick actions) sees them. Every file belongs to one
+ * kind ("image", "pdf", "audio", "video", "archive"), or to none; "all" holds what every file has (applications,
+ * open with, cut, copy, pin). The user's own actions are .desktop files in ngActionsFolder() and belong to a kind
+ * or to a pattern of their own ("*.md", "text/markdown"). Per list, dolphinrc [DolphinNG QuickActions] keeps the
+ * order (Order_<kind>), what is switched off (Off_<kind>) and the main action (Main_<kind>).
+ */
+struct NgActionInfo {
+    QString id;
+    QString label;
+    QString icon;
+    QString command; // the user's: with {file} {name} {ext} {dir} {choice}; built-in: a readable sketch
+    QString kind; // a kind above or a pattern
+    QStringList choices; // the menu {choice} takes its value from
+    bool confirm = false;
+    bool custom = false;
+};
+DOLPHIN_EXPORT QStringList ngActionKinds(); // the built-in kinds, then "all"
+DOLPHIN_EXPORT QString ngActionKindName(const QString &kind); // "Videos", "*.md"
+DOLPHIN_EXPORT QString ngActionKindOf(const QString &mime); // "" when the type has no kind
+DOLPHIN_EXPORT QList<NgActionInfo> ngBuiltinActions(const QString &kind);
+DOLPHIN_EXPORT QList<NgActionInfo> ngCustomActions(); // all of them, read from ngActionsFolder()
+DOLPHIN_EXPORT QString ngActionsFolder(); // ~/.config/dolphin-ng/actions
+DOLPHIN_EXPORT bool ngWriteCustomAction(const NgActionInfo &action); // to <folder>/<id without "custom:">.desktop
+DOLPHIN_EXPORT void ngQuickActionsChanged(); // after the editor applied: the cached lists are built again
 /** dolphin-ng: the quick actions of a local file, from its path and MIME type; empty for folders and unknown kinds. */
 DOLPHIN_EXPORT QList<NgQuickAction> ngQuickActionsFor(const QString &localPath, const QString &mime);
 

@@ -341,6 +341,7 @@ target_sources(dolphinstatic PRIVATE
     settings/contextmenu/contextmenusettingspage.cpp
     settings/settingspagebase.cpp
     settings/ng/ngsettingspage.cpp
+    settings/ng/ngactionspage.cpp
     settings/servicemodel.cpp
     settings/trash/trashsettingspage.cpp
     settings/viewmodes/dolphinfontrequester.cpp
@@ -491,6 +492,7 @@ target_sources(dolphinstatic PRIVATE
 target_link_libraries(dolphinstatic
     dolphinprivate
     KF6::CoreAddons
+    KF6::IconWidgets # dolphin-ng: the icon button of the quick actions editor
     KF6::GuiAddons
     KF6::KCMUtils
     KF6::DBusAddons

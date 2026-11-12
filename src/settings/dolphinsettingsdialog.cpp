@@ -11,6 +11,7 @@
 #include "dolphin_generalsettings.h"
 #include "dolphinmainwindow.h"
 #include "interface/interfacesettingspage.h"
+#include "ng/ngactionspage.h"
 #include "ng/ngsettingspage.h"
 #include "trash/trashsettingspage.h"
 #include "viewmodes/viewsettingspage.h"
@@ -101,8 +102,15 @@ DolphinSettingsDialog::DolphinSettingsDialog(const QUrl &url, QWidget *parent, K
     ngSettingsFrame->setIcon(QIcon::fromTheme(QStringLiteral("preferences-desktop-theme")));
     connect(ngSettingsPage, &NgSettingsPage::changed, this, &DolphinSettingsDialog::enableApply);
     m_pages.append(ngSettingsPage);
+    auto *ngActionsPage = new NgActionsPage(this);
+    KPageWidgetItem *ngActionsFrame = addPage(ngActionsPage, ngTr("NG quick actions", "Azioni rapide NG"));
+    ngActionsFrame->setIcon(QIcon::fromTheme(QStringLiteral("system-run")));
+    connect(ngActionsPage, &NgActionsPage::changed, this, &DolphinSettingsDialog::enableApply);
+    m_pages.append(ngActionsPage);
     if (qEnvironmentVariable("DOLPHIN_NG_OPEN_SETTINGS") == QLatin1String("ng")) {
         setCurrentPage(ngSettingsFrame); // for screenshots and for the installer
+    } else if (qEnvironmentVariable("DOLPHIN_NG_OPEN_SETTINGS") == QLatin1String("actions")) {
+        setCurrentPage(ngActionsFrame);
     }
 
     m_pages.append(interfaceSettingsPage);
