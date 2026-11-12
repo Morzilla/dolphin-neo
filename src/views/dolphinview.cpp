@@ -123,7 +123,18 @@ public:
         m_label.insert(job, toTrash ? ngTr("To the trash", "Nel cestino")
                                     : (copy->operationMode() == KIO::CopyJob::Move ? ngTr("Moving", "Spostamento") : ngTr("Copying", "Copia")));
         // both ends: the file leaving (seen in its folder) and the one arriving (seen in the destination)
-        auto mark = [this, job](KIO::Job *, const QUrl &from, const QUrl &to) {
+        const bool copying = copy->operationMode() == KIO::CopyJob::Copy && !toTrash;
+        auto mark = [this, job, copying](KIO::Job *, const QUrl &from, const QUrl &to) {
+            if (copying && from.adjusted(QUrl::RemoveFilename) == to.adjusted(QUrl::RemoveFilename)) {
+                // a copy in the same folder: the copy is born from the original, next to it, and waits with a
+                // turning arc while the original shows how far it is
+                m_urls[job].insert(from);
+                m_children[job].insert(to);
+                NgActivity::self()->set(from, m_percent.value(job, 0), m_label.value(job));
+                NgActivity::self()->set(to, -1, ngTr("On its way…", "In arrivo…"));
+                NgActivity::self()->link(from, to);
+                return;
+            }
             for (const QUrl &url : {from, to}) {
                 m_urls[job].insert(url);
                 NgActivity::self()->set(url, m_percent.value(job, 0), m_label.value(job));
@@ -134,6 +145,7 @@ public:
         QObject::connect(copy, &KIO::CopyJob::copyingDone, this, [this, job](KIO::Job *, const QUrl &from, const QUrl &to, const QDateTime &, bool, bool) {
             for (const QUrl &url : {from, to}) {
                 m_urls[job].remove(url);
+                m_children[job].remove(url);
                 NgActivity::self()->clear(url);
             }
         });
@@ -164,15 +176,17 @@ protected:
 private:
     void forget(KJob *job)
     {
-        for (const QUrl &url : m_urls.value(job)) {
+        for (const QUrl &url : m_urls.value(job) + m_children.value(job)) {
             NgActivity::self()->clear(url);
         }
         m_urls.remove(job);
+        m_children.remove(job);
         m_percent.remove(job);
         m_label.remove(job);
     }
     KJobTrackerInterface *m_inner;
     QHash<KJob *, QSet<QUrl>> m_urls;
+    QHash<KJob *, QSet<QUrl>> m_children; // copies being made in the same folder: they wait, without a figure
     QHash<KJob *, int> m_percent;
     QHash<KJob *, QString> m_label;
 };
@@ -215,13 +229,17 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
     }();
     Q_UNUSED(ngTracker)
     static const bool ngDemo = [] {
-        // DOLPHIN_NG_ACTIVITY_DEMO="/path/file|64|Extracting;/path/other|-1|Converting": marks shown as if work
+        // DOLPHIN_NG_ACTIVITY_DEMO="/path/file|64|Extracting;/path/other|-1|Converting;/path/child|-||/path/parent": marks
+        // (a percent of "-" sets none; a fourth field ties the file to that parent) shown as if work
         // were running, for screenshots and tests
         const QString demo = qEnvironmentVariable("DOLPHIN_NG_ACTIVITY_DEMO");
         for (const QString &entry : demo.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
             const QStringList f = entry.split(QLatin1Char('|'));
-            if (f.size() >= 2) {
+            if (f.size() >= 2 && f.at(1) != QLatin1String("-")) {
                 NgActivity::self()->set(QUrl::fromLocalFile(f.at(0)), f.at(1).toInt(), f.value(2));
+            }
+            if (f.size() >= 4 && !f.at(3).isEmpty()) { // "/path/child|-1|On its way|/path/parent": tied to its parent
+                NgActivity::self()->link(QUrl::fromLocalFile(f.at(3)), QUrl::fromLocalFile(f.at(0)));
             }
         }
         return true;
@@ -2814,6 +2832,8 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
         qint64 pid = 0;
         if (process.startDetached(&pid)) {
             NgActivity::self()->setUntilProcessEnds(itemUrl, pid, label + QStringLiteral("…"), progressFile);
+            // what it makes (named after it, in the same folder) is tied to it and shown next to it
+            NgActivity::self()->watchForChildren(itemUrl);
         } else {
             KMessageBox::error(window(), ngTr("“%1” could not be started.", "Impossibile avviare «%1».").arg(program));
         }

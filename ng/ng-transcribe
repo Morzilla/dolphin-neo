@@ -55,6 +55,8 @@ nice -n 15 ffmpeg -nostdin -loglevel error -y -i "$IN" -vn -ac 1 -ar 16000 -c:a 
 threads=$(( ($(nproc) + 1) / 2 ))
 outputs=(-otxt); case "$(file -b --mime-type "$IN")" in video/*) outputs+=(-osrt) ;; esac
 start=$(date +%s)
+# the transcription file exists from the start (empty), so a file manager can show it next to the audio
+fresh=""; [ -e "$dir/$base.txt" ] || { : > "$dir/$base.txt" && fresh="$dir/$base.txt"; }
 P="${NG_PROGRESS_FILE:-}"; real=/dev/null
 # whisper tells how far it is only once per 30 s of audio, so between those steps the figure is estimated
 # from the time taken so far and how fast the last transcriptions went (seconds of work per second of audio)
@@ -86,5 +88,6 @@ if nice -n 15 "$W" -m "$M" -f "$tmp" -l auto -t "$threads" -np "${progress[@]}" 
     mkdir -p "$(dirname "$SPEED")"; awk -v s="$secs" -v a="$audio" 'BEGIN { if (a >= 10) printf "%.2f\n", s / a }' > "$SPEED.new" && [ -s "$SPEED.new" ] && mv "$SPEED.new" "$SPEED"; rm -f "$SPEED.new"
     note "$(say 'Transcribed' 'Trascritto')" "$base.txt · ${secs} s" text-plain
 else
+    [ -n "$fresh" ] && [ ! -s "$fresh" ] && rm -f "$fresh"
     note "$(say 'Transcription failed' 'Trascrizione non riuscita')" "$name" dialog-error; exit 1
 fi

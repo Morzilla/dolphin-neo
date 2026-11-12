@@ -447,6 +447,10 @@ private:
      *         \b. The item-data may have different parent-items.
      */
     bool lessThan(const ItemData *a, const ItemData *b, const QCollator &collator) const;
+    /** dolphin-ng: finds again, for every tie in NgActivity, the items of the child and of its parent */
+    void ngRebuildFamilies();
+    /** dolphin-ng: child item -> parent item, for the files tied together (a file sorts right after its parent) */
+    QHash<const ItemData *, const ItemData *> m_ngParents;
 
     QString groupKeyForItem(const ItemData *item, const QByteArray &role) const;
 

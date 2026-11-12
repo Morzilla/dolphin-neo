@@ -105,6 +105,8 @@ public:
     bool supportsItemExpanding() const;
 
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget = nullptr) override;
+    /** dolphin-ng: cards paint a little outside themselves (the bubble around files tied together) */
+    QRectF boundingRect() const override;
 
     QRectF textRect() const override;
     QRectF textFocusRect() const override;
@@ -188,6 +190,7 @@ protected:
     void editedRoleChanged(const QByteArray &current, const QByteArray &previous) override;
     void iconSizeChanged(int current, int previous) override;
     void resizeEvent(QGraphicsSceneResizeEvent *event) override;
+    void moveEvent(QGraphicsSceneMoveEvent *event) override; // dolphin-ng: the bubble depends on where the others are
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
     bool event(QEvent *event) override;
@@ -225,6 +228,7 @@ private:
     qreal ngSelectionRadius() const override;
     void paintNgCard(QPainter *painter, QWidget *widget);
     void paintNgActivity(QPainter *painter); // work in progress on this file (NgActivity): a ring on cards, a fill on rows
+    void paintNgFamily(QPainter *painter); // files tied together (NgActivity families): one bubble around them
     qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
                              const QList<int> &origin = {});
     void paintNgActionPill(QPainter *painter, const QColor &text, bool dark);
@@ -340,6 +344,7 @@ private:
     bool m_ngCardPreview = false; // the pixmap is a preview, not the icon of the type
     bool m_ngCardWatermark = false; // the type is drawn as the background instead of the icon
     bool m_ngShowedActivity = false; // painted with an activity mark last time: repaint once more when it ends
+    bool m_ngShowedFamily = false; // painted inside a bubble last time
     QRectF m_ngCardEye; // hover actions: preview and menu
     QRectF m_ngCardMenu;
     QList<QPixmap> m_ngCardActionIcons; // one per entry of m_ngCardActions

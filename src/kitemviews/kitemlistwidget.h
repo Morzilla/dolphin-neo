@@ -76,8 +76,25 @@ public:
     /** 0..1, turns while anything is busy without a figure: the angle of the turning arc */
     qreal phase() const;
 
+    /* Families: a file made from another one (a transcription, an extracted folder, a copy in the same
+     * folder) is tied to it while the work runs and for a while after; the view keeps it right after its
+     * parent and draws both in one bubble. */
+    /** files that appear in \a parent's folder, named like it, while it is busy are tied to it */
+    void watchForChildren(const QUrl &parent);
+    /** told by the model about every file that appears: ties it to a watched parent, if it is one of its children */
+    void offerNewFile(const QUrl &url);
+    void link(const QUrl &parent, const QUrl &child);
+    /** the parent of \a child, or an empty URL */
+    QUrl parentOf(const QUrl &child) const;
+    /** the family \a url belongs to (its parent's key, or its own if it has children), or empty */
+    QString familyOf(const QUrl &url) const;
+    /** every tie, as (child, parent) */
+    QList<std::pair<QUrl, QUrl>> links() const;
+    bool hasLinks() const;
+
 Q_SIGNALS:
     void changed();
+    void linksChanged();
 
 private:
     NgActivity();
@@ -86,6 +103,9 @@ private:
     QHash<QString, Entry> m_entries;
     QHash<QString, qint64> m_pids;
     QHash<QString, QString> m_progressFiles;
+    void parentDone(const QString &parentKey);
+    QHash<QString, std::pair<QUrl, QUrl>> m_links; // child key -> (child, parent)
+    QHash<QString, QUrl> m_watched; // parent key -> parent
     QTimer m_timer;
     qreal m_phase = 0;
 };

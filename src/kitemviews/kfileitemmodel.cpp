@@ -7,6 +7,7 @@
  */
 
 #include "kfileitemmodel.h"
+#include "kitemlistwidget.h" // dolphin-ng: NgActivity
 
 #include "dolphin_contentdisplaysettings.h"
 #include "dolphin_generalsettings.h"
@@ -333,6 +334,11 @@ KFileItemModel::KFileItemModel(QObject *parent)
                                              // and sorting too infrequently which leads to users seeing an outdated sort order.
     m_resortAllItemsTimer->setSingleShot(true);
     connect(m_resortAllItemsTimer, &QTimer::timeout, this, &KFileItemModel::resortAllItems);
+    // dolphin-ng: a file made from another one goes right after it while they are tied together
+    connect(NgActivity::self(), &NgActivity::linksChanged, this, [this] {
+        ngRebuildFamilies();
+        m_resortAllItemsTimer->start();
+    });
 
     connect(GeneralSettings::self(), &GeneralSettings::sortingChoiceChanged, this, &KFileItemModel::slotSortingChoiceChanged);
 
@@ -1297,9 +1303,24 @@ void KFileItemModel::loadSortingSettings()
     m_collator.compare(QString(), QString());
 }
 
+void KFileItemModel::ngRebuildFamilies()
+{
+    m_ngParents.clear();
+    if (!NgActivity::self()->hasLinks()) {
+        return;
+    }
+    for (const auto &[child, parent] : NgActivity::self()->links()) {
+        const int c = index(child), p = index(parent);
+        if (c >= 0 && p >= 0 && m_itemData.at(c)->parent == m_itemData.at(p)->parent) {
+            m_ngParents.insert(m_itemData.at(c), m_itemData.at(p));
+        }
+    }
+}
+
 void KFileItemModel::resortAllItems()
 {
     m_resortAllItemsTimer->stop();
+    ngRebuildFamilies();
 
     const int itemCount = count();
     if (itemCount <= 0) {
@@ -1776,6 +1797,7 @@ void KFileItemModel::slotClear()
     }
 
     m_expandedDirs.clear();
+    m_ngParents.clear();
 }
 
 void KFileItemModel::slotSortingChoiceChanged()
@@ -1889,6 +1911,18 @@ void KFileItemModel::insertItems(QList<ItemData *> &newItems)
 
     Q_EMIT itemsInserted(itemRanges);
 
+    // dolphin-ng: a new file may be the child of a file at work here (a transcription, an extracted folder),
+    // or the one a tie was waiting for: put it right after its parent
+    for (const ItemData *data : std::as_const(newItems)) {
+        NgActivity::self()->offerNewFile(data->item.url());
+    }
+    if (NgActivity::self()->hasLinks()) {
+        ngRebuildFamilies();
+        if (!m_ngParents.isEmpty()) {
+            m_resortAllItemsTimer->start();
+        }
+    }
+
 #ifdef KFILEITEMMODEL_DEBUG
     qCDebug(DolphinDebug) << "[TIME] Inserting of" << newItems.count() << "items:" << timer.elapsed();
 #endif
@@ -1939,6 +1973,7 @@ void KFileItemModel::removeItems(const KItemRangeList &itemRanges, RemoveItemsBe
     // The indexes in m_items are not correct anymore. Therefore, we clear m_items.
     // It will be re-populated with the updated indices if index(const QUrl&) is called.
     m_items.clear();
+    ngRebuildFamilies(); // dolphin-ng: some of the items it pointed to are gone
 
     Q_EMIT itemsRemoved(itemRanges);
 }
@@ -2383,6 +2418,25 @@ bool KFileItemModel::lessThan(const ItemData *a, const ItemData *b, const QColla
         while (a->parent != b->parent) {
             a = a->parent;
             b = b->parent;
+        }
+    }
+
+    // dolphin-ng: a file tied to another one (made from it) sorts as its parent, right after it
+    if (!m_ngParents.isEmpty()) {
+        const ItemData *parentA = m_ngParents.value(a), *parentB = m_ngParents.value(b);
+        if (parentA || parentB) {
+            const ItemData *keyA = parentA ? parentA : a, *keyB = parentB ? parentB : b;
+            if (keyA == keyB) {
+                if (!parentA) {
+                    return true; // a is the parent of b
+                }
+                if (!parentB) {
+                    return false;
+                }
+                return a->item.name() < b->item.name(); // two children of one parent
+            }
+            a = keyA;
+            b = keyB;
         }
     }
 

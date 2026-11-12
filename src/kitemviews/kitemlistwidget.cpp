@@ -30,6 +30,7 @@
 #include <signal.h>
 #include <tuple>
 #include <cmath>
+#include <algorithm>
 #include <QPainter>
 #include <QPropertyAnimation>
 #include <QStyleOption>
@@ -257,8 +258,129 @@ void NgActivity::clear(const QUrl &url)
     const QString k = key(url);
     m_pids.remove(k);
     if (m_entries.remove(k)) {
+        parentDone(k);
         Q_EMIT changed();
     }
+}
+
+void NgActivity::watchForChildren(const QUrl &parent)
+{
+    if (parent.isValid()) {
+        m_watched.insert(key(parent), parent);
+    }
+}
+
+void NgActivity::offerNewFile(const QUrl &url)
+{
+    if (m_watched.isEmpty()) {
+        return;
+    }
+    const QUrl folder = url.adjusted(QUrl::RemoveFilename | QUrl::StripTrailingSlash);
+    const QString name = url.adjusted(QUrl::StripTrailingSlash).fileName();
+    for (const QUrl &parent : std::as_const(m_watched)) {
+        if (parent.adjusted(QUrl::RemoveFilename | QUrl::StripTrailingSlash) != folder || key(parent) == key(url)) {
+            continue;
+        }
+        // named after the parent: "Holiday.zip" gives "Holiday", "talk.ogg" gives "talk.txt", "doc.pdf" gives "doc-1.png"
+        const QString stem = QFileInfo(parent.fileName()).baseName();
+        if (stem.isEmpty() || !name.startsWith(stem)) {
+            continue;
+        }
+        const QChar next = name.size() > stem.size() ? name.at(stem.size()) : QChar();
+        if (next.isNull() || next == QLatin1Char('.') || next == QLatin1Char('-') || next == QLatin1Char('_') || next == QLatin1Char(' ') || next == QLatin1Char('(')) {
+            link(parent, url);
+            return;
+        }
+    }
+}
+
+void NgActivity::link(const QUrl &parent, const QUrl &child)
+{
+    const QString childKey = key(child), parentKey = key(parent);
+    if (childKey == parentKey || m_links.contains(childKey) || m_links.contains(parentKey)) {
+        return; // one level only: a child does not get children of its own
+    }
+    m_links.insert(childKey, {child, parent});
+    // while the parent is still at work, the new file waits with a turning arc
+    if (m_entries.contains(parentKey) && !m_entries.contains(childKey)) {
+        const QString waiting = ngTr("On its way…", "In arrivo…");
+        if (m_pids.contains(parentKey)) {
+            setUntilProcessEnds(child, m_pids.value(parentKey), waiting);
+        } else {
+            set(child, -1, waiting);
+        }
+    }
+    Q_EMIT linksChanged();
+    Q_EMIT changed();
+}
+
+void NgActivity::parentDone(const QString &parentKey)
+{
+    const bool isParent = m_watched.contains(parentKey) || std::any_of(m_links.cbegin(), m_links.cend(), [&](const auto &l) {
+        return key(l.second) == parentKey;
+    });
+    if (!isParent) {
+        return;
+    }
+    // files written at the very end show up a moment later: keep looking for them a few seconds
+    QTimer::singleShot(5000, this, [this, parentKey] {
+        if (!m_entries.contains(parentKey)) {
+            m_watched.remove(parentKey);
+        }
+    });
+    // the bubble stays a while after the work, so the result is easy to find, then the files go back in order
+    QTimer::singleShot(120000, this, [this, parentKey] {
+        if (m_entries.contains(parentKey)) {
+            return; // at work again
+        }
+        bool removed = false;
+        for (auto it = m_links.begin(); it != m_links.end();) {
+            if (key(it->second) == parentKey) {
+                m_entries.remove(it.key());
+                it = m_links.erase(it);
+                removed = true;
+            } else {
+                ++it;
+            }
+        }
+        if (removed) {
+            Q_EMIT linksChanged();
+            Q_EMIT changed();
+        }
+    });
+}
+
+QUrl NgActivity::parentOf(const QUrl &child) const
+{
+    return m_links.isEmpty() ? QUrl() : m_links.value(key(child)).second;
+}
+
+QString NgActivity::familyOf(const QUrl &url) const
+{
+    if (m_links.isEmpty()) {
+        return QString();
+    }
+    const QString k = key(url);
+    const auto it = m_links.constFind(k);
+    if (it != m_links.cend()) {
+        return key(it->second);
+    }
+    for (const auto &l : m_links) {
+        if (key(l.second) == k) {
+            return k;
+        }
+    }
+    return QString();
+}
+
+QList<std::pair<QUrl, QUrl>> NgActivity::links() const
+{
+    return m_links.values();
+}
+
+bool NgActivity::hasLinks() const
+{
+    return !m_links.isEmpty();
 }
 
 bool NgActivity::contains(const QUrl &url) const
@@ -299,6 +421,7 @@ void NgActivity::tick()
         for (auto it = m_pids.begin(); it != m_pids.end();) {
             if (::kill(static_cast<pid_t>(it.value()), 0) != 0) {
                 m_entries.remove(it.key());
+                parentDone(it.key());
                 if (m_progressFiles.contains(it.key())) {
                     QFile::remove(m_progressFiles.take(it.key()));
                 }

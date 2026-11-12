@@ -35,6 +35,8 @@
 #include <QRegularExpression>
 #include <QScopeGuard>
 #include <QGraphicsSceneResizeEvent>
+#include <QGraphicsSceneMoveEvent>
+#include <QTimer>
 #include <QGraphicsView>
 #include <QPixmapCache>
 #include <QStyleOption>
@@ -555,9 +557,16 @@ KStandardItemListWidget::KStandardItemListWidget(KItemListWidgetInformant *infor
 {
     // dolphin-ng: repaint while work on this file is in progress, and once more when it ends
     connect(NgActivity::self(), &NgActivity::changed, this, [this] {
-        if (m_ngShowedActivity || NgActivity::self()->contains(data().value("url").toUrl())) {
+        const QUrl url = data().value("url").toUrl();
+        if (m_ngShowedActivity || m_ngShowedFamily || NgActivity::self()->contains(url) || !NgActivity::self()->familyOf(url).isEmpty()) {
             update();
         }
+    });
+    // after a tie the files move next to each other: paint the bubble again once they are there
+    connect(NgActivity::self(), &NgActivity::linksChanged, this, [this] {
+        QTimer::singleShot(450, this, [this] {
+            update();
+        });
     });
 }
 
@@ -578,6 +587,7 @@ KStandardItemListWidget::~KStandardItemListWidget()
 void KStandardItemListWidget::setLayout(Layout layout)
 {
     if (m_layout != layout) {
+        prepareGeometryChange(); // the cards' bounding rect is a little larger (see boundingRect())
         m_layout = layout;
         m_dirtyLayout = true;
         updateAdditionalInfoTextColor();
@@ -651,6 +661,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
 
     if (m_layout == CardsLayout) {
         // dolphin-ng: the card draws everything itself; the base paints the selection and hover over its sheet
+        paintNgFamily(painter);
         paintNgCardSheet(painter);
         KItemListWidget::paint(painter, option, widget);
         paintNgCard(painter, widget);
@@ -658,6 +669,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         return;
     }
 
+    paintNgFamily(painter);
     KItemListWidget::paint(painter, option, widget);
 
     if (m_layout == IconsLayout && ngTiles()) {
@@ -3766,6 +3778,78 @@ bool KStandardItemListWidget::ngOwnSelection() const
 qreal KStandardItemListWidget::ngSelectionRadius() const
 {
     return m_layout == CardsLayout ? 12 : 9;
+}
+
+QRectF KStandardItemListWidget::boundingRect() const
+{
+    const QRectF r = KItemListWidget::boundingRect();
+    return m_layout == CardsLayout ? r.adjusted(-6, -6, 6, 6) : r;
+}
+
+void KStandardItemListWidget::moveEvent(QGraphicsSceneMoveEvent *event)
+{
+    KItemListWidget::moveEvent(event);
+    if (m_ngShowedFamily) {
+        update();
+    }
+}
+
+void KStandardItemListWidget::paintNgFamily(QPainter *painter)
+{
+    NgActivity *activity = NgActivity::self();
+    const QString family = activity->hasLinks() ? activity->familyOf(data().value("url").toUrl()) : QString();
+    m_ngShowedFamily = !family.isEmpty();
+    if (!m_ngShowedFamily) {
+        return;
+    }
+    // a file and the ones made from it stand side by side (the model sorts them so): one tinted ground with a
+    // thin border around all of them, like a selection of several files. Every card paints its own piece: up
+    // to half of the gap towards a member of the family next to it, else its own rounded end.
+    const bool cards = m_layout == CardsLayout;
+    const qreal pad = cards ? 4 : -2; // cards: around the card, into the gap; rows: inside the row
+    const QRectF own = rect();
+    QRectF bubble = own;
+    qreal clipLeft = own.left() - pad - 2, clipRight = own.right() + pad + 2, clipTop = own.top() - pad - 2, clipBottom = own.bottom() + pad + 2;
+    if (QGraphicsItem *container = parentItem()) {
+        const auto siblings = container->childItems();
+        for (QGraphicsItem *item : siblings) {
+            auto *other = dynamic_cast<KItemListWidget *>(item);
+            if (!other || other == this || !other->isVisible() || activity->familyOf(other->data().value("url").toUrl()) != family) {
+                continue;
+            }
+            const QRectF r = other->geometry().translated(-pos());
+            const bool sameRow = qAbs(r.top() - own.top()) < 1 && qAbs(r.height() - own.height()) < 1;
+            const bool sameColumn = qAbs(r.left() - own.left()) < 1 && qAbs(r.width() - own.width()) < 1;
+            if (sameRow && r.left() >= own.right() - 1 && r.left() - own.right() < 40) {
+                bubble = bubble.united(r);
+                clipRight = (own.right() + r.left()) / 2;
+            } else if (sameRow && r.right() <= own.left() + 1 && own.left() - r.right() < 40) {
+                bubble = bubble.united(r);
+                clipLeft = (r.right() + own.left()) / 2;
+            } else if (sameColumn && r.top() >= own.bottom() - 1 && r.top() - own.bottom() < 40) {
+                bubble = bubble.united(r);
+                clipBottom = (own.bottom() + r.top()) / 2;
+            } else if (sameColumn && r.bottom() <= own.top() + 1 && own.top() - r.bottom() < 40) {
+                bubble = bubble.united(r);
+                clipTop = (r.bottom() + own.top()) / 2;
+            }
+        }
+    }
+    QColor accent = styleOption().palette.color(QPalette::Highlight);
+    accent = QColor::fromHslF(accent.hslHueF() < 0 ? 0.55 : accent.hslHueF(), qMax<qreal>(accent.hslSaturationF(), 0.65), 0.62);
+    QColor fill = accent, border = accent;
+    fill.setAlphaF(cards ? 0.18 : 0.13);
+    border.setAlphaF(0.60);
+    const qreal radius = cards ? 16 : 7;
+    QPainterPath path;
+    path.addRoundedRect(bubble.adjusted(-pad, -pad, pad, pad).adjusted(0.75, 0.75, -0.75, -0.75), radius, radius);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setClipRect(QRectF(QPointF(clipLeft, clipTop), QPointF(clipRight, clipBottom)), Qt::IntersectClip);
+    painter->setPen(QPen(border, 1.5));
+    painter->setBrush(fill);
+    painter->drawPath(path);
+    painter->restore();
 }
 
 void KStandardItemListWidget::paintNgActivity(QPainter *painter)
