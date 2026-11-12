@@ -473,6 +473,12 @@ private:
     KItemListWidgetInformant *m_informant;
     int m_index;
     bool m_selected;
+    // dolphin-ng: 0..1, how far the ring selection of a card has come out (animated on select and deselect)
+    qreal m_ngSelProgress = 0;
+    class QVariantAnimation *m_ngSelAnim = nullptr;
+public:
+    qreal ngSelectionProgress() const { return m_ngSelProgress; }
+private:
     bool m_current;
     bool m_hovered;
     bool m_expansionAreaHovered;

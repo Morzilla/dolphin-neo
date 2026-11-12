@@ -35,6 +35,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPropertyAnimation>
+#include <QVariantAnimation>
 #include <QStyleOption>
 
 KItemListWidgetInformant::KItemListWidgetInformant() = default;
@@ -1082,7 +1083,7 @@ void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
     }
 
     const QStyle::State selectedState(m_selected ? QStyle::State_Selected : QStyle::State(0));
-    if ((m_selected || m_current) && m_editedRole.isEmpty()) {
+    if ((m_selected || m_current || (ngRingSelection() && m_ngSelProgress > 0.001)) && m_editedRole.isEmpty()) {
         const QStyle::State activeState(isActiveWindow() && widget->hasFocus() ? QStyle::State_Active : 0);
         // Only pass State_Selected when the item is actually selected, not just when
         // it has keyboard focus (m_current), to avoid styles drawing a persistent
@@ -1206,6 +1207,32 @@ void KItemListWidget::setSelected(bool selected)
         selectedChanged(selected);
         clearHoverCache();
         update();
+        if (ngRingSelection()) {
+            // the ring comes out from under the card (or goes back under it), the bridges to its neighbours with it
+            if (!m_ngSelAnim) {
+                m_ngSelAnim = new QVariantAnimation(this);
+                m_ngSelAnim->setDuration(150);
+                m_ngSelAnim->setEasingCurve(QEasingCurve::OutCubic);
+                connect(m_ngSelAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+                    m_ngSelProgress = value.toReal();
+                    update();
+                    if (parentItem()) {
+                        const auto siblings = parentItem()->childItems();
+                        for (QGraphicsItem *item : siblings) {
+                            if (item != this && item->isVisible()) {
+                                item->update();
+                            }
+                        }
+                    }
+                });
+            }
+            m_ngSelAnim->stop();
+            m_ngSelAnim->setStartValue(m_ngSelProgress);
+            m_ngSelAnim->setEndValue(selected ? 1.0 : 0.0);
+            m_ngSelAnim->start();
+        } else {
+            m_ngSelProgress = selected ? 1.0 : 0.0;
+        }
         if (ngRingSelection() && parentItem()) {
             // dolphin-ng: selected cards next to each other share one outline: the others redraw their part of it
             const auto siblings = parentItem()->childItems();
@@ -1660,12 +1687,14 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach) const
 {
     const QRectF own(pos(), size());
     QList<QRectF> cards{own};
+    QList<qreal> progress{qMax<qreal>(m_ngSelProgress, 0.001)};
     if (QGraphicsItem *container = parentItem()) {
         const auto siblings = container->childItems();
         for (QGraphicsItem *item : siblings) {
             auto *other = dynamic_cast<KItemListWidget *>(item);
-            if (other && other != this && other->isVisible() && other->isSelected()) {
+            if (other && other != this && other->isVisible() && other->ngSelectionProgress() > 0.001) {
                 cards.append(QRectF(other->pos(), other->size()));
+                progress.append(other->ngSelectionProgress());
             }
         }
     }
@@ -1677,6 +1706,7 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach) const
     };
     // the block: the selected cards reachable from this one through neighbours
     QList<QRectF> block{own};
+    QList<qreal> blockProgress{progress[0]};
     QList<bool> taken(cards.size(), false);
     taken[0] = true;
     for (int k = 0; k < block.size(); ++k) {
@@ -1684,29 +1714,47 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach) const
             if (!taken[i] && (beside(block[k], cards[i]) || beside(cards[i], block[k]) || under(block[k], cards[i]) || under(cards[i], block[k]))) {
                 taken[i] = true;
                 block.append(cards[i]);
+                blockProgress.append(progress[i]);
             }
         }
     }
+    // a card on its way: its rect comes out from under the card (inset 10 px at 0, grown at 1), the bridges to
+    // its neighbours open from the middle of the gap with the smaller of the two
+    auto grownRect = [&](int i) {
+        const qreal p = blockProgress[i], g = -10 + (grow + 10) * p;
+        return block[i].adjusted(-g, -g, g, g);
+    };
     QPainterPath area;
     area.setFillRule(Qt::WindingFill);
-    for (const QRectF &a : std::as_const(block)) {
-        area.addRect(a.adjusted(-grow, -grow, grow, grow));
-        for (const QRectF &b : std::as_const(block)) {
+    for (int i = 0; i < block.size(); ++i) {
+        const QRectF &a = block[i];
+        area.addRect(grownRect(i));
+        for (int j = 0; j < block.size(); ++j) {
+            const QRectF &b = block[j];
+            const qreal p = qMin(blockProgress[i], blockProgress[j]);
+            if (p < 0.02) {
+                continue;
+            }
             if (beside(a, b)) {
-                area.addRect(QRectF(a.right(), a.top() - grow, b.left() - a.right(), a.height() + 2 * grow));
+                // the bridge grows from both cards towards the middle of the gap, and in height with the rings
+                const qreal gap = b.left() - a.right(), half = gap / 2.0 * p, g = -10 + (grow + 10) * p;
+                area.addRect(QRectF(a.right() - 1, a.top() - g, half + 1, a.height() + 2 * g));
+                area.addRect(QRectF(b.left() - half, a.top() - g, half + 1, a.height() + 2 * g));
                 // a 2x2 group: fill the gap where the four meet
-                for (const QRectF &c : std::as_const(block)) {
-                    if (under(a, c)) {
-                        for (const QRectF &d : std::as_const(block)) {
-                            if (under(b, d)) {
-                                area.addRect(QRectF(a.right(), a.bottom(), b.left() - a.right(), c.top() - a.bottom()));
+                for (int k = 0; k < block.size(); ++k) {
+                    if (under(a, block[k])) {
+                        for (int l = 0; l < block.size(); ++l) {
+                            if (under(b, block[l]) && qMin(p, qMin(blockProgress[k], blockProgress[l])) > 0.98) {
+                                area.addRect(QRectF(a.right(), a.bottom(), gap, block[k].top() - a.bottom()));
                             }
                         }
                     }
                 }
             }
             if (under(a, b)) {
-                area.addRect(QRectF(a.left() - grow, a.bottom(), a.width() + 2 * grow, b.top() - a.bottom()));
+                const qreal gap = b.top() - a.bottom(), half = gap / 2.0 * p, g = -10 + (grow + 10) * p;
+                area.addRect(QRectF(a.left() - g, a.bottom() - 1, a.width() + 2 * g, half + 1));
+                area.addRect(QRectF(a.left() - g, b.top() - half, a.width() + 2 * g, half + 1));
             }
         }
     }
@@ -1735,9 +1783,10 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach) const
 void KItemListWidget::ngPaintCheck(QPainter *painter, QWidget *widget)
 {
     // the round check at the top left corner of a selected item with a ring selection, over its content
-    if (!m_selected || !ngRingSelection()) {
+    if (!ngRingSelection() || m_ngSelProgress < 0.01) {
         return;
     }
+    const qreal pop = m_ngSelProgress; // the check grows in with the ring
     const bool dark = ngIsDark(widget ? widget->palette() : m_styleOption.palette);
     QColor accent = m_styleOption.palette.color(QPalette::Highlight);
     if (dark && accent.lightness() < 150) {
@@ -1749,6 +1798,9 @@ void KItemListWidget::ngPaintCheck(QPainter *painter, QWidget *widget)
     painter->setRenderHint(QPainter::Antialiasing);
     painter->setPen(QPen(QColor(0, 0, 0, 90), 3));
     painter->setBrush(accent);
+    painter->translate(centre);
+    painter->scale(pop, pop);
+    painter->translate(-centre);
     painter->drawEllipse(centre, 10, 10);
     painter->setPen(QPen(QColor::fromHsl(accent.hslHue() < 0 ? 0 : accent.hslHue(), 60, 22), 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     painter->setBrush(Qt::NoBrush);
@@ -1778,8 +1830,8 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
         // light at the top left and fades towards the bottom right.
         const bool selected = styleState & QStyle::State_Selected;
         const bool hovered = styleState & QStyle::State_MouseOver;
-        if (!selected && !hovered) {
-            return;
+        if (!selected && !hovered && !(ngRingSelection() && m_ngSelProgress > 0.001)) {
+            return; // (a ring still going back under its card is drawn until it is gone)
         }
         const bool dark = ngIsDark(widget ? widget->palette() : m_styleOption.palette);
         const qreal radius = ngSelectionRadius();
@@ -1799,7 +1851,7 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
             }
             const qreal width = selected ? 2.5 : 1.5;
             const qreal gap = 2.5 + width / 2.0;
-            if (selected) {
+            if (selected || m_ngSelProgress > 0.001) {
                 // one outline around the block of selected cards next to each other, with a faint veil inside
                 QRectF reach;
                 const QPainterPath block = ngSelectionBlock(gap, &reach);
