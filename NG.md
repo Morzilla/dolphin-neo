@@ -114,13 +114,23 @@ Devices section instead, and hide any one of them.
 
 ![Disks and partitions at the foot of the sidebar](ng/screenshots/features/disks.png)
 
+## The same in every app's file dialog
+
+[Dialog NG](https://github.com/Morzilla/dialog-ng) brings this look to KDE's Open/Save window, the one every KDE
+app (and Firefox, Chrome, Flatpak apps through the portal) opens: the same drawings of the kinds of file and rows,
+the quick preview, filters with their counts, groups, the items pinned here first, and the glass sidebar. Its
+quick preview is set on the NG settings page too (Previews → Open/Save window).
+
+![Dialog NG, the Open/Save window](https://raw.githubusercontent.com/Morzilla/dialog-ng/main/screenshots/dialog.png)
+
 ## Part of the NG desktop
 
 - [Breeze NG](https://github.com/Morzilla/breeze-ng) – the widget style and window decoration it was designed with ([KDE Store](https://store.kde.org/p/2381557/))
 - [NeoLine](https://github.com/Morzilla/neoline-icons) – the outline icon theme in the screenshots ([KDE Store](https://store.kde.org/p/2381562/))
+- [Dialog NG](https://github.com/Morzilla/dialog-ng) – the Open/Save window of every KDE app, in the same look
 - Dolphin NG on the KDE Store: https://store.kde.org/p/2381561/
 
-One installer sets up all three. It builds from source, asks which parts you want and which look to start from
+One installer sets up all of them. It builds from source, asks which parts you want and which look to start from
 (Classic, Soft or Glass), and can switch the desktop to it at the end:
 
 ```sh
