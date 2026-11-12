@@ -541,6 +541,17 @@ public:
         connect(view, &DolphinView::itemCountChanged, this, [this] {
             count();
         });
+        // grouping changed elsewhere (the View menu): the label of the groups button follows
+        connect(view, &DolphinView::groupedSortingChanged, this, [this] {
+            QTimer::singleShot(0, this, [this] {
+                rebuild();
+            });
+        });
+        connect(view, &DolphinView::groupRoleChanged, this, [this] {
+            QTimer::singleShot(0, this, [this] {
+                rebuild();
+            });
+        });
         count();
     }
 
@@ -991,6 +1002,63 @@ private:
         menuButton(button);
         button->setText(ngTr("Filters: %1", "Filtri: %1").arg(current));
         m_flow->addWidget(button);
+
+        // ---- groups: none, by date (modified or created), by kind, by size (Dolphin's "Group By", at hand)
+        {
+            auto *groups = new QToolButton(this);
+            groups->setAutoRaise(true);
+            groups->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+            groups->setIcon(QIcon::fromTheme(QStringLiteral("view-group")));
+            groups->setPopupMode(QToolButton::InstantPopup);
+            const bool grouped = m_view->groupedSorting();
+            const QByteArray role = grouped ? m_view->groupRole() : QByteArray();
+            groups->setCheckable(true);
+            groups->setChecked(grouped);
+            auto *groupMenu = new QMenu(groups);
+            auto *groupActions = new QActionGroup(groupMenu);
+            QString currentGroup = ngTr("None", "Nessuno");
+            const QList<std::tuple<QByteArray, QString, QString>> choices{
+                {QByteArray(), ngTr("None", "Nessuno"), QStringLiteral("view-list-details")},
+                {QByteArrayLiteral("modificationtime"), ngTr("Date modified", "Data di modifica"), QStringLiteral("view-calendar-day")},
+                {QByteArrayLiteral("creationtime"), ngTr("Date created", "Data di creazione"), QStringLiteral("view-calendar")},
+                {QByteArrayLiteral("type"), ngTr("Type", "Tipo"), QStringLiteral("view-media-genre")},
+                {QByteArrayLiteral("size"), ngTr("Size", "Dimensione"), QStringLiteral("kt-check-data")},
+            };
+            for (const auto &[choiceRole, label, icon] : choices) {
+                QAction *action = groupMenu->addAction(QIcon::fromTheme(icon), label);
+                action->setCheckable(true);
+                const bool isCurrent = choiceRole.isEmpty() ? !grouped : (grouped && role == choiceRole);
+                action->setChecked(isCurrent);
+                groupActions->addAction(action);
+                if (isCurrent) {
+                    currentGroup = label;
+                }
+                if (choiceRole.isEmpty()) {
+                    groupMenu->addSeparator();
+                }
+                connect(action, &QAction::triggered, this, [this, choiceRole] {
+                    if (choiceRole.isEmpty()) {
+                        m_view->setGroupedSorting(false);
+                    } else {
+                        // the groups come in the order of the sorting: sorted by something else, the same date would
+                        // be split all over the folder. Group by a date: newest first; by kind or size: by that
+                        m_view->setSortRole(choiceRole);
+                        if (choiceRole.endsWith("time")) {
+                            m_view->setSortOrder(Qt::DescendingOrder);
+                        }
+                        m_view->setGroupedSorting(true);
+                        m_view->setGroupRole(choiceRole);
+                    }
+                    QTimer::singleShot(0, this, [this] {
+                        rebuild(); // the label says the new choice
+                    });
+                });
+            }
+            groups->setMenu(groupMenu);
+            menuButton(groups);
+            groups->setText(ngTr("Groups: %1", "Gruppi: %1").arg(currentGroup));
+            m_flow->addWidget(groups);
+        }
 
         if (!list) {
             m_flow->invalidate();
