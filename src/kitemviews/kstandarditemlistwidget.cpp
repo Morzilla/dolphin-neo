@@ -3995,13 +3995,15 @@ void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter)
     painter->setRenderHint(QPainter::SmoothPixmapTransform);
 
     if (m_ngCategory == int(NgKind::Image)) {
-        const qreal foot = qRound(qMax(20.0, base.height() * 1.55));
-        const qreal margin = qMax(5.0, band.width() * 0.025);
-        qreal width = qMin(band.width() * 0.8, (band.height() - 12 - foot - margin) * 1.6 + 2 * margin);
+        // thin margins and a low foot: the picture takes most of the print
+        const qreal foot = qRound(qMax(17.0, base.height() * 1.3));
+        const qreal margin = qMax(3.0, band.width() * 0.014);
+        const qreal printHeight = band.height() - 8;
+        qreal width = qMin(band.width() * 0.88, (printHeight - foot - margin) * 1.7 + 2 * margin);
         width = qMin(band.width() * 0.94, qMax(width, lineWidth(foot) + 2 * margin + 4));
-        const QRectF print(-width / 2.0, -(band.height() - 12) / 2.0, width, band.height() - 12);
+        const QRectF print(-width / 2.0, -printHeight / 2.0, width, printHeight);
         painter->save();
-        painter->translate(band.center().x(), band.center().y() + 2);
+        painter->translate(band.center().x(), band.center().y() + 1);
         painter->rotate(((int(qHash(name) % 7)) - 3) * 0.5);
         painter->setPen(Qt::NoPen);
         for (int i = 4; i >= 1; --i) { // its shadow on the band
@@ -4011,23 +4013,24 @@ void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter)
         painter->setBrush(QColor(244, 244, 241));
         painter->drawRoundedRect(print, 3, 3);
         picture(print.adjusted(margin, margin, -margin, -foot));
-        writeLine(QRectF(print.left() + margin + 2, print.bottom() - foot, print.width() - 2 * margin - 4, foot), foot, shade(0.32, 0.9), shade(0.45, 0.35));
+        writeLine(QRectF(print.left() + margin + 2, print.bottom() - foot, print.width() - 2 * margin - 4, foot), foot * 1.08, shade(0.32, 0.9), shade(0.45, 0.35));
         painter->restore();
     } else if (m_ngCategory == int(NgKind::Media) || mime.startsWith(QLatin1String("video/"))) {
-        // a frame on a strip of film; type and size printed along its edge
-        const qreal edge = qRound(qMax(16.0, base.height() * 1.25));
-        const QRectF strip(band.left() + band.width() * 0.08, band.top() + 7, band.width() * 0.84, band.height() - 14);
+        // a frame on a strip of film; type and size printed along its edge. The strip takes almost the whole band
+        // and its holes and edge stay thin, so the picture keeps as much height as it can
+        const qreal edge = qRound(qMax(15.0, base.height() * 1.1));
+        const QRectF strip(band.left() + band.width() * 0.06, band.top() + 4, band.width() * 0.88, band.height() - 6);
         painter->setPen(Qt::NoPen);
         painter->setBrush(QColor(17, 18, 21));
         painter->drawRoundedRect(strip, 4, 4);
-        const qreal hole = qMax(5.0, strip.height() * 0.06);
-        for (qreal x = strip.left() + 8; x + hole * 1.4 < strip.right() - 4; x += hole * 2.6) {
+        const qreal hole = qMax(4.0, strip.height() * 0.045);
+        for (qreal x = strip.left() + 7; x + hole * 1.4 < strip.right() - 4; x += hole * 2.6) {
             painter->setBrush(QColor(255, 255, 255, 50));
-            painter->drawRoundedRect(QRectF(x, strip.top() + hole * 0.6, hole * 1.4, hole), 1.5, 1.5);
+            painter->drawRoundedRect(QRectF(x, strip.top() + hole * 0.5, hole * 1.4, hole), 1.5, 1.5);
         }
-        const QRectF frame = strip.adjusted(8, hole * 2.2, -8, -edge - 2);
+        const QRectF frame = strip.adjusted(6, hole * 2.0, -6, -edge);
         picture(frame);
-        writeLine(QRectF(frame.left() + 2, frame.bottom() + 1, frame.width() - 4, edge), edge, shade(0.72, 1.0), QColor(205, 209, 216));
+        writeLine(QRectF(frame.left() + 2, frame.bottom(), frame.width() - 4, edge), edge, shade(0.72, 1.0), QColor(205, 209, 216));
     } else {
         // a sheet: the page itself, with a footer like a printed page
         const qreal foot = qRound(qMax(20.0, base.height() * 1.5));
