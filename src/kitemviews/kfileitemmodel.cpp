@@ -1338,6 +1338,19 @@ void KFileItemModel::loadSortingSettings()
     m_collator.compare(QString(), QString());
 }
 
+const KFileItemModel::ItemData *KFileItemModel::ngGroupData(int index) const
+{
+    // dolphin-ng: a file tied to the one it is made from belongs to that one's group while the tie lasts, so the two
+    // stay side by side in one bubble (grouped by date, the new file of today would otherwise sit alone in "Today")
+    const ItemData *data = m_itemData.at(index);
+    if (!m_ngParents.isEmpty()) {
+        if (const ItemData *parent = m_ngParents.value(data)) {
+            return parent;
+        }
+    }
+    return data;
+}
+
 void KFileItemModel::ngSetPinned(const KFileItemList &items, bool pinned)
 {
     KItemRangeList ranges;
@@ -2795,7 +2808,7 @@ QList<QPair<int, QVariant>> KFileItemModel::nameRoleGroups() const
             continue;
         }
 
-        const QString name = m_itemData.at(i)->item.text();
+        const QString name = ngGroupData(i)->item.text();
 
         // Use the first character of the name as group indication
         QChar newFirstChar = name.at(0).toUpper();
@@ -2867,14 +2880,14 @@ QList<QPair<int, QVariant>> KFileItemModel::sizeRoleGroups() const
             continue;
         }
 
-        const KFileItem &item = m_itemData.at(i)->item;
+        const KFileItem &item = ngGroupData(i)->item;
         KIO::filesize_t fileSize = !item.isNull() ? item.size() : ~0U;
         QString newGroupValue;
         if (!item.isNull() && item.isDir()) {
             if (ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentCount || m_sortDirsFirst) {
                 newGroupValue = i18nc("@title:group Size", "Folders");
             } else {
-                fileSize = m_itemData.at(i)->values.value("size").toULongLong();
+                fileSize = ngGroupData(i)->values.value("size").toULongLong();
             }
         }
 
@@ -2914,7 +2927,7 @@ QList<QPair<int, QVariant>> KFileItemModel::timeRoleGroups(const std::function<Q
         }
 
         const QLocale locale;
-        const QDateTime fileTime = fileTimeCb(m_itemData.at(i));
+        const QDateTime fileTime = fileTimeCb(ngGroupData(i));
         const QDate fileDate = fileTime.date();
         if (fileDate == previousFileDate) {
             // The current item is in the same group as the previous item
@@ -3117,7 +3130,7 @@ QList<QPair<int, QVariant>> KFileItemModel::permissionRoleGroups() const
             continue;
         }
 
-        const ItemData *itemData = m_itemData.at(i);
+        const ItemData *itemData = ngGroupData(i);
         const QString newPermissionsString = itemData->values.value("permissions").toString();
         if (newPermissionsString == permissionsString) {
             continue;
@@ -3187,7 +3200,7 @@ QList<QPair<int, QVariant>> KFileItemModel::ratingRoleGroups() const
         if (isChildItem(i)) {
             continue;
         }
-        const int newGroupValue = m_itemData.at(i)->values.value("rating", 0).toInt();
+        const int newGroupValue = ngGroupData(i)->values.value("rating", 0).toInt();
         if (newGroupValue != groupValue) {
             groupValue = newGroupValue;
             groups.append(QPair<int, QVariant>(i, newGroupValue));
@@ -3210,7 +3223,7 @@ QList<QPair<int, QVariant>> KFileItemModel::genericStringRoleGroups(const QByteA
         if (isChildItem(i)) {
             continue;
         }
-        const QString newGroupValue = m_itemData.at(i)->values.value(role).toString();
+        const QString newGroupValue = ngGroupData(i)->values.value(role).toString();
         if (newGroupValue != groupValue || isFirstGroupValue) {
             groupValue = newGroupValue;
             groups.append(QPair<int, QVariant>(i, newGroupValue));

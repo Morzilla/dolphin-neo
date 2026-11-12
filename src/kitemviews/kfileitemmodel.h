@@ -454,6 +454,9 @@ public:
     void ngSetPinned(const KFileItemList &items, bool pinned);
     bool ngIsPinned(const KFileItem &item) const;
 private:
+    const ItemData *ngGroupData(int index) const;
+public:
+private:
     /** dolphin-ng: finds again, for every tie in NgActivity, the items of the child and of its parent */
     void ngRebuildFamilies();
     /** dolphin-ng: child item -> parent item, for the files tied together (a file sorts right after its parent) */
