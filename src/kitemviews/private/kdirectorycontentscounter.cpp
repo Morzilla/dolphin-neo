@@ -9,7 +9,10 @@
 #include "dolphin_contentdisplaysettings.h"
 #include "kitemviews/kfileitemmodel.h"
 
+#include <KDirNotify>
 #include <KDirWatch>
+
+#include <QPointer>
 
 #include <QCoreApplication>
 #include <QDataStream>
@@ -28,8 +31,9 @@ namespace
 /**
  * dolphin-ng: what is known of each folder's contents (number of entries, size, newest modification inside), kept
  * across folder changes and across restarts (~/.cache/dolphin-ng/folder-sizes). A value shown from here is checked
- * again in the background when the folder changed since, or when it is older than kStale; the numbers on screen
- * change only if the result differs.
+ * again in the background each time the folder is shown (not within a minute of the last count); the numbers on
+ * screen change only if the result differs. A change reported inside a folder (by KIO, or found by a count) makes
+ * it and the folders above it out of date; those on screen are counted again at once.
  */
 class LocalCache : public QObject
 {
@@ -47,11 +51,58 @@ public:
         }
     };
 
-    static constexpr qint64 kStale = 15 * 60 * 1000;
     static constexpr int kMaxEntries = 40000;
 
     LocalCache()
     {
+        m_recheckTimer.setSingleShot(true);
+        m_recheckTimer.setInterval(400);
+        QObject::connect(&m_recheckTimer, &QTimer::timeout, this, [this] {
+            const QSet<QString> paths = std::exchange(m_recheck, {});
+            m_views.removeAll(nullptr);
+            for (const auto &view : std::as_const(m_views)) {
+                view->recheck(paths);
+            }
+        });
+        // what KIO changes (copies, moves, deletions, renames, done by Dolphin or any KDE application) reaches the
+        // folders above it at once; changes made by other programs are found when a folder is looked at again
+        auto *notify = new OrgKdeKDirNotifyInterface(QString(), QString(), QDBusConnection::sessionBus(), this);
+        auto parentOf = [](const QString &url) {
+            const QUrl u(url);
+            return u.isLocalFile() ? QFileInfo(u.adjusted(QUrl::StripTrailingSlash).toLocalFile()).path() : QString();
+        };
+        auto inFolder = [this](const QString &folder) {
+            if (!folder.isEmpty()) {
+                const QString canonical = QFileInfo(folder).canonicalFilePath();
+                changedInside(canonical.isEmpty() ? folder : canonical);
+            }
+        };
+        QObject::connect(notify, &OrgKdeKDirNotifyInterface::FilesAdded, this, [inFolder](const QString &directory) {
+            const QUrl url(directory);
+            if (url.isLocalFile()) {
+                inFolder(url.adjusted(QUrl::StripTrailingSlash).toLocalFile());
+            }
+        });
+        QObject::connect(notify, &OrgKdeKDirNotifyInterface::FilesRemoved, this, [inFolder, parentOf](const QStringList &files) {
+            for (const QString &file : files) {
+                inFolder(parentOf(file));
+            }
+        });
+        QObject::connect(notify, &OrgKdeKDirNotifyInterface::FilesChanged, this, [inFolder, parentOf](const QStringList &files) {
+            for (const QString &file : files) {
+                inFolder(parentOf(file));
+            }
+        });
+        auto moved = [inFolder, parentOf](const QString &src, const QString &dst) {
+            inFolder(parentOf(src));
+            inFolder(parentOf(dst));
+        };
+        QObject::connect(notify, &OrgKdeKDirNotifyInterface::FileRenamed, this, moved);
+        QObject::connect(notify, &OrgKdeKDirNotifyInterface::FileMoved, this, moved);
+        QObject::connect(notify, &OrgKdeKDirNotifyInterface::FileRenamedWithLocalPath, this, [moved](const QString &src, const QString &dst, const QString &) {
+            moved(src, dst);
+        });
+
         m_saveTimer.setSingleShot(true);
         m_saveTimer.setInterval(4000);
         QObject::connect(&m_saveTimer, &QTimer::timeout, this, [this] {
@@ -101,6 +152,40 @@ public:
                 it->timestamp = 1;
             }
         }
+    }
+
+    // something changed inside the folder at @p path: it and every folder above it are counted again, those on
+    // screen right away (the views are told after a short pause, so that a copy of many files asks once)
+    void changedInside(const QString &path, bool includingItself = true)
+    {
+        QString folder = path;
+        bool first = true;
+        while (!folder.isEmpty()) {
+            if (!first || includingItself) {
+                auto it = m_cache.find(folder);
+                if (it != m_cache.end() && it->timestamp != 1) {
+                    it->timestamp = 1;
+                    m_recheck.insert(folder);
+                }
+            }
+            first = false;
+            if (folder == QLatin1String("/")) {
+                break;
+            }
+            const QString parent = QFileInfo(folder).path();
+            if (parent == folder) {
+                break;
+            }
+            folder = parent;
+        }
+        if (!m_recheck.isEmpty()) {
+            m_recheckTimer.start();
+        }
+    }
+
+    void addView(KDirectoryContentsCounter *counter)
+    {
+        m_views.append(counter);
     }
 
 private:
@@ -175,6 +260,9 @@ private:
     QHash<QString, cacheData> m_cache;
     QTimer m_saveTimer;
     bool m_dirty = false;
+    QSet<QString> m_recheck; // folders to count again, for the views that show them
+    QTimer m_recheckTimer;
+    QList<QPointer<KDirectoryContentsCounter>> m_views;
 };
 
 /// cache of directory counting result
@@ -182,15 +270,21 @@ static LocalCache *s_cache;
 static QThread *s_workerThread;
 static KDirectoryContentsCounterWorker *s_worker;
 
-// dolphin-ng: whether a cached count must be made again: the folder changed since, it was counted with other options
-// or a while ago (a change deep inside does not touch the folder's own date)
+// dolphin-ng: whether a cached count is surely out of date: unknown, the folder changed since (or a change inside it
+// was reported), or it was counted with other options. Such a folder is counted first; any other one shown is
+// checked again too, quietly, behind them (a change deep inside does not touch the folder's own date)
 bool needsCount(const LocalCache::cacheData &data, const QFileInfo &info, bool hidden)
 {
     if (!data) {
         return true;
     }
-    return data.timestamp < info.fileTime(QFile::FileModificationTime).toMSecsSinceEpoch() || data.hidden != hidden
-        || QDateTime::currentMSecsSinceEpoch() - data.timestamp > LocalCache::kStale;
+    return data.timestamp < info.fileTime(QFile::FileModificationTime).toMSecsSinceEpoch() || data.hidden != hidden;
+}
+
+// counted less than a minute ago and nothing known changed since: going in and out of a folder does not count again
+bool countedJustNow(const LocalCache::cacheData &data, const QFileInfo &info, bool hidden)
+{
+    return !needsCount(data, info, hidden) && QDateTime::currentMSecsSinceEpoch() - data.timestamp < 60 * 1000;
 }
 }
 
@@ -206,11 +300,12 @@ KDirectoryContentsCounter::KDirectoryContentsCounter(KFileItemModel *model, QObj
     if (s_cache == nullptr) {
         s_cache = new LocalCache();
     }
+    s_cache->addView(this);
 
     if (!s_workerThread) {
         s_workerThread = new QThread();
         s_workerThread->setObjectName(QStringLiteral("KDirectoryContentsCounterThread"));
-        s_workerThread->start();
+        s_workerThread->start(QThread::LowPriority); // dolphin-ng: counting is background work
     }
 
     if (!s_worker) {
@@ -255,6 +350,10 @@ void KDirectoryContentsCounter::slotResult(const QString &path, int count, long 
     m_watchedDirs.insert(resolvedPath);
 
     // update cache or overwrite value; the numbers on screen change only if they differ
+    const LocalCache::cacheData before = s_cache->value(resolvedPath);
+    if (before && (before.count != count || before.size != size)) {
+        s_cache->changedInside(resolvedPath, false); // the folders above it hold it: their counts are out of date too
+    }
     LocalCache::cacheData data;
     data.count = count;
     data.size = size;
@@ -370,8 +469,8 @@ void KDirectoryContentsCounter::scheduleNext()
         }
     }
 
-    // if scanned recently and nothing changed since, skip rescan
-    if (!needsCount(pair, fileInfo, m_model->showHiddenFiles())) {
+    // counted a moment ago (by another view, say) and nothing changed since: skip
+    if (countedJustNow(pair, fileInfo, m_model->showHiddenFiles())) {
         scheduleNext();
         return;
     }
@@ -438,15 +537,26 @@ void KDirectoryContentsCounter::scanDirectory(const QString &path, PathCountPrio
         }
     }
 
-    // if scanned recently and nothing changed since, skip rescan
-    if (!needsCount(pair, fileInfo, m_model->showHiddenFiles())) {
+    // counted a moment ago and nothing changed since: nothing to do. Known to be out of date: counted first.
+    // Otherwise checked again quietly, after everything else; the numbers change only if they differ
+    const bool hidden = m_model->showHiddenFiles();
+    if (countedJustNow(pair, fileInfo, hidden)) {
         return;
     }
-
-    enqueuePathScanning(path, pair, priority);
+    enqueuePathScanning(path, pair, needsCount(pair, fileInfo, hidden) ? priority : PathCountPriority::Normal);
 
     if (!m_workerIsBusy && !s_worker->stopping()) {
         scheduleNext();
+    }
+}
+
+void KDirectoryContentsCounter::recheck(const QSet<QString> &paths)
+{
+    // the folders of this view among them are counted again (the cache already marked them out of date)
+    for (const QString &path : paths) {
+        if (m_model->index(QUrl::fromLocalFile(path)) >= 0) {
+            scanDirectory(path, PathCountPriority::High);
+        }
     }
 }
 

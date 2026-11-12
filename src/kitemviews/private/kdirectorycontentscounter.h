@@ -45,6 +45,9 @@ public:
      */
     void stopWorker();
 
+    /** dolphin-ng: the folders among @p paths (canonical) that this view shows are counted again. */
+    void recheck(const QSet<QString> &paths);
+
 Q_SIGNALS:
     /**
      * Signals that the directory \a path contains \a count items of size \a
