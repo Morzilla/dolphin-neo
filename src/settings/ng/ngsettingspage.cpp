@@ -229,6 +229,13 @@ void ngMiniRow(QPainter &painter, const QRectF &row, const QString &background, 
         markRect = head;
     } else if (mark == QLatin1String("signs")) {
         ngGlyph(painter, markRect.adjusted(1, 1, -1, -1), kind, 1.4);
+    } else if (mark == QLatin1String("object") || mark.isEmpty()) {
+        const QRectF page(markRect.left(), row.top() + 2, side + 4, row.height() - 2);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(236, 238, 241));
+        painter.drawRoundedRect(page, 2, 2);
+        ngBar(painter, QRectF(page.left() + 2, page.top() + 2, page.width() * 0.6, 2.5), kind);
+        markRect = page;
     } else { // watermark
         painter.setPen(Qt::NoPen);
         painter.setBrush(ngWithAlpha(kind, 0.42));
@@ -376,6 +383,18 @@ void ngDrawChoice(QPainter &painter, const QRectF &rect, const QString &key, con
         } else if (id == QLatin1String("signs")) {
             ngGlyph(painter, QRectF(in.left() + 6, in.center().y() - 8, 16, 16), kind, 1.8);
             ngLetters(painter, QRectF(in.left() + 28, in.top(), 60, in.height()), QStringLiteral("PDF"), kind, 13, Qt::AlignLeft | Qt::AlignVCenter);
+        } else if (id == QLatin1String("object")) {
+            // a small page with its type as the title and its size at the foot, as drawn on the cards
+            const QRectF page(in.center().x() - 24, in.top() + 4, 48, in.height() + 6);
+            painter.save();
+            painter.setClipRect(rect);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(236, 238, 241));
+            painter.drawRoundedRect(page, 3, 3);
+            ngLetters(painter, QRectF(page.left() + 5, page.top() + 2, 40, 16), QStringLiteral("PDF"), kind, 11, Qt::AlignLeft | Qt::AlignVCenter);
+            ngBar(painter, QRectF(page.left() + 5, page.top() + 21, 34, 3), QColor(190, 195, 202));
+            ngBar(painter, QRectF(page.left() + 5, page.top() + 27, 26, 3), QColor(190, 195, 202));
+            painter.restore();
         } else {
             ngLetters(painter, in, QStringLiteral("PDF"), ngWithAlpha(kind, 0.4), in.height() * 0.8, Qt::AlignLeft | Qt::AlignVCenter);
         }
@@ -1122,13 +1141,13 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     tilesFor(m_rows, QStringLiteral("rows"), ngTr("Row background", "Sfondo delle righe"),
              {{ngTr("Cards", "Schede"), {}}, {ngTr("Open", "Aperte"), {}}, {ngTr("Line", "Filo"), {}}, {ngTr("Stripes", "Strisce"), {}}, {ngTr("None", "Nessuno"), {}}}, 5);
     m_mark = new QComboBox(this);
-    for (const char *id : {"", "tile", "pill", "signs", "header"}) {
+    for (const char *id : {"object", "watermark", "tile", "pill", "signs", "header"}) {
         m_mark->addItem(QString(), QString::fromLatin1(id));
     }
     tilesFor(m_mark, QStringLiteral("mark"), ngTr("File type mark", "Segno del tipo di file"),
-             {{ngTr("Watermark", "Filigrana"), {}}, {ngTr("Tile", "Tessera"), {}}, {ngTr("Pill", "Pillola"), {}}, {ngTr("Marks only", "Solo segni"), {}},
-              {ngTr("Header", "Testata"), {}}},
-             5);
+             {{ngTr("Drawing, as on the cards", "Disegno, come le tessere"), {}}, {ngTr("Watermark", "Filigrana"), {}}, {ngTr("Tile", "Tessera"), {}}, {ngTr("Pill", "Pillola"), {}},
+              {ngTr("Marks only", "Solo segni"), {}}, {ngTr("Header", "Testata"), {}}},
+             6);
     m_sigla = new QComboBox(this);
     for (const char *id : {"fill", "outline", "label"}) {
         m_sigla->addItem(QString(), QString::fromLatin1(id));

@@ -227,6 +227,7 @@ private:
     bool ngOwnSelection() const override;
     qreal ngSelectionRadius() const override;
     bool ngRingSelection() const override;
+    qreal ngBlockInset() const override;
     bool ngNoHover() const override;
     void paintNgCard(QPainter *painter, QWidget *widget);
     void paintNgActivity(QPainter *painter); // work in progress on this file (NgActivity): a ring on cards, a fill on rows
@@ -234,7 +235,7 @@ private:
     void paintNgFold(QPainter *painter);
     /** dolphin-ng: a pushpin on an item pinned to the top of the folder */
     void paintNgPin(QPainter *painter); // CARDS_BADGE=fold: the folded glass corner with the type and size
-    void paintNgPreviewObject(QPainter *painter); // CARDS_BADGE=inside: a real preview as a print, a page or a film frame
+    void paintNgPreviewObject(QPainter *painter, const QRectF &band, const QPixmap &pixmap);
     qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
                              const QList<int> &origin = {});
     void paintNgActionPill(QPainter *painter, const QColor &text, bool dark);
@@ -382,6 +383,9 @@ private:
     bool m_ngCardHoverPill = false; // Tessera: the pill (everything but the main action) shows only while hovered
     QList<int> m_ngCardActionIndex; // one per entry of m_ngCardActions: which quick action of the file it is
     QRectF m_ngRowThumb; // two-line rows: where the small preview is drawn (empty: the type mark is shown)
+    bool m_ngObjectRow = false; // two-line rows drawn like the cards (MARK=object, the default)
+    QRectF m_ngRowObject; // ... where the drawing of the file is
+    int m_ngRowCount = -1; // ... the item count of a folder, for its drawing
     QPixmap m_ngRowThumbPixmap;
     qint64 m_ngRowThumbKey = 0;
     QList<NgChip> m_ngCardActions; // quick actions of the file's kind, see ngQuickActionsFor(); clicked through ngActionAt() (10 + n)

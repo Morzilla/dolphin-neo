@@ -1759,7 +1759,8 @@ static QPainterPath ngRoundedOutline(const QPainterPath &area, qreal radius)
 
 QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal *alpha) const
 {
-    const QRectF own(pos(), size());
+    const qreal inset = ngBlockInset();
+    const QRectF own = QRectF(pos(), size()).adjusted(inset, inset, -inset, -inset);
     QList<QRectF> cards{own};
     QList<qreal> progress{qMax<qreal>(m_ngSelProgress, 0.001)};
     if (QGraphicsItem *container = parentItem()) {
@@ -1767,7 +1768,8 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal 
         for (QGraphicsItem *item : siblings) {
             auto *other = dynamic_cast<KItemListWidget *>(item);
             if (other && other != this && other->isVisible() && other->ngSelectionProgress() > 0.001) {
-                cards.append(QRectF(other->pos(), other->size()));
+                const qreal otherInset = other->ngBlockInset();
+                cards.append(QRectF(other->pos(), other->size()).adjusted(otherInset, otherInset, -otherInset, -otherInset));
                 progress.append(other->ngSelectionProgress());
             }
         }

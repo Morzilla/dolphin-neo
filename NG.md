@@ -120,10 +120,14 @@ The interface of Dolphin NG is in English, and in Italian on an Italian desktop.
 **Details view**
 - Each item takes two lines: the name, then the other visible columns joined; the date sits at the right edge.
   There is no column header, and rows never get wider than the window.
-- No icons. The file type is a large, faint abbreviation at the start of the row, next to a faint type icon,
-  and the row is washed with the main colour of that icon. Four other type marks pair a line glyph with the
-  abbreviation (tile, pill, bare signs, coloured header).
-- The size has its own column with a bar on a logarithmic scale (1 KiB to 10 GiB).
+- No icons. By default each row is drawn like a card: at its start the card's drawing of the file, small, with
+  the type and size written in it (the folder with its item count, the page with its title, a picture as a
+  print, a video on film); the second line says the kind in words, the end of the row the creation and
+  modification dates. The quick actions come on hover, the selection is the cards' ring (rows selected next to
+  each other share one outline, with a check), and work in progress, families, the pin and cut files look as
+  on the cards. The settings keep the older type marks: a large faint abbreviation (watermark), or a line glyph
+  with the abbreviation (tile, pill, bare signs, coloured header).
+- With the older marks the size has its own column with a bar on a logarithmic scale (1 KiB to 10 GiB).
 - Hovering a row replaces the date with three buttons: open, preview, and the full context menu.
 - The preview is a card under the row: the first lines of text files, the first entries of folders, a thumbnail
   for the rest. Pictures and the first page of PDFs can be zoomed with the wheel and dragged.

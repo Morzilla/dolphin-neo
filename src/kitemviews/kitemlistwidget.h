@@ -462,6 +462,8 @@ protected:
     virtual qreal ngSelectionRadius() const;
     /** dolphin-ng: the selection is a ring set off around the item, with a check (cards), not a tinted fill */
     virtual bool ngRingSelection() const;
+    /** dolphin-ng: how far inside the item its selection ring sits (rows: their card is inset) */
+    virtual qreal ngBlockInset() const { return 0; }
     /** dolphin-ng: no hover look (a file at work, or one of a family: the bubble and the progress say enough) */
     virtual bool ngNoHover() const;
     /** dolphin-ng: the check of a ring selection, drawn by the item over its content */
