@@ -460,21 +460,21 @@ void ngDrawChoice(QPainter &painter, const QRectF &rect, const QString &key, con
             painter.drawRoundedRect(QRectF(rect.left() + 38, picture.bottom() + 15, 32, 10), 5, 5);
             return;
         }
-        // a picture with the badge at its bottom right
+        // a picture with the badge at its bottom right (in the middle for "center")
         painter.fillRect(rect, ngPictureBrush(rect));
-        const QRectF pill(rect.right() - 62, rect.bottom() - 26, 54, 18);
+        const QRectF pill(id == QLatin1String("center") ? rect.center().x() - 27 : rect.right() - 62, rect.bottom() - 26, 54, 18);
         QPainterPath shape;
         shape.addRoundedRect(pill, 9, 9);
         painter.save();
         painter.setClipPath(shape, Qt::IntersectClip);
-        if (id == QLatin1String("glass")) {
+        if ((id == QLatin1String("glass") || id == QLatin1String("center"))) {
             painter.fillRect(pill, QColor(255, 255, 255, 70));
         } else {
             painter.fillRect(pill, QColor(14, 15, 18, 240));
             painter.fillRect(QRectF(pill.left(), pill.top(), 26, pill.height()), kindPdf);
         }
         painter.restore();
-        if (id == QLatin1String("glass")) {
+        if ((id == QLatin1String("glass") || id == QLatin1String("center"))) {
             painter.setPen(QPen(QColor(255, 255, 255, 130), 1));
             painter.setBrush(Qt::NoBrush);
             painter.drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), 9, 9);
@@ -482,7 +482,7 @@ void ngDrawChoice(QPainter &painter, const QRectF &rect, const QString &key, con
             painter.setBrush(kindPdf);
             painter.drawEllipse(QPointF(pill.left() + 9, pill.center().y()), 3, 3);
         }
-        ngBar(painter, QRectF(pill.left() + (id == QLatin1String("glass") ? 16 : 7), pill.center().y() - 1.5, 12, 3), id == QLatin1String("glass") ? QColor(255, 255, 255) : QColor(20, 22, 26));
+        ngBar(painter, QRectF(pill.left() + ((id == QLatin1String("glass") || id == QLatin1String("center")) ? 16 : 7), pill.center().y() - 1.5, 12, 3), (id == QLatin1String("glass") || id == QLatin1String("center")) ? QColor(255, 255, 255) : QColor(20, 22, 26));
         ngBar(painter, QRectF(pill.left() + 33, pill.center().y() - 1.5, 14, 3), QColor(255, 255, 255, 220));
     } else if (key == QLatin1String("quickside")) {
         const QPointF cursor(in.center().x(), in.center().y() + 4);
@@ -1152,9 +1152,11 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_cardsBadge->addItem(QString(), QStringLiteral("glass"));
     m_cardsBadge->addItem(QString(), QStringLiteral("row"));
     m_cardsBadge->addItem(QString(), QStringLiteral("fold"));
+    m_cardsBadge->addItem(QString(), QStringLiteral("center"));
     tilesFor(m_cardsBadge, QStringLiteral("badge"), ngTr("Type and size (Tessera)", "Tipo e dimensione (Tessera)"),
              {{ngTr("Solid badge", "Etichetta piena"), {}}, {ngTr("Glass badge", "Etichetta di vetro"), {}}, {ngTr("A row of their own", "Riga separata"), {}},
-              {ngTr("Folded corner", "Angolo piegato"), ngTr("In glass; larger for heavier files", "In vetro; più grande per i file pesanti")}}, 5);
+              {ngTr("Folded corner", "Angolo piegato"), ngTr("In glass; larger for heavier files", "In vetro; più grande per i file pesanti")},
+              {ngTr("Pill in the middle", "Pillola centrale"), ngTr("Glass, flat, at the foot of the picture", "Vetro piatto, in basso al centro")}}, 5);
     m_activitySize = new QComboBox(this);
     m_activitySize->addItem(QString(), QStringLiteral("small"));
     m_activitySize->addItem(QString(), QString());

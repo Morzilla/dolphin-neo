@@ -3586,12 +3586,16 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
                 for (int i = first; i < m_ngChips.count(); ++i) {
                     NgChip &chip = m_ngChips[i];
                     // (the type is bold; the glass badge has a dot of the type colour before it)
-                    const bool glassBadge = ngSetting("CARDS_BADGE").toLower() == QLatin1String("glass");
+                    const QString badgeStyle = ngSetting("CARDS_BADGE").toLower();
+                    const bool glassBadge = badgeStyle == QLatin1String("glass") || badgeStyle == QLatin1String("center");
                     const qreal width = chipFm.horizontalAdvance(chip.text) * (chip.tinted ? 1.12 : 1.0) + 19 + (glassBadge && chip.tinted ? 11 : 0);
                     chip.rect = QRectF(next, m_ngCardThumb.bottom() - 8 - badgeHeight, width, badgeHeight);
                     next = chip.rect.right();
                 }
-                const qreal shift = card.right() - 8 - m_ngChips.constLast().rect.right();
+                // at the bottom right; CARDS_BADGE=center: in the middle of the band's foot
+                const qreal shift = ngSetting("CARDS_BADGE").toLower() == QLatin1String("center")
+                    ? qRound(m_ngCardThumb.center().x() - (m_ngChips.at(first).rect.left() + m_ngChips.constLast().rect.right()) / 2.0)
+                    : card.right() - 8 - m_ngChips.constLast().rect.right();
                 for (int i = first; i < m_ngChips.count(); ++i) {
                     m_ngChips[i].rect.translate(shift, 0);
                 }
@@ -4442,14 +4446,17 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                 }
             }
         }
-        const bool glass = ngSetting("CARDS_BADGE").toLower() == QLatin1String("glass");
+        const QString badgeStyle = ngSetting("CARDS_BADGE").toLower();
+        // CARDS_BADGE=center: the glass badge in the middle, flatter (no shadow, a fainter edge): part of the picture
+        const bool flat = badgeStyle == QLatin1String("center");
+        const bool glass = badgeStyle == QLatin1String("glass") || flat;
         if (!badge.isNull()) {
             const qreal radius = badge.height() / 2.0;
             QPainterPath shape;
             shape.addRoundedRect(badge, radius, radius);
             painter->save();
             painter->setPen(Qt::NoPen);
-            for (int i = 3; i >= 1; --i) { // a soft shadow under it, so that it lifts off a picture
+            for (int i = 3; i >= 1 && !flat; --i) { // a soft shadow under it, so that it lifts off a picture
                 painter->setBrush(QColor(0, 0, 0, 26));
                 painter->drawRoundedRect(badge.translated(0, 1.5).adjusted(-i, -i + 1, i, i), radius + i, radius + i);
             }
@@ -4469,8 +4476,8 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                         m_ngBadgeGlassShade = lightness > 190 ? 150 : lightness > 130 ? 115 : 70;
                     }
                     painter->drawPixmap(badge, m_ngBadgeGlass, QRectF(m_ngBadgeGlass.rect()));
-                    painter->fillRect(badge, QColor(0, 0, 0, m_ngBadgeGlassShade));
-                    painter->fillRect(badge, QColor(255, 255, 255, 40));
+                    painter->fillRect(badge, QColor(0, 0, 0, flat ? m_ngBadgeGlassShade * 3 / 4 : m_ngBadgeGlassShade));
+                    painter->fillRect(badge, QColor(255, 255, 255, flat ? 22 : 40));
                 } else {
                     painter->fillRect(badge, QColor(20, 22, 26, 150));
                 }
@@ -4484,7 +4491,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             }
             painter->restore();
             if (glass) {
-                painter->setPen(QPen(QColor(255, 255, 255, 96), 1));
+                painter->setPen(QPen(QColor(255, 255, 255, flat ? 34 : 96), 1));
                 painter->setBrush(Qt::NoBrush);
                 painter->drawRoundedRect(badge.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
             }
