@@ -2421,17 +2421,18 @@ bool KFileItemModel::lessThan(const ItemData *a, const ItemData *b, const QColla
         }
     }
 
-    // dolphin-ng: a file tied to another one (made from it) sorts as its parent, right after it
+    // dolphin-ng: a file tied to another one (made from it) sorts as its parent, right before it: the new file is
+    // the newest, so sorted by date it stays on that side when the tie is gone and the view is sorted again
     if (!m_ngParents.isEmpty()) {
         const ItemData *parentA = m_ngParents.value(a), *parentB = m_ngParents.value(b);
         if (parentA || parentB) {
             const ItemData *keyA = parentA ? parentA : a, *keyB = parentB ? parentB : b;
             if (keyA == keyB) {
                 if (!parentA) {
-                    return true; // a is the parent of b
+                    return false; // a is the parent of b: b goes first
                 }
                 if (!parentB) {
-                    return false;
+                    return true;
                 }
                 return a->item.name() < b->item.name(); // two children of one parent
             }
