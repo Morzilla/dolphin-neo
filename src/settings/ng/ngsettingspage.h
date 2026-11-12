@@ -93,6 +93,8 @@ private:
     QSpinBox *m_hoverDelay;
     QCheckBox *m_float;
     QCheckBox *m_dialogQuick; // Dialog NG (the open/save window of every application): its own quick preview
+    QSpinBox *m_dialogDelay;
+    QComboBox *m_dialogSize; // small | medium | large
     // icons view
     QCheckBox *m_tiles;
     // cards view

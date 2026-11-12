@@ -1291,6 +1291,22 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     heading(ngTr("Open/Save window (Dialog NG)", "Finestra Apri/Salva (Dialog NG)"));
     note(ngTr("The file window of every application, when Dialog NG is installed.", "La finestra dei file di tutte le applicazioni, se Dialog NG è installato."));
     m_dialogQuick = toggle(ngTr("On in the Open/Save window", "Attiva nella finestra Apri/Salva"));
+    startForm();
+    m_dialogDelay = new QSpinBox(this);
+    m_dialogDelay->setRange(0, 3000);
+    m_dialogDelay->setSingleStep(50);
+    m_dialogDelay->setSuffix(QStringLiteral(" ms"));
+    m_dialogDelay->setSpecialValueText(ngTr("At once", "Subito"));
+    formRow(ngTr("After:", "Dopo:"), m_dialogDelay);
+    m_dialogSize = new QComboBox(this);
+    m_dialogSize->addItem(ngTr("Small", "Piccola"), QStringLiteral("small"));
+    m_dialogSize->addItem(ngTr("Medium", "Media"), QStringLiteral("medium"));
+    m_dialogSize->addItem(ngTr("Large", "Grande"), QStringLiteral("large"));
+    formRow(ngTr("Size:", "Dimensione:"), m_dialogSize);
+    connect(m_dialogQuick, &QCheckBox::toggled, m_dialogDelay, &QWidget::setEnabled);
+    connect(m_dialogQuick, &QCheckBox::toggled, m_dialogSize, &QWidget::setEnabled);
+    connect(m_dialogDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
+    connect(m_dialogSize, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     page->addStretch();
 
     connect(tabGroup, &QButtonGroup::idClicked, this, [this](int index) {
@@ -1501,7 +1517,14 @@ void NgSettingsPage::loadSettings()
     m_hoverPreview->setChecked(hover > 0);
     m_hoverDelay->setValue(hover > 0 ? qBound(100, hover, 5000) : 700);
     m_float->setChecked(ngSetting("PREVIEW_FLOAT") == QLatin1String("1"));
-    m_dialogQuick->setChecked(KConfigGroup(KSharedConfig::openConfig(QStringLiteral("dialog-ngrc")), QStringLiteral("View")).readEntry("QuickPreview", true));
+    {
+        const KConfigGroup dialog(KSharedConfig::openConfig(QStringLiteral("dialog-ngrc")), QStringLiteral("View"));
+        m_dialogQuick->setChecked(dialog.readEntry("QuickPreview", true));
+        m_dialogDelay->setValue(qBound(0, dialog.readEntry("QuickDelay", 0), 3000));
+        m_dialogSize->setCurrentIndex(qMax(0, m_dialogSize->findData(dialog.readEntry("QuickSize", QStringLiteral("medium")))));
+        m_dialogDelay->setEnabled(m_dialogQuick->isChecked());
+        m_dialogSize->setEnabled(m_dialogQuick->isChecked());
+    }
     m_tiles->setChecked(ngSetting("TILES").toLower() != QLatin1String("off"));
     static const char *const looks[] = {"a", "b", "c"};
     m_cards->setCurrentIndex(int(ngCardStyle()));
@@ -1580,6 +1603,8 @@ void NgSettingsPage::applySettings()
     {
         KConfigGroup dialog(KSharedConfig::openConfig(QStringLiteral("dialog-ngrc")), QStringLiteral("View"));
         dialog.writeEntry("QuickPreview", m_dialogQuick->isChecked());
+        dialog.writeEntry("QuickDelay", m_dialogDelay->value());
+        dialog.writeEntry("QuickSize", m_dialogSize->currentData().toString());
         dialog.sync();
     }
     setNgSetting("PREVIEW_HOVER", m_hoverPreview->isChecked() ? QString::number(m_hoverDelay->value()) : QString());
@@ -1625,6 +1650,8 @@ void NgSettingsPage::restoreDefaults()
     m_hoverDelay->setValue(700);
     m_float->setChecked(false);
     m_dialogQuick->setChecked(true);
+    m_dialogDelay->setValue(0);
+    m_dialogSize->setCurrentIndex(1);
     m_folderSizes->setChecked(false);
     m_tiles->setChecked(true);
     m_sidebarFilters->setChecked(true);
