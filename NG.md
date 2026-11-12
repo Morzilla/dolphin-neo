@@ -92,6 +92,8 @@ section can be switched off on the NG settings page (Sidebar → Sections). The 
 (`PinnedPaths`) and fills itself whenever a folder shows a pinned item, so a pinned file that was moved comes
 back once its new folder is opened.
 
+![Two pinned items at the top of their folder, and the Pinned section of the sidebar](ng/screenshots/features/pinned.png)
+
 ## Settings
 
 Everything is a setting, on a graphical page: tabs, a tile with a drawing of each choice, switches, and a sketch of

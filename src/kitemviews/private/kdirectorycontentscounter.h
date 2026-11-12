@@ -10,6 +10,7 @@
 
 #include "kdirectorycontentscounterworker.h"
 
+#include <QHash>
 #include <QSet>
 
 class KDirWatch;
@@ -63,6 +64,7 @@ private Q_SLOTS:
     void scheduleNext();
 
 private:
+    void showResult(const QString &path, int count, long long size, bool queued = false);
     void enqueuePathScanning(const QString &path, bool alreadyInCache, PathCountPriority priority);
 
     KFileItemModel *m_model;
@@ -77,6 +79,8 @@ private:
     QSet<QString> m_watchedDirs; // Required as sadly KDirWatch does not offer a getter method
                                  // to get all watched directories.
     QString m_currentPath;
+    QHash<QString, std::pair<int, long long>> m_shown; // dolphin-ng: what this view was told, per folder
+    QHash<QString, qint64> m_pendingNewest; // dolphin-ng: the newest modification of a count, until its result
 };
 
 #endif
