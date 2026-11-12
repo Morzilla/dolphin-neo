@@ -97,7 +97,9 @@ back once its new folder is opened.
 In a grouped view they have a group of their own, **Pinned**, before the others; in the sidebar, two pinned items
 with the same name show the folder each is in.
 
-![Grouped by date modified: the Pinned group first](ng/screenshots/features/pinned-groups.png)
+| Tessera | Scheda |
+|---|---|
+| ![Grouped by date modified, Tessera cards: the Pinned group first](ng/screenshots/features/pinned-groups.png) | ![Grouped by date modified, Scheda cards: the Pinned group first](ng/screenshots/features/pinned-groups-scheda.png) |
 
 ## Settings
 
