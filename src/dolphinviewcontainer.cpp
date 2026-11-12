@@ -56,6 +56,7 @@
 #include <QActionGroup>
 #include <functional>
 #include <QPointer>
+#include <QResizeEvent>
 #include <QMouseEvent>
 #include <QMenu>
 #include <QToolButton>
@@ -189,6 +190,10 @@ private:
             int lineHeight = 0;
             int last = i;
             while (last < m_items.size()) {
+                if (m_items.at(last)->isEmpty()) {
+                    ++last; // a hidden widget: no room, no spacing
+                    continue;
+                }
                 const QSize hint = m_items.at(last)->sizeHint();
                 if (last > i && x + hint.width() > area.right() + 1) {
                     break;
@@ -200,6 +205,9 @@ private:
             if (!testOnly) {
                 x = area.x();
                 for (int k = i; k < last; ++k) {
+                    if (m_items.at(k)->isEmpty()) {
+                        continue;
+                    }
                     const QSize hint = m_items.at(k)->sizeHint();
                     m_items.at(k)->setGeometry(QRect(x, y + (lineHeight - hint.height()) / 2, hint.width(), hint.height()));
                     x += hint.width() + m_hSpacing;
@@ -537,6 +545,12 @@ public:
     }
 
 protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QWidget::resizeEvent(event);
+        fitSorting();
+    }
+
     void changeEvent(QEvent *event) override
     {
         QWidget::changeEvent(event);
@@ -682,6 +696,41 @@ public:
         alignLeading();
     }
 
+    // The sorting as a pill when everything fits on one line, else as one button with a menu
+    void fitSorting()
+    {
+        if (!m_sortPill || !m_sortCompact) {
+            return;
+        }
+        const QMargins margins = layout()->contentsMargins();
+        int room = width() - margins.left() - margins.right() - 210 - layout()->spacing();
+        if (m_leading->isVisible()) {
+            room -= m_leading->sizeHint().width() + layout()->spacing();
+        }
+        int needed = 0;
+        for (int i = 0; i < m_flow->count(); ++i) {
+            QWidget *widget = m_flow->itemAt(i)->widget();
+            if (!widget || widget == m_sortCompact) {
+                continue;
+            }
+            needed += widget->sizeHint().width() + 4;
+        }
+        const bool compact = needed > room;
+        // when narrow, the groups also sit closer and the search box is shorter
+        for (const QPointer<QWidget> &gap : std::as_const(m_gaps)) {
+            if (gap) {
+                gap->setFixedWidth(compact ? 6 : 22);
+            }
+        }
+        m_filter->setFixedWidth(compact ? 150 : 210);
+        m_sortPill->setVisible(!compact);
+        if (m_sortCaption) {
+            m_sortCaption->setVisible(!compact);
+        }
+        m_sortCompact->setVisible(compact);
+        m_flow->invalidate();
+    }
+
     // the buttons are shorter than the pill of the sorting beside them: centred on the first line of the bar
     void alignLeading()
     {
@@ -710,8 +759,13 @@ private:
         if (onFiltersChanged) {
             onFiltersChanged(); // the sidebar section mirrors the filters
         }
+        m_sortPill = nullptr;
+        m_sortCaption = nullptr;
+        m_sortCompact = nullptr;
+        m_gaps.clear();
         QTimer::singleShot(0, this, [this] {
             alignLeading();
+            fitSorting();
         });
         if (!m_view) {
             m_flow->invalidate();
@@ -721,6 +775,7 @@ private:
 
         // ---- sorting
         caption(i18nc("@action:inmenu View", "Sort By"));
+        m_sortCaption = m_flow->itemAt(m_flow->count() - 1)->widget();
         QList<QByteArray> roles = m_view->visibleRoles();
         roles.removeAll("text");
         roles.prepend("text");
@@ -766,6 +821,59 @@ private:
             });
         }
 
+        m_sortPill = pill;
+        {
+            // when the window is narrow the pill gives way to one button with the same choices in a menu
+            // (see fitSorting); the current one and the direction are in its label
+            QString current = QString::fromLatin1(sortRole);
+            for (const KFileItemModel::RoleInfo &info : rolesInfo) {
+                if (info.role == sortRole) {
+                    current = info.translation;
+                }
+            }
+            const bool ascending = m_view->sortOrder() == Qt::AscendingOrder;
+            auto *compact = new QToolButton(this);
+            compact->setAutoRaise(true);
+            compact->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+            compact->setIcon(QIcon::fromTheme(ascending ? QStringLiteral("view-sort-ascending") : QStringLiteral("view-sort-descending")));
+            compact->setText(ngTr("Sort: %1", "Ordina: %1").arg(current));
+            compact->setPopupMode(QToolButton::InstantPopup);
+            auto *menu = new QMenu(compact);
+            auto *byGroup = new QActionGroup(menu);
+            for (const QByteArray &role : std::as_const(roles)) {
+                QString text = QString::fromLatin1(role);
+                for (const KFileItemModel::RoleInfo &info : rolesInfo) {
+                    if (info.role == role) {
+                        text = info.translation;
+                    }
+                }
+                QAction *action = menu->addAction(text);
+                action->setCheckable(true);
+                action->setChecked(role == sortRole);
+                byGroup->addAction(action);
+                connect(action, &QAction::triggered, this, [this, role] {
+                    m_view->setSortRole(role);
+                });
+            }
+            menu->addSeparator();
+            auto *orderGroup = new QActionGroup(menu);
+            const std::pair<QString, Qt::SortOrder> orders[] = {{ngTr("Ascending", "Crescente"), Qt::AscendingOrder}, {ngTr("Descending", "Decrescente"), Qt::DescendingOrder}};
+            for (const auto &[text, order] : orders) {
+                QAction *action = menu->addAction(QIcon::fromTheme(order == Qt::AscendingOrder ? QStringLiteral("view-sort-ascending") : QStringLiteral("view-sort-descending")), text);
+                action->setCheckable(true);
+                action->setChecked(m_view->sortOrder() == order);
+                orderGroup->addAction(action);
+                const Qt::SortOrder chosen = order;
+                connect(action, &QAction::triggered, this, [this, chosen] {
+                    m_view->setSortOrder(chosen);
+                });
+            }
+            compact->setMenu(menu);
+            menuButton(compact);
+            compact->hide(); // until fitSorting() decides
+            m_flow->addWidget(compact);
+            m_sortCompact = compact;
+        }
         {
             // fully rounded ends: the radius is half the height (a larger one would switch the rounding off)
             const QString ink = ngIsDark(palette()) ? QStringLiteral("255, 255, 255") : QStringLiteral("0, 0, 0");
@@ -782,6 +890,7 @@ private:
             auto *spacer = new QWidget(this);
             spacer->setFixedWidth(22);
             m_flow->addWidget(spacer);
+            m_gaps.append(spacer);
             const bool cardsOn = m_view->viewMode() == DolphinView::CardsView;
             static const char *const looks[] = {"Tessera", "Scheda", "Dossier"};
             auto *cards = new QToolButton(this);
@@ -846,6 +955,7 @@ private:
         auto *gap = new QWidget(this);
         gap->setFixedWidth(22);
         m_flow->addWidget(gap);
+        m_gaps.append(gap);
 
         // one button that opens a menu with the filters; its label says which one is active
         auto *button = new QToolButton(this);
@@ -952,6 +1062,8 @@ private:
     QWidget *m_leading;
     QHBoxLayout *m_leadingLayout = nullptr;
     NgFlowLayout *m_flow;
+    QPointer<QWidget> m_sortPill, m_sortCaption, m_sortCompact; // the sorting as a pill, or as one button when narrow
+    QList<QPointer<QWidget>> m_gaps; // the spaces between the groups of the bar (narrower when the bar is)
     DolphinView::Mode m_modeBeforeCards = DolphinView::DetailsView; // the cards button goes back to this
     QLineEdit *m_filter;
     int m_active = All;
