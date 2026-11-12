@@ -1666,10 +1666,19 @@ static QPainterPath ngRoundedOutline(const QPainterPath &area, qreal radius)
         if (n < 3) {
             continue;
         }
+        // which way the outline turns: the outer (convex) corners get the full radius, the inner (concave) ones
+        // a small one, so their curve stays out of the gaps that no card of the block draws
+        qreal area2 = 0;
+        for (int i = 0; i < n; ++i) {
+            const QPointF p = corners.at(i), q = corners.at((i + 1) % n);
+            area2 += p.x() * q.y() - q.x() * p.y();
+        }
         for (int i = 0; i < n; ++i) {
             const QPointF a = corners.at((i + n - 1) % n), p = corners.at(i), b = corners.at((i + 1) % n);
             const qreal la = QLineF(p, a).length(), lb = QLineF(p, b).length();
-            const qreal r = qMin(radius, qMin(la, lb) / 2.0);
+            const qreal turn = (p.x() - a.x()) * (b.y() - p.y()) - (p.y() - a.y()) * (b.x() - p.x());
+            const bool convex = (turn > 0) == (area2 > 0);
+            const qreal r = qMin(convex ? radius : qMin<qreal>(radius, 3.0), qMin(la, lb) / 2.0);
             const QPointF from = p + (a - p) * (r / la), to = p + (b - p) * (r / lb);
             if (i == 0) {
                 rounded.moveTo(from);
