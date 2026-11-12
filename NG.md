@@ -94,6 +94,11 @@ back once its new folder is opened.
 
 ![Two pinned items at the top of their folder, and the Pinned section of the sidebar](ng/screenshots/features/pinned.png)
 
+In a grouped view they have a group of their own, **Pinned**, before the others; in the sidebar, two pinned items
+with the same name show the folder each is in.
+
+![Grouped by date modified: the Pinned group first](ng/screenshots/features/pinned-groups.png)
+
 ## Settings
 
 Everything is a setting, on a graphical page: tabs, a tile with a drawing of each choice, switches, and a sketch of
