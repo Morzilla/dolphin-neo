@@ -59,6 +59,9 @@ private:
     QComboBox *m_backdrop;
     QComboBox *m_rim;
     QCheckBox *m_devices;
+    QWidget *m_deviceList; // one box per disk or partition: unticked, it is hidden (the places' own hiding)
+    QList<std::pair<QString, QCheckBox *>> m_deviceBoxes; // device udi, its box
+    void fillDevices();
     QCheckBox *m_sidebarFilters;
     QCheckBox *m_sidebarPinned;
     QCheckBox *m_folderContentDate;

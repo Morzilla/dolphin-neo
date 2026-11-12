@@ -94,7 +94,8 @@ private Q_SLOTS:
 private:
     void ngApplyPalette(); // dolphin-ng: glass highlight
     void ngPaintPills(); // dolphin-ng: glass pill under the selected / hovered entry
-    void ngApplyDevices(KFilePlacesModel *placesModel); // dolphin-ng: hide the Devices section unless asked
+    void ngApplyDevices(KFilePlacesModel *placesModel); // dolphin-ng: hide the Devices section when switched off
+    bool ngDevicesOff() const;
     QPalette m_ngPalette;
     void connectDeviceSignals(const QModelIndex &idx);
 

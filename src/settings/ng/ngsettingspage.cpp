@@ -6,6 +6,9 @@
 
 #include "kitemviews/kitemlistwidget.h"
 #include "dolphin_contentdisplaysettings.h"
+#include "dolphinplacesmodelsingleton.h"
+
+#include <Solid/Device>
 
 #include <KColorButton>
 #include <KConfigGroup>
@@ -1130,7 +1133,14 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     heading(ngTr("Sections", "Sezioni"));
     m_sidebarPinned = toggle(ngTr("Pinned folders and files", "Cartelle e file fissati in alto"));
     m_sidebarFilters = toggle(ngTr("Filters, at the bottom of the panel", "Filtri, in fondo al pannello"));
-    m_devices = toggle(ngTr("Devices (otherwise the disk box is shown)", "Dispositivi (altrimenti c'è il riquadro del disco)"));
+    m_devices = toggle(ngTr("Devices: disks and partitions", "Dispositivi: dischi e partizioni"));
+    m_deviceList = new QWidget(this);
+    {
+        auto *deviceLayout = new QVBoxLayout(m_deviceList);
+        deviceLayout->setContentsMargins(28, 0, 0, 4);
+        deviceLayout->setSpacing(2);
+    }
+    page->addWidget(m_deviceList);
     page->addStretch();
 
     // ================= Rows =================
@@ -1313,7 +1323,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     }
     connect(m_image, &KUrlRequester::textChanged, this, &NgSettingsPage::changed);
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_icons, m_hoverPreview}) {
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_icons, m_hoverPreview, m_devices}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::updateDependencies);
     }
     for (QComboBox *combo : {m_backdrop, m_lavaColours, m_mark}) {
@@ -1325,6 +1335,38 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
 }
 
 NgSettingsPage::~NgSettingsPage() = default;
+
+// the disks and partitions the places know, as boxes: unticking one hides it in the sidebar (and in the file dialogs,
+// as the places' own "Hide" does)
+void NgSettingsPage::fillDevices()
+{
+    for (const auto &entry : std::as_const(m_deviceBoxes)) {
+        delete entry.second;
+    }
+    m_deviceBoxes.clear();
+    KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel();
+    if (!places) {
+        return;
+    }
+    for (int row = 0; row < places->rowCount(); ++row) {
+        const QModelIndex index = places->index(row, 0);
+        const auto group = places->groupType(index);
+        if (group != KFilePlacesModel::DevicesType && group != KFilePlacesModel::RemovableDevicesType) {
+            continue;
+        }
+        const QString udi = places->deviceForIndex(index).udi();
+        if (udi.isEmpty()) {
+            continue;
+        }
+        auto *box = new QCheckBox(places->text(index), m_deviceList);
+        box->setIcon(places->icon(index));
+        box->setChecked(!places->isHidden(index));
+        connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
+        m_deviceList->layout()->addWidget(box);
+        m_deviceBoxes.append({udi, box});
+    }
+    m_deviceList->setVisible(!m_deviceBoxes.isEmpty());
+}
 
 void NgSettingsPage::showOption(QWidget *option, bool shown)
 {
@@ -1380,6 +1422,7 @@ void NgSettingsPage::updateDependencies()
     showOption(m_lavaSpeed, gradient || (picture && m_motion->isChecked()));
     showOption(m_rim, glass);
     showOption(m_devices, glass);
+    m_deviceList->setEnabled(!glass || m_devices->isChecked());
 
     const bool marks = !m_icons->isChecked();
     showOption(m_mark, marks);
@@ -1412,7 +1455,8 @@ void NgSettingsPage::loadSettings()
         const QString rim = ngSetting("GLASS_RIM").toLower();
         m_rim->setCurrentIndex(qMax(0, m_rim->findData(rim == QLatin1String("show") ? QStringLiteral("diagonal") : rim)));
     }
-    m_devices->setChecked(ngSetting("DEVICES").toLower() == QLatin1String("show"));
+    m_devices->setChecked(ngSetting("DEVICES").toLower() != QLatin1String("hide"));
+    fillDevices();
     m_sidebarFilters->setChecked(ngSetting("SIDEBAR_FILTERS").toLower() != QLatin1String("hide"));
     m_sidebarPinned->setChecked(ngSetting("SIDEBAR_PINNED").toLower() != QLatin1String("hide"));
     m_folderContentDate->setChecked(ngSetting("SORT_FOLDERS_BY_CONTENT").toLower() != QLatin1String("off"));
@@ -1475,7 +1519,20 @@ void NgSettingsPage::applySettings()
                  : colours == 1 ? QStringLiteral("wallpaper")
                                 : QStringLiteral("%1,%2,%3").arg(m_lavaColour[0]->color().name(), m_lavaColour[1]->color().name(), m_lavaColour[2]->color().name()));
     setNgSetting("GLASS_RIM", m_rim->currentData().toString());
-    setNgSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
+    setNgSetting("DEVICES", m_devices->isChecked() ? QString() : QStringLiteral("hide"));
+    if (KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel()) {
+        for (const auto &[udi, box] : std::as_const(m_deviceBoxes)) {
+            for (int row = 0; row < places->rowCount(); ++row) {
+                const QModelIndex index = places->index(row, 0);
+                if (places->deviceForIndex(index).udi() == udi) {
+                    if (places->isHidden(index) == box->isChecked()) {
+                        places->setPlaceHidden(index, !box->isChecked());
+                    }
+                    break;
+                }
+            }
+        }
+    }
     setNgSetting("SIDEBAR_FILTERS", m_sidebarFilters->isChecked() ? QString() : QStringLiteral("hide"));
     setNgSetting("SIDEBAR_PINNED", m_sidebarPinned->isChecked() ? QString() : QStringLiteral("hide"));
     setNgSetting("SORT_FOLDERS_BY_CONTENT", m_folderContentDate->isChecked() ? QString() : QStringLiteral("off"));
@@ -1524,7 +1581,10 @@ void NgSettingsPage::restoreDefaults()
     m_lavaSpeed->setValue(30);
     m_lavaColours->setCurrentIndex(0);
     m_rim->setCurrentIndex(0);
-    m_devices->setChecked(false);
+    m_devices->setChecked(true);
+    for (const auto &entry : std::as_const(m_deviceBoxes)) {
+        entry.second->setChecked(true);
+    }
     m_twoLines->setChecked(true);
     m_rows->setCurrentIndex(0);
     m_icons->setChecked(false);

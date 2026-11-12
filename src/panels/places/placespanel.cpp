@@ -99,8 +99,8 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     auto *placesModel = DolphinPlacesModelSingleton::instance().placesModel();
     setModel(placesModel);
 
-    // dolphin-ng: the disk usage box at the bottom of the card replaces the "Devices" section (internal disks);
-    // removable devices keep their own section. DOLPHIN_NG_DEVICES=show keeps the section.
+    // dolphin-ng: the "Devices" section (disks and partitions) can be switched off as a whole: NG settings, or
+    // DOLPHIN_NG_DEVICES=hide. Single disks are hidden as any place is (its "Hide" entry, or the NG settings).
     // KFilePlacesView decides row visibility itself on model changes, so hide the rows again right after it
     auto applyDevices = [this, placesModel] {
         QTimer::singleShot(0, this, [this, placesModel] {
@@ -113,6 +113,7 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     connect(placesModel, &QAbstractItemModel::modelReset, this, applyDevices);
     connect(placesModel, &KFilePlacesModel::groupHiddenChanged, this, applyDevices);
     connect(placesModel, &KFilePlacesModel::reloaded, this, applyDevices);
+    connect(this, &KFilePlacesView::allPlacesShownChanged, this, applyDevices);
     applyDevices();
     connect(NgSettings::instance(), &NgSettings::changed, this, [this, placesModel] {
         ngApplyPalette();
@@ -230,9 +231,14 @@ void PlacesPanel::ngApplyPalette()
     viewport()->setPalette(glass);
 }
 
+bool PlacesPanel::ngDevicesOff() const
+{
+    return ngSetting("DEVICES").toLower() == QLatin1String("hide") && ngSetting("SIDEBAR").toLower() != QLatin1String("plain") && !allPlacesShown();
+}
+
 void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
 {
-    const bool hide = ngSetting("DEVICES").toLower() != QLatin1String("show") && ngSetting("SIDEBAR").toLower() != QLatin1String("plain");
+    const bool hide = ngDevicesOff();
     for (int row = 0; row < placesModel->rowCount(); ++row) {
         const QModelIndex index = placesModel->index(row, 0);
         if (placesModel->groupType(index) != KFilePlacesModel::DevicesType) {
@@ -242,7 +248,7 @@ void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
             if (!isRowHidden(row)) {
                 setRowHidden(row, true);
             }
-        } else if (isRowHidden(row) && !placesModel->isHidden(index) && !placesModel->isGroupHidden(KFilePlacesModel::DevicesType)) {
+        } else if (isRowHidden(row) && (allPlacesShown() || (!placesModel->isHidden(index) && !placesModel->isGroupHidden(KFilePlacesModel::DevicesType)))) {
             setRowHidden(row, false);
         }
     }
@@ -255,7 +261,7 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
     const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
     // KFilePlacesView shows rows again on its own (delayed updates when devices are found, when the URL changes...):
     // whenever a device row that should be hidden is about to be painted, hide it again
-    if (!plain && ngSetting("DEVICES").toLower() != QLatin1String("show") && !m_ngDevicesPending) {
+    if (ngDevicesOff() && !m_ngDevicesPending) {
         if (auto *devicesModel = qobject_cast<KFilePlacesModel *>(model())) {
             for (int row = 0; row < devicesModel->rowCount(); ++row) {
                 if (!isRowHidden(row) && devicesModel->groupType(devicesModel->index(row, 0)) == KFilePlacesModel::DevicesType) {
