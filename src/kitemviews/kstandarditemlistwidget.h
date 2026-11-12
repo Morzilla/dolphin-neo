@@ -235,7 +235,7 @@ private:
     void paintNgFold(QPainter *painter);
     /** dolphin-ng: a pushpin on an item pinned to the top of the folder */
     void paintNgPin(QPainter *painter); // CARDS_BADGE=fold: the folded glass corner with the type and size
-    void paintNgPreviewObject(QPainter *painter, const QRectF &band, const QPixmap &pixmap);
+    void paintNgPreviewObject(QPainter *painter, const QRectF &band, const QPixmap &pixmap, bool whole = false);
     qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
                              const QList<int> &origin = {});
     void paintNgActionPill(QPainter *painter, const QColor &text, bool dark);
@@ -347,6 +347,7 @@ private:
     };
     QList<NgCardText> m_ngCardTexts;
     QRectF m_ngCardThumb; // the thumbnail band (Tessera) or the icon area
+    QRectF m_ngCardHeader; // Dossier: the header in the colour of the type
     qreal m_ngCardIconSide = 0; // side of the icon when the pixmap is not a preview
     bool m_ngCardPreview = false; // the pixmap is a preview, not the icon of the type
     bool m_ngCardWatermark = false; // the type is drawn as the background instead of the icon

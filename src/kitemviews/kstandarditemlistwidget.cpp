@@ -57,7 +57,7 @@ namespace
 // dolphin-ng: how the file type is marked at the start of a row (setting MARK).
 // Watermark is the faint icon and large abbreviation; the others pair a small line glyph with the abbreviation.
 void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, const QString &sigla, const QColor &tint, bool dark, int count = -1,
-                          const QString &sizeText = QString(), const QFont *font = nullptr, int special = 0);
+                          const QString &sizeText = QString(), const QFont *font = nullptr, int special = 0, bool whole = false);
 
 // dolphin-ng: the well-known folders of the home (xdg-user-dirs), recognised by where they are: 0 for any other
 // folder, else 1 desktop, 2 downloads, 3 documents, 4 pictures, 5 music, 6 videos, 7 templates, 8 public
@@ -927,7 +927,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
             painter->save();
             if (!preview.isNull()) {
                 m_ngRowThumb = band;
-                paintNgPreviewObject(painter, band, preview);
+                paintNgPreviewObject(painter, band, preview, false);
             } else {
                 ngPaintContentSketch(painter, band, m_ngCategory, m_ngSigla, m_ngTint, ngIsDark(styleOption().palette), m_ngRowCount, m_ngInfoSize, &m_customizedFont,
                                      m_ngCategory == int(NgKind::Folder) ? ngSpecialFolder(data().value("url").toUrl().toLocalFile()) : 0);
@@ -3161,7 +3161,7 @@ QList<QPixmap> ngFolderPictures(const QString &folder, const QStringList &names,
 // text, a table, lines of code, a waveform... The kind comes from the category of the file and, where the category
 // is too wide (audio or video, text or slides), from its extension.
 void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, const QString &sigla, const QColor &tint, bool dark, int count, const QString &sizeText,
-                          const QFont *font, int special)
+                          const QFont *font, int special, bool whole)
 {
     painter->setRenderHint(QPainter::Antialiasing);
     // CARDS_BADGE=inside: the type and the size are part of the drawing (printed on the box, the type as the page's
@@ -3176,6 +3176,11 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         f.setWeight(weight);
         if (weight >= QFont::Black) {
             f.setLetterSpacing(QFont::PercentageSpacing, 104);
+        }
+        // a word that does not fit shrinks (down to 70 %) before it is cut: "DOCX" on a narrow page stays whole
+        const qreal needed = QFontMetricsF(f).horizontalAdvance(t);
+        if (needed > r.width() && needed > 0) {
+            f.setPixelSize(qMax(7, int(px * qMax(0.6, 0.95 * r.width() / needed))));
         }
         painter->setFont(f);
         painter->setPen(colour);
@@ -3202,11 +3207,19 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
     };
     // a sheet of paper in the middle of the band, running off its bottom edge
     auto sheet = [&](qreal widthFactor) {
-        const qreal width = qMin(band.width() * widthFactor, band.height() * 2.1);
-        const QRectF page(band.center().x() - width / 2.0, band.top() + 12 * u, width, band.height());
+        const qreal width = qMin(band.width() * (whole ? qMin(1.0, widthFactor * 1.25) : widthFactor), band.height() * 2.1);
+        // whole (the Scheda): the page stands entire in the middle of its column; else it runs off the bottom of the band
+        const QRectF page = whole ? QRectF(band.center().x() - width / 2.0, band.top() + 6 * u, width, band.height() - 12 * u)
+                                  : QRectF(band.center().x() - width / 2.0, band.top() + 12 * u, width, band.height());
         painter->setPen(paperEdge.alpha() ? QPen(paperEdge, 1) : QPen(Qt::NoPen));
         painter->setBrush(paper);
         painter->drawRoundedRect(page, 5 * u, 5 * u);
+        if (whole) {
+            // what is drawn on the page stays on it (a table would run past its foot)
+            QPainterPath sheetClip;
+            sheetClip.addRoundedRect(page, 5 * u, 5 * u);
+            painter->setClipPath(sheetClip, Qt::IntersectClip);
+        }
         return page;
     };
 
@@ -3214,8 +3227,8 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         // a flat folder: a darker back whose tab slopes down into its top edge, a lighter front over nearly all of
         // it. The count and the size are written at the bottom left of the front, large; a well-known folder of the
         // home (Downloads, Documents...) carries its own colour (the tint) and a line glyph at the top right
-        const qreal width = qMin(band.width() * 0.68, 128 * u); // about 3 : 2, not wider
-        const qreal height = qMin(band.height() - 12 * u, width * 0.76);
+        const qreal width = whole ? qMin(band.width() * 0.92, (band.height() - 10 * u) / 0.76) : qMin(band.width() * 0.68, 128 * u); // about 3 : 2, not wider
+        const qreal height = qMin(band.height() - (whole ? 8 : 12) * u, width * 0.76);
         const QRectF body(band.center().x() - width / 2.0, band.center().y() - height / 2.0 + 2 * u, width, height);
         const qreal hue = tint.hslHueF() < 0 ? 0 : tint.hslHueF();
         const qreal sat = tint.hslHueF() < 0 ? 0 : tint.hslSaturationF();
@@ -3803,6 +3816,8 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     QDateTime modified = ngDateTimeOf(values.value("modificationtime"));
     QDateTime created = ngDateTimeOf(values.value("creationtime"));
     QList<NgQuickAction> quickActions;
+    QString kindWords; // dolphin-ng: "PDF document", "Folder"... (Scheda and Dossier)
+    m_ngCardHeader = QRectF();
     if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
         if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
             const KFileItem fileItem = fileModel->fileItem(index());
@@ -3816,6 +3831,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
                 if (fileItem.isLocalFile()) {
                     quickActions = ngQuickActionsFor(fileItem.localPath(), fileItem.mimetype());
                 }
+                kindWords = fileItem.isDir() ? ngTr("Folder", "Cartella") : fileItem.mimeComment();
                 m_ngCardPeek.clear();
                 m_ngCardPeekMore = 0;
                 m_ngCardFolderPath.clear();
@@ -4057,88 +4073,92 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             lineY += lineHeight;
         }
     } else if (look == NgCardStyle::Scheda) {
-        // +------+  Name
-        // | icon |  2,4 MiB · Immagine PNG
-        // +------+  Creato 05/11/26 · 5 giorni fa · Modificato ...
-        // [PNG]    [-rw-r--r--]                              👁 ⋯
-        // the picture column grows with the card, up to 30 % of its width (it used to stop at 64 px: a stamp in a card
-        // zoomed in). It is the same for every card of the view, so the names line up; a preview fills it, a type
-        // icon is as large as the zoom makes icons
-        const qreal columnWidth = !showPicture ? 0 : qBound(44.0, card.height() * 0.66, qMax(64.0, card.width() * 0.30));
-        const qreal x0 = card.left() + pad;
-        const qreal right = card.right() - pad;
-        const qreal footTop = card.bottom() - pad - chipHeight;
+        // +----------+  Name
+        // |  object  |  Kind in words
+        // |  (whole) |  Created    12/11/26 · today
+        // +----------+  Modified   12/11/26 · today          [actions on hover]
+        // The object is the drawing of the file (type and size written in it) or its preview as an object, whole
+        // and centred in its column; the quick actions come with the pointer, as on the Tessera
+        m_ngInfoInside = true;
+        m_ngInfoSize = sizeText;
+        const qreal column = showPicture ? qRound(qMin(card.height() * 1.3, card.width() * 0.38)) : 0;
         if (showPicture) {
-            m_ngCardThumb = QRectF(x0, card.top() + pad, columnWidth, footTop - 4 - (card.top() + pad));
-            const qreal room = qMin(columnWidth, m_ngCardThumb.height()) - 4;
-            m_ngCardIconSide = qMax(16.0, m_ngCardPreview ? room : qMin<qreal>(option.iconSize, room));
-            const qreal width = chipFm.horizontalAdvance(m_ngSigla) + 14;
-            NgChip chip;
-            chip.text = m_ngSigla;
-            chip.rect = QRectF(x0 + (columnWidth - width) / 2.0, footTop, width, chipHeight);
-            chip.tinted = true;
-            m_ngChips.append(chip);
+            m_ngCardThumb = QRectF(card.left() + 4, card.top() + 4, column, card.height() - 8);
+            m_ngCardIconSide = qMax(16.0, qMin(column, m_ngCardThumb.height()) - 10);
         }
-        const qreal x1 = showPicture ? x0 + columnWidth + pad : x0;
-        qreal y = card.top() + pad;
-        setName(x1, y, right - x1);
-        y += nameFm.height() + 3;
-        putText(smallFm.elidedText(joined({sizeText, countText, fullInfo ? typeText : QString()}), Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 0);
-        y += smallFm.height() + 2;
-        QStringList when;
+        const qreal x1 = showPicture ? m_ngCardThumb.right() + pad * 0.6 : card.left() + pad;
+        const qreal right = card.right() - pad;
+        QList<std::pair<QString, QString>> lines;
         if (created.isValid()) {
-            when << ngTr("Created %1", "Creato %1").arg(dateLine(created));
+            lines.append({ngTr("Created", "Creato"), dateLine(created)});
         }
         if (modified.isValid()) {
-            when << ngTr("Modified %1", "Modificato %1").arg(dateLine(modified));
+            lines.append({ngTr("Modified", "Modificato"), dateLine(modified)});
         }
-        if (quickActions.isEmpty() && !fullInfo) {
-            // nothing in the foot (folders, files without quick actions): each date gets its own line
-            for (const QString &line : std::as_const(when)) {
-                putRich(line, x1, y + smallFm.ascent(), right - x1, small, 0);
-                y += smallFm.height() + 2;
+        const qreal lineHeight = smallFm.height() + 1;
+        const qreal blockHeight = nameFm.height() + 2 + smallFm.height() + 5 + lines.count() * lineHeight;
+        qreal y = card.top() + qMax(pad * 0.7, (card.height() - blockHeight) / 2.0);
+        setName(x1, y, right - x1);
+        y += nameFm.height() + 2;
+        const QString kind = !kindWords.isEmpty() ? kindWords : typeText;
+        putText(smallFm.elidedText(kind, Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 2);
+        y += smallFm.height() + 5;
+        qreal labelWidth = 0;
+        for (const auto &line : std::as_const(lines)) {
+            labelWidth = qMax(labelWidth, smallFm.horizontalAdvance(line.first));
+        }
+        labelWidth += 9;
+        const bool shortDates = right - x1 - labelWidth < smallFm.horizontalAdvance(QStringLiteral("00/00/00 · ") + ngAgoText(QDateTime::currentDateTime().addDays(-12)));
+        int lineIndex = 0;
+        for (const auto &line : std::as_const(lines)) {
+            if (y + smallFm.height() > card.bottom() - 3) {
+                break;
             }
-        } else {
-            putRich(joined(when), x1, y + smallFm.ascent(), right - x1, small, 0);
+            putText(line.first, QPointF(x1, y + smallFm.ascent()), small, 2);
+            const QDateTime &when = (lineIndex == 0 && created.isValid()) ? created : modified;
+            if (shortDates) {
+                putText(smallFm.elidedText(ngAgoText(when), Qt::ElideRight, right - x1 - labelWidth), QPointF(x1 + labelWidth, y + smallFm.ascent()), small, 0);
+            } else {
+                putRich(line.second, x1 + labelWidth, y + smallFm.ascent(), right - x1 - labelWidth, small, 0);
+            }
+            y += lineHeight;
+            ++lineIndex;
         }
-        actionsAt(right, footTop + (chipHeight - actionSide) / 2.0);
-        const qreal footRight = right;
         if (!quickActions.isEmpty()) {
-            actionRow(x1, footTop + (chipHeight - actionHeight) / 2.0, footRight);
-        } else if (fullInfo) {
-            chipRow(x1, footTop, footRight, {permissions, owner}, 0);
+            ngLayoutActionPill(quickActions, x1, card.bottom() - 8 - actionHeight, card.right() - 8, actionHeight, chipFm, true);
+            m_ngCardHoverPill = true;
         }
     } else {
-        // (icon) Name
-        // [PNG] [2,4 MiB] [-rw-r--r--]                    👁 ⋯
-        // ▂▂▂▂▂▂▂▂▂▂ (size bar, files)
-        // C 05/11/26                                  MODIFICATO
-        // M 05/11/26                                5 giorni fa
-        //                                    creato 5 giorni fa
+        // +--------------------------------------+
+        // | object  Name                         |  (the header, in the colour of the type)
+        // |         Kind in words    [actions]   |
+        // +--------------------------------------+
+        // Created   12/11/26            MODIFIED
+        // Modified  12/11/26               today
+        //                            created today
+        m_ngInfoInside = true;
+        m_ngInfoSize = sizeText;
         const qreal x0 = card.left() + pad;
         const qreal right = card.right() - pad;
-        const qreal iconSide = qMax(16.0, qMin<qreal>(option.iconSize, qRound(fh * 1.7)));
-        qreal y = card.top() + pad;
-        qreal nameX = x0;
-        qreal nameRight = right;
-        if (!showPicture) {
-            // the type is the background: the name starts at the left edge
-        } else if (markType) {
-            // a preview, as a small picture at the right of the name
-            const qreal side = qRound(fh * 2.6);
-            m_ngCardThumb = QRectF(right - side, y, side, side);
-            m_ngCardIconSide = side;
-            nameRight = right - side - 10;
-        } else {
-            m_ngCardThumb = QRectF(x0, y, iconSide, iconSide);
-            m_ngCardIconSide = iconSide;
-            nameX = x0 + iconSide + 10;
+        const qreal headerHeight = qRound(card.height() * 0.46);
+        m_ngCardHeader = QRectF(card.left(), card.top(), card.width(), headerHeight);
+        const qreal column = showPicture ? qRound(qMin(headerHeight * 1.35, card.width() * 0.32)) : 0;
+        if (showPicture) {
+            m_ngCardThumb = QRectF(card.left() + 6, card.top() + 4, column, headerHeight - 4);
+            m_ngCardIconSide = qMax(16.0, qMin(column, m_ngCardThumb.height()) - 8);
         }
-        const qreal lineHeightC = m_ngCardThumb.isEmpty() ? nameFm.height() : m_ngCardThumb.height();
-        setName(nameX, y + (lineHeightC - nameFm.height()) / 2.0, nameRight - nameX);
-        y += lineHeightC + 8;
-        actionsAt(right, y - 1);
-        y = chipRow(x0, y, right, {m_ngSigla, sizeText, countText, fullInfo ? permissions : QString()}, 1) + 4;
+        const qreal x1 = showPicture ? m_ngCardThumb.right() + 6 : x0;
+        const qreal titleBlock = nameFm.height() + 2 + smallFm.height();
+        qreal y = card.top() + (headerHeight - titleBlock) / 2.0;
+        setName(x1, y, right - x1);
+        y += nameFm.height() + 2;
+        const QString kind = !kindWords.isEmpty() ? kindWords : typeText;
+        putText(smallFm.elidedText(kind, Qt::ElideRight, right - x1), QPointF(x1, y + smallFm.ascent()), small, 2);
+        if (!quickActions.isEmpty()) {
+            // with the pointer, on the lower edge of the header (never over the dates)
+            ngLayoutActionPill(quickActions, x1, m_ngCardHeader.bottom() - actionHeight / 2.0, card.right() - 8, actionHeight, chipFm, true);
+            m_ngCardHoverPill = true;
+        }
         QFont bigFont = m_customizedFont;
         bigFont.setPointSizeF(bigFont.pointSizeF() * 1.45);
         bigFont.setWeight(QFont::DemiBold);
@@ -4147,58 +4167,42 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         tiny.setPointSizeF(m_customizedFont.pointSizeF() * 0.72);
         tiny.setLetterSpacing(QFont::PercentageSpacing, 108);
         const QFontMetricsF tinyFm(tiny);
-        const qreal bottom = card.bottom() - pad;
-        const qreal blockHeight = tinyFm.height() + bigFm.height() + smallFm.height();
-        const QString modifiedLabel = ngTr("MODIFIED", "MODIFICATO");
-        if (!quickActions.isEmpty()) {
-            // the pill stops before the block of the date when it reaches down to it
-            qreal actionRight = right;
-            if (modified.isValid() && y + actionHeight > bottom - blockHeight) {
-                const bool reachesBig = y + actionHeight > bottom - blockHeight + tinyFm.height();
-                actionRight -= qMax(tinyFm.horizontalAdvance(modifiedLabel), reachesBig ? bigFm.horizontalAdvance(ngAgoText(modified)) : 0.0) + 12;
-            }
-            y = actionRow(x0, y, actionRight) + 4;
-        }
-        y += 4;
-
-
-        if (!isDir && bytes > 0 && bottom - blockHeight - y >= 12) {
-            m_ngBarFraction = qBound(0.03, (std::log10(double(bytes)) - 3.0) / 7.0, 1.0);
-            m_ngBarRect = QRectF(x0, y + 2, right - x0, 4);
-        }
-
+        const qreal bottom = card.bottom() - pad * 0.8;
         // the right block: when it was modified, big
         qreal rightBlockWidth = 0;
         if (modified.isValid()) {
-            const QString label = modifiedLabel;
+            const QString label = ngTr("MODIFIED", "MODIFICATO");
             const QString ago = ngAgoText(modified);
             const QString createdText = created.isValid() ? ngTr("created %1", "creato %1").arg(ngAgoText(created)) : QString();
             rightBlockWidth = qMax(bigFm.horizontalAdvance(ago), qMax(tinyFm.horizontalAdvance(label), smallFm.horizontalAdvance(createdText)));
-            qreal by = bottom - blockHeight;
+            qreal by = bottom - (tinyFm.height() + bigFm.height() + smallFm.height());
             putText(label, QPointF(right - tinyFm.horizontalAdvance(label), by + tinyFm.ascent()), tiny, 2);
             by += tinyFm.height();
             putText(ago, QPointF(right - bigFm.horizontalAdvance(ago), by + bigFm.ascent()), bigFont, 1);
             by += bigFm.height();
             putText(createdText, QPointF(right - smallFm.horizontalAdvance(createdText), by + smallFm.ascent()), small, 2);
         }
-        // the left block: the dates with their letters, like the time column of the rows
-        const qreal letterWidth = monoFm.horizontalAdvance(QStringLiteral("M")) + 8;
-        const qreal textWidth = (right - rightBlockWidth - 14) - (x0 + letterWidth);
+        // the left block: the dates, labelled as on the other cards
+        QList<std::pair<QString, QDateTime>> lines;
+        if (created.isValid()) {
+            lines.append({ngTr("Created", "Creato"), created});
+        }
+        if (modified.isValid()) {
+            lines.append({ngTr("Modified", "Modificato"), modified});
+        }
+        qreal labelWidth = 0;
+        for (const auto &line : std::as_const(lines)) {
+            labelWidth = qMax(labelWidth, smallFm.horizontalAdvance(line.first));
+        }
+        labelWidth += 9;
+        const qreal textWidth = (right - rightBlockWidth - 14) - (x0 + labelWidth);
         if (textWidth > fh * 3) {
-            auto line = [&](const QString &letter, const QDateTime &when, qreal top) {
-                NgTimeLine entry;
-                entry.letter = letter;
-                entry.text = smallFm.elidedText(locale.toString(when.date(), QStringLiteral("dd/MM/yy")), Qt::ElideRight, textWidth);
-                entry.letterPos = QPointF(x0, top + monoFm.ascent() + (smallFm.height() - monoFm.height()) / 2);
-                entry.textPos = QPointF(x0 + letterWidth, top + smallFm.ascent());
-                m_ngTime.append(entry);
-            };
-            const qreal top = bottom - 2 * smallFm.height() - 1;
-            if (created.isValid() && modified.isValid()) {
-                line(QStringLiteral("C"), created, top);
-                line(QStringLiteral("M"), modified, top + smallFm.height() + 1);
-            } else if (modified.isValid()) {
-                line(QStringLiteral("M"), modified, top + smallFm.height() + 1);
+            qreal ly = bottom - lines.count() * (smallFm.height() + 1);
+            for (const auto &line : std::as_const(lines)) {
+                putText(line.first, QPointF(x0, ly + smallFm.ascent()), small, 2);
+                putText(smallFm.elidedText(locale.toString(line.second.date(), QLocale::ShortFormat), Qt::ElideRight, textWidth), QPointF(x0 + labelWidth, ly + smallFm.ascent()),
+                        small, 0);
+                ly += smallFm.height() + 1;
             }
         }
     }
@@ -4274,7 +4278,7 @@ void KStandardItemListWidget::moveEvent(QGraphicsSceneMoveEvent *event)
     }
 }
 
-void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter, const QRectF &band, const QPixmap &pixmap)
+void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter, const QRectF &band, const QPixmap &pixmap, bool whole)
 {
     // CARDS_BADGE=inside, a card with a real preview: the preview becomes the thing itself and the type and the
     // size go on its border. A picture is a print with its white margin (slightly askew, each its own way), a
@@ -4305,6 +4309,13 @@ void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter, const QRec
         QFont sizeFont(m_customizedFont);
         sizeFont.setPixelSize(qMax(9, qRound(height * 0.45)));
         sizeFont.setWeight(QFont::Bold);
+        // too wide for the border: both shrink together (down to 65 %) before the size is cut
+        const qreal total = QFontMetricsF(typeFont).horizontalAdvance(m_ngSigla) + 8 + QFontMetricsF(sizeFont).horizontalAdvance(m_ngInfoSize);
+        if (total > r.width() && total > 0) {
+            const qreal k = qMax(0.65, 0.97 * r.width() / total);
+            typeFont.setPixelSize(qMax(8, int(typeFont.pixelSize() * k)));
+            sizeFont.setPixelSize(qMax(7, int(sizeFont.pixelSize() * k)));
+        }
         painter->setFont(typeFont);
         painter->setPen(typeColour);
         painter->drawText(r, Qt::AlignLeft | Qt::AlignVCenter, m_ngSigla);
@@ -4323,7 +4334,7 @@ void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter, const QRec
         QFont sizeFont(m_customizedFont);
         sizeFont.setPixelSize(qMax(9, qRound(height * 0.45)));
         sizeFont.setWeight(QFont::Bold);
-        return QFontMetricsF(typeFont).horizontalAdvance(m_ngSigla) + 10 + QFontMetricsF(sizeFont).horizontalAdvance(m_ngInfoSize) + 6;
+        return QFontMetricsF(typeFont).horizontalAdvance(m_ngSigla) + 10 + QFontMetricsF(sizeFont).horizontalAdvance(m_ngInfoSize) + 14;
     };
     const QString name = data().value("text").toString();
     const QString mime = data().value("mimetype").toString();
@@ -4371,7 +4382,8 @@ void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter, const QRec
         // a sheet: the page itself, with a footer like a printed page
         const qreal foot = qRound(qMax(20.0, base.height() * 1.5));
         const qreal width = qMin(band.width() * 0.94, qMax(qMin(band.width() * 0.56, band.height() * 1.05), lineWidth(foot) + 16));
-        const QRectF page(band.center().x() - width / 2.0, band.top() + 10, width, band.height());
+        const QRectF page = whole ? QRectF(band.center().x() - width / 2.0, band.top() + 4, width, band.height() - 8)
+                                  : QRectF(band.center().x() - width / 2.0, band.top() + 10, width, band.height());
         painter->setPen(Qt::NoPen);
         for (int i = 3; i >= 1; --i) {
             painter->setBrush(QColor(0, 0, 0, 22));
@@ -4379,7 +4391,7 @@ void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter, const QRec
         }
         painter->setBrush(QColor(255, 255, 255));
         painter->drawRoundedRect(page, 3, 3);
-        const QRectF footer(page.left(), band.bottom() - foot - 3, page.width(), foot + 3);
+        const QRectF footer(page.left(), (whole ? page.bottom() : band.bottom()) - foot - 3, page.width(), foot + 3);
         painter->save();
         painter->setClipRect(QRectF(page.left(), page.top(), page.width(), footer.top() - page.top()), Qt::IntersectClip);
         picture(QRectF(page.left(), page.top(), page.width(), page.width() * 1.414));
@@ -5055,7 +5067,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             // the preview as an object, its type and size written on its border
             painter->save();
             painter->setClipPath(band, Qt::IntersectClip);
-            paintNgPreviewObject(painter, m_ngCardThumb, m_pixmap);
+            paintNgPreviewObject(painter, m_ngCardThumb, m_pixmap, false);
             painter->restore();
         } else if (!m_pixmap.isNull()) {
             painter->save();
@@ -5063,6 +5075,29 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             drawPixmap(painter, m_pixmap);
             painter->restore();
         }
+    } else if ((look == NgCardStyle::Scheda || look == NgCardStyle::Dossier) && !m_ngCardThumb.isEmpty() && m_ngInfoInside) {
+        // the drawing of the file (type and size in it) or its preview as an object: whole in the Scheda's column,
+        // rising from the foot of the Dossier's header
+        const bool whole = look == NgCardStyle::Scheda;
+        QPainterPath clip;
+        clip.addRoundedRect(rect(), 12, 12);
+        painter->save();
+        painter->setClipPath(clip, Qt::IntersectClip);
+        if (!m_ngCardHeader.isEmpty()) {
+            QColor head = m_ngTint;
+            head.setAlphaF(dark ? 0.18 : 0.16);
+            painter->fillRect(m_ngCardHeader, head);
+            painter->setClipRect(m_ngCardHeader, Qt::IntersectClip);
+        }
+        if (m_ngCardPreview && !m_pixmap.isNull() && m_ngCategory != int(NgKind::Folder)) {
+            paintNgPreviewObject(painter, m_ngCardThumb, m_pixmap, whole);
+        } else {
+            const QVariant items = data().value("count");
+            const int itemCount = items.isValid() && items.typeId() != QMetaType::QString ? items.toInt() : -1;
+            ngPaintContentSketch(painter, m_ngCardThumb, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, m_ngInfoSize, &m_customizedFont,
+                                 m_ngCategory == int(NgKind::Folder) ? ngSpecialFolder(data().value("url").toUrl().toLocalFile()) : 0, whole);
+        }
+        painter->restore();
     } else if (!m_pixmap.isNull()) {
         drawPixmap(painter, m_pixmap);
     }

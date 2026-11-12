@@ -487,8 +487,7 @@ QSize KFileItemListView::availableIconSize() const
             return QSize(qRound(card.width()), qRound(card.width() * 2.4)); // 2.4: a phone screenshot is about 1 : 2.2
         }
         if (ngCardStyle() == NgCardStyle::Scheda) {
-            const int side = qRound(qBound(44.0, card.height() * 0.66, qMax(64.0, card.width() * 0.30)));
-            return QSize(side, side);
+            return QSize(qRound(qMin(card.height() * 1.3, card.width() * 0.38)), qRound(card.height())); // the object's column
         }
     }
 
