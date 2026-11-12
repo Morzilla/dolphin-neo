@@ -2028,6 +2028,16 @@ void KItemListWidget::ngPaintCheck(QPainter *painter, QWidget *widget)
     const QPointF centre(card.left() + 10, card.top() + 10);
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
+    // a light wash of the accent over the selected item itself (the veil of the ring lies under its sheet), fading
+    // in and out with the ring
+    {
+        const qreal inset = ngBlockInset() > 0 ? 3 : 0; // rows: their card sits 3 px inside the item
+        QColor wash = accent;
+        wash.setAlphaF((dark ? 0.13 : 0.10) * pop);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(wash);
+        painter->drawRoundedRect(card.adjusted(inset, inset, -inset, -inset), ngSelectionRadius(), ngSelectionRadius());
+    }
     painter->setPen(QPen(QColor(0, 0, 0, 90), 3));
     painter->setBrush(accent);
     painter->setOpacity(painter->opacity() * pop);
