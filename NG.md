@@ -56,6 +56,20 @@ number to the file named in `$NG_PROGRESS_FILE`.
 
 ![A transcription and a conversion, each next to the file it comes from](ng/screenshots/family-cards.png)
 
+| Cards | Rows |
+|---|---|
+| ![Work in progress on the files, cards](ng/screenshots/work-on-files-cards.png) | ![Work in progress on the files, rows](ng/screenshots/work-on-files-rows.png) |
+
+**Type and size in the drawing** (Settings > Dolphin NG > Type and size: In the drawing): no badge over the
+preview. Where a card shows a drawing of the kind of file, the type and the size are part of it, in its own
+colours: printed on the side of the box, as the title of the page with the size as its last line, on the front of
+the folder. A real preview becomes the thing itself: a photo is a print with the type and size in its margin, a PDF
+a sheet with a footer, a video a frame on a strip of film.
+
+![Type and size in the drawing of each file](ng/screenshots/cards-in-drawing.png)
+
+![Close-up](ng/screenshots/cards-in-drawing-closeup.png)
+
 **Transcribe**, on audio and video files, writes the spoken text next to the file (and subtitles for videos), with
 [whisper.cpp](https://github.com/ggml-org/whisper.cpp) on your computer: nothing is uploaded. Run
 `ng/ng-transcribe --setup` once (it builds whisper.cpp in `~/.local/src` and downloads the speech model, about
