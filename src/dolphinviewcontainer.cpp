@@ -3523,10 +3523,13 @@ static void ngOpenLightbox(DolphinView *view, const KFileItem &item)
 // row per kind of file with its count; the active one sits on a pill, a click chooses it.
 class NgFilterPanel : public QWidget
 {
+    // dolphin-ng: the sections at the bottom of the sidebar: what is pinned to the top of its folder
+    // (SIDEBAR_PINNED=hide switches it off), then the filters of the view (SIDEBAR_FILTERS=hide)
 public:
-    NgFilterPanel(NgSortBar *bar, QWidget *parent)
+    NgFilterPanel(NgSortBar *bar, QWidget *parent, std::function<void(const QUrl &)> open)
         : QWidget(parent)
         , m_bar(bar)
+        , m_open(std::move(open))
     {
         setAttribute(Qt::WA_NoSystemBackground);
         setMouseTracking(true);
@@ -3535,16 +3538,47 @@ public:
             refresh();
         };
         connect(NgSettings::instance(), &NgSettings::changed, this, [this] {
-            refresh(); // SIDEBAR_FILTERS=hide switches the section off
+            refresh(); // a section switched on or off
         });
+        connect(NgPins::self(), &NgPins::changed, this, [this] {
+            refresh();
+        });
+        NgPins::self()->prune(); // what was deleted or unpinned while Dolphin was closed
         refresh();
     }
 
     void refresh()
     {
         m_entries = m_bar ? m_bar->filters() : QList<NgSortBar::FilterEntry>();
-        const bool off = ngSetting("SIDEBAR_FILTERS").toLower() == QLatin1String("hide");
-        const int wanted = (off || m_entries.count() < 2) ? 0 : titleHeight() + 6 + m_entries.count() * rowHeight() + 6;
+        const bool filtersOff = ngSetting("SIDEBAR_FILTERS").toLower() == QLatin1String("hide");
+        if (filtersOff || m_entries.count() < 2) {
+            m_entries.clear();
+        }
+        // the pinned items: folders first, then files, each by name; no more than fit comfortably
+        m_pins.clear();
+        if (ngSetting("SIDEBAR_PINNED").toLower() != QLatin1String("hide")) {
+            const QStringList paths = NgPins::self()->paths();
+            QMimeDatabase mimes;
+            for (const QString &path : paths) {
+                const QFileInfo info(path);
+                if (!info.exists()) {
+                    continue;
+                }
+                Pin pin;
+                pin.path = path;
+                pin.name = info.fileName();
+                pin.isDir = info.isDir();
+                pin.icon = pin.isDir ? QStringLiteral("folder") : mimes.mimeTypeForFile(info).iconName();
+                m_pins.append(pin);
+            }
+            std::stable_sort(m_pins.begin(), m_pins.end(), [](const Pin &a, const Pin &b) {
+                return a.isDir != b.isDir ? a.isDir : a.name.compare(b.name, Qt::CaseInsensitive) < 0;
+            });
+            if (m_pins.count() > 10) {
+                m_pins.resize(10);
+            }
+        }
+        const int wanted = pinsHeight() + filtersHeight();
         if (wanted == 0) {
             hide();
         } else {
@@ -3555,6 +3589,12 @@ public:
     }
 
 protected:
+    struct Pin {
+        QString path;
+        QString name;
+        QString icon;
+        bool isDir = false;
+    };
     int rowHeight() const
     {
         return fontMetrics().height() + 8;
@@ -3563,14 +3603,31 @@ protected:
     {
         return fontMetrics().height() + 4;
     }
+    int pinsHeight() const
+    {
+        return m_pins.isEmpty() ? 0 : titleHeight() + 6 + m_pins.count() * rowHeight() + (m_entries.isEmpty() ? 6 : 14);
+    }
+    int filtersHeight() const
+    {
+        return m_entries.isEmpty() ? 0 : titleHeight() + 6 + m_entries.count() * rowHeight() + 6;
+    }
+    // hit test: a pinned row (0...), a filter row (1000...), or -1
     int rowAt(const QPoint &pos) const
     {
-        const int top = titleHeight() + 6;
-        if (pos.y() < top) {
-            return -1;
+        if (!m_pins.isEmpty()) {
+            const int top = titleHeight() + 6;
+            if (pos.y() >= top && pos.y() < top + m_pins.count() * rowHeight()) {
+                return (pos.y() - top) / rowHeight();
+            }
         }
-        const int row = (pos.y() - top) / rowHeight();
-        return row < m_entries.count() ? row : -1;
+        if (!m_entries.isEmpty()) {
+            const int top = pinsHeight() + titleHeight() + 6;
+            if (pos.y() >= top) {
+                const int row = (pos.y() - top) / rowHeight();
+                return row < m_entries.count() ? 1000 + row : -1;
+            }
+        }
+        return -1;
     }
 
     void paintEvent(QPaintEvent *) override
@@ -3581,45 +3638,68 @@ protected:
         const QColor text = palette().color(QPalette::WindowText);
         const QColor veil = dark ? QColor(255, 255, 255, 30) : QColor(0, 0, 0, 22);
         const QColor edge = dark ? QColor(255, 255, 255, 40) : QColor(0, 0, 0, 30);
-
-        // the title, a small pill like the section titles of the places
-        QFont titleFont = font();
-        titleFont.setPointSizeF(titleFont.pointSizeF() * 0.86);
-        titleFont.setBold(true);
-        const QString title = ngTr("Filters", "Filtri");
-        const QFontMetrics titleMetrics(titleFont);
-        const QRectF pill(0, 0, titleMetrics.horizontalAdvance(title) + 20, titleHeight());
-        painter.setPen(QPen(edge, 1));
-        painter.setBrush(veil);
-        painter.drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), pill.height() / 2.0, pill.height() / 2.0);
-        painter.setFont(titleFont);
-        painter.setPen(text);
-        painter.drawText(pill, Qt::AlignCenter, title);
-
-        painter.setFont(font());
         QColor dim = text;
         dim.setAlphaF(0.6);
-        const int top = titleHeight() + 6;
-        for (int i = 0; i < m_entries.count(); ++i) {
-            const QRectF row(0, top + i * rowHeight(), width(), rowHeight());
-            const auto &entry = m_entries.at(i);
-            if (entry.active || i == m_hover) {
+
+        // a section title: a small pill like the section titles of the places
+        auto title = [&](qreal y, const QString &label) {
+            QFont titleFont = font();
+            titleFont.setPointSizeF(titleFont.pointSizeF() * 0.86);
+            titleFont.setBold(true);
+            const QFontMetrics titleMetrics(titleFont);
+            const QRectF pill(0, y, titleMetrics.horizontalAdvance(label) + 20, titleHeight());
+            painter.setPen(QPen(edge, 1));
+            painter.setBrush(veil);
+            painter.drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), pill.height() / 2.0, pill.height() / 2.0);
+            painter.setFont(titleFont);
+            painter.setPen(text);
+            painter.drawText(pill, Qt::AlignCenter, label);
+            painter.setFont(font());
+        };
+        auto rowGround = [&](const QRectF &row, bool active, bool hovered) {
+            if (active || hovered) {
                 QColor fill = veil;
-                fill.setAlpha(entry.active ? veil.alpha() : veil.alpha() / 2);
-                painter.setPen(entry.active ? QPen(edge, 1) : QPen(Qt::NoPen));
+                fill.setAlpha(active ? veil.alpha() : veil.alpha() / 2);
+                painter.setPen(active ? QPen(edge, 1) : QPen(Qt::NoPen));
                 painter.setBrush(fill);
                 painter.drawRoundedRect(row.adjusted(0.5, 1.5, -0.5, -1.5), (row.height() - 3) / 2.0, (row.height() - 3) / 2.0);
             }
-            const int side = qMin(16, int(row.height()) - 6);
-            QIcon::fromTheme(entry.icon).paint(&painter, QRect(int(row.left()) + 12, int(row.center().y() - side / 2.0) + 1, side, side));
-            painter.setPen(text);
-            // the count keeps its place on the right; the label gets what is left and is cut with an ellipsis
-            const QString count = QString::number(entry.count);
-            const int countWidth = painter.fontMetrics().horizontalAdvance(count);
-            const QRectF labelRect = row.adjusted(12 + side + 8, 0, -14 - countWidth - 8, 0);
-            painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter, painter.fontMetrics().elidedText(entry.label, Qt::ElideRight, qMax(0, int(labelRect.width()))));
-            painter.setPen(dim);
-            painter.drawText(row.adjusted(14, 0, -14, 0), Qt::AlignRight | Qt::AlignVCenter, count);
+        };
+
+        if (!m_pins.isEmpty()) {
+            title(0, ngTr("Pinned", "Fissati"));
+            const int top = titleHeight() + 6;
+            for (int i = 0; i < m_pins.count(); ++i) {
+                const QRectF row(0, top + i * rowHeight(), width(), rowHeight());
+                const Pin &pin = m_pins.at(i);
+                rowGround(row, false, i == m_hover);
+                const int side = qMin(16, int(row.height()) - 6);
+                QIcon::fromTheme(pin.icon, QIcon::fromTheme(QStringLiteral("unknown"))).paint(&painter, QRect(int(row.left()) + 12, int(row.center().y() - side / 2.0) + 1, side, side));
+                painter.setPen(text);
+                const QRectF labelRect = row.adjusted(12 + side + 8, 0, -12, 0);
+                painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter, painter.fontMetrics().elidedText(pin.name, Qt::ElideMiddle, qMax(0, int(labelRect.width()))));
+            }
+        }
+
+        if (!m_entries.isEmpty()) {
+            const int base = pinsHeight();
+            title(base, ngTr("Filters", "Filtri"));
+            const int top = base + titleHeight() + 6;
+            for (int i = 0; i < m_entries.count(); ++i) {
+                const QRectF row(0, top + i * rowHeight(), width(), rowHeight());
+                const auto &entry = m_entries.at(i);
+                rowGround(row, entry.active, 1000 + i == m_hover);
+                const int side = qMin(16, int(row.height()) - 6);
+                QIcon::fromTheme(entry.icon).paint(&painter, QRect(int(row.left()) + 12, int(row.center().y() - side / 2.0) + 1, side, side));
+                painter.setPen(text);
+                // the count keeps its place on the right; the label gets what is left and is cut with an ellipsis
+                const QString count = QString::number(entry.count);
+                const int countWidth = painter.fontMetrics().horizontalAdvance(count);
+                const QRectF labelRect = row.adjusted(12 + side + 8, 0, -14 - countWidth - 8, 0);
+                painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter, painter.fontMetrics().elidedText(entry.label, Qt::ElideRight, qMax(0, int(labelRect.width()))));
+                painter.setPen(dim);
+                painter.drawText(row.adjusted(14, 0, -14, 0), Qt::AlignRight | Qt::AlignVCenter, count);
+            }
         }
     }
     void mouseMoveEvent(QMouseEvent *event) override
@@ -3628,6 +3708,11 @@ protected:
         if (row != m_hover) {
             m_hover = row;
             update();
+            if (row >= 0 && row < 1000) {
+                setToolTip(m_pins.at(row).path);
+            } else {
+                setToolTip(QString());
+            }
         }
     }
     void leaveEvent(QEvent *) override
@@ -3638,21 +3723,53 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override
     {
         const int row = rowAt(event->pos());
-        if (event->button() == Qt::LeftButton && row >= 0 && m_bar) {
-            m_bar->setFilter(m_entries.at(row).id);
+        if (row < 0) {
+            return;
+        }
+        if (row >= 1000) {
+            if (event->button() == Qt::LeftButton && m_bar) {
+                m_bar->setFilter(m_entries.at(row - 1000).id);
+            }
+            return;
+        }
+        const Pin pin = m_pins.at(row);
+        const QUrl url = QUrl::fromLocalFile(pin.path);
+        if (event->button() == Qt::LeftButton) {
+            if (pin.isDir) {
+                if (m_open) {
+                    m_open(url); // a folder opens in the view
+                }
+            } else {
+                auto *job = new KIO::OpenUrlJob(url); // a file opens in its application
+                job->setUiDelegate(KIO::createDefaultJobUiDelegate(KJobUiDelegate::AutoHandlingEnabled, window()));
+                job->start();
+            }
+        } else if (event->button() == Qt::RightButton) {
+            QMenu menu(this);
+            if (!pin.isDir && m_open) {
+                menu.addAction(QIcon::fromTheme(QStringLiteral("folder-open")), ngTr("Show in its folder", "Mostra nella sua cartella"), this, [this, url] {
+                    m_open(url.adjusted(QUrl::RemoveFilename | QUrl::StripTrailingSlash));
+                });
+            }
+            menu.addAction(QIcon::fromTheme(QStringLiteral("window-unpin")), ngTr("Unpin from the Top", "Togli dall'alto"), this, [path = pin.path] {
+                NgPins::self()->unpin(path);
+            });
+            menu.exec(event->globalPosition().toPoint());
         }
     }
 
 private:
     QPointer<NgSortBar> m_bar;
+    std::function<void(const QUrl &)> m_open;
     QList<NgSortBar::FilterEntry> m_entries;
+    QList<Pin> m_pins;
     int m_hover = -1;
 };
 
-QWidget *ngCreateFilterPanel(QWidget *sortBar, QWidget *parent)
+QWidget *ngCreateFilterPanel(QWidget *sortBar, QWidget *parent, std::function<void(const QUrl &)> open)
 {
     auto *bar = dynamic_cast<NgSortBar *>(sortBar);
-    return bar ? new NgFilterPanel(bar, parent) : nullptr;
+    return bar ? new NgFilterPanel(bar, parent, std::move(open)) : nullptr;
 }
 
 void ngSortBarSetLeadingActions(QWidget *bar, const QList<QAction *> &actions)

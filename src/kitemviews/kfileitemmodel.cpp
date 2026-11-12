@@ -339,6 +339,36 @@ KFileItemModel::KFileItemModel(QObject *parent)
         ngRebuildFamilies();
         m_resortAllItemsTimer->start();
     });
+    // dolphin-ng: pinned or unpinned somewhere else (the sidebar, another window): follow
+    connect(NgPins::self(), &NgPins::changed, this, [this] {
+        KItemRangeList ranges;
+        for (int i = 0; i < m_itemData.count(); ++i) {
+            ItemData *data = m_itemData.at(i);
+            if (!data->item.isLocalFile()) {
+                continue;
+            }
+            const QString path = data->item.localPath();
+            bool pinned = data->ngPinned;
+            if (!pinned && NgPins::self()->contains(path)) {
+                pinned = true;
+            } else if (pinned && !NgPins::self()->contains(path)) {
+                pinned = KFileMetaData::UserMetaData(path).hasAttribute(QStringLiteral("ng.pinned"));
+            }
+            if (pinned != data->ngPinned) {
+                data->ngPinned = pinned;
+                if (pinned) {
+                    data->values.insert("ngPinned", true);
+                } else {
+                    data->values.remove("ngPinned");
+                }
+                ranges.append(KItemRange(i, 1));
+            }
+        }
+        if (!ranges.isEmpty()) {
+            Q_EMIT itemsChanged(ranges, {"ngPinned"});
+            m_resortAllItemsTimer->start();
+        }
+    });
 
     connect(GeneralSettings::self(), &GeneralSettings::sortingChoiceChanged, this, &KFileItemModel::slotSortingChoiceChanged);
 
@@ -1321,6 +1351,7 @@ void KFileItemModel::ngSetPinned(const KFileItemList &items, bool pinned)
             continue; // (a file system without extended attributes, e.g. FAT)
         }
         metadata.setAttribute(QStringLiteral("ng.pinned"), pinned ? QStringLiteral("1") : QString());
+        NgPins::self()->set(item.localPath(), pinned);
         ItemData *data = m_itemData.at(i);
         data->ngPinned = pinned;
         if (pinned) {
@@ -2041,6 +2072,9 @@ QList<KFileItemModel::ItemData *> KFileItemModel::createItemDataList(const QUrl 
             // dolphin-ng: pinned to the top? (an extended attribute of the file)
             KFileMetaData::UserMetaData metadata(item.localPath());
             itemData->ngPinned = metadata.isSupported() && metadata.hasAttribute(QStringLiteral("ng.pinned"));
+            if (itemData->ngPinned) {
+                NgPins::self()->set(item.localPath(), true); // the sidebar lists it (also after a move or a rename)
+            }
         }
         itemDataList.append(itemData);
     }

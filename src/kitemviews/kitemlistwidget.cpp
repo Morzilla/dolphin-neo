@@ -37,6 +37,7 @@
 #include <QPropertyAnimation>
 #include <QVariantAnimation>
 #include <QStyleOption>
+#include <KFileMetaData/UserMetaData>
 
 KItemListWidgetInformant::KItemListWidgetInformant() = default;
 
@@ -221,6 +222,74 @@ bool ngCardsStretch()
 }
 
 static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime);
+
+NgPins *NgPins::self()
+{
+    static NgPins *instance = new NgPins();
+    return instance;
+}
+
+NgPins::NgPins()
+{
+    m_paths = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG")).readEntry("PinnedPaths", QStringList());
+    m_save.setSingleShot(true);
+    m_save.setInterval(0);
+    connect(&m_save, &QTimer::timeout, this, [this] {
+        KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG"));
+        group.writeEntry("PinnedPaths", m_paths);
+        group.sync();
+        Q_EMIT changed();
+    });
+}
+
+QStringList NgPins::paths() const
+{
+    return m_paths;
+}
+
+bool NgPins::contains(const QString &path) const
+{
+    return m_paths.contains(path);
+}
+
+void NgPins::set(const QString &path, bool pinned)
+{
+    if (path.isEmpty() || pinned == m_paths.contains(path)) {
+        return;
+    }
+    if (pinned) {
+        m_paths.append(path);
+    } else {
+        m_paths.removeAll(path);
+    }
+    m_save.start();
+}
+
+void NgPins::unpin(const QString &path)
+{
+    KFileMetaData::UserMetaData metadata(path);
+    if (metadata.isSupported()) {
+        metadata.setAttribute(QStringLiteral("ng.pinned"), QString());
+    }
+    set(path, false);
+}
+
+void NgPins::prune()
+{
+    bool dropped = false;
+    for (auto it = m_paths.begin(); it != m_paths.end();) {
+        const KFileMetaData::UserMetaData metadata(*it);
+        if (!QFileInfo::exists(*it) || !metadata.hasAttribute(QStringLiteral("ng.pinned"))) {
+            it = m_paths.erase(it);
+            dropped = true;
+        } else {
+            ++it;
+        }
+    }
+    if (dropped) {
+        m_save.start();
+    }
+}
 
 NgActivity *NgActivity::self()
 {

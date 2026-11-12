@@ -60,6 +60,7 @@ private:
     QComboBox *m_rim;
     QCheckBox *m_devices;
     QCheckBox *m_sidebarFilters;
+    QCheckBox *m_sidebarPinned;
     // sidebar: picture
     KUrlRequester *m_image;
     QSlider *m_glass;

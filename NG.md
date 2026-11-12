@@ -83,6 +83,12 @@ colour of the file's type marks them, and their pushpin button is filled. The ma
 follows the file when it is moved or renamed (it is not kept on file systems without extended attributes, such
 as FAT). Right-click → **Unpin from the Top** takes it away.
 
+The sidebar lists them in a **Pinned** section, above the filters: folders first, then files. A folder opens in
+the view, a file in its application; right-click offers "Show in its folder" and "Unpin from the Top". The
+section can be switched off on the NG settings page (Sidebar → Sections). The list is kept in dolphinrc
+(`PinnedPaths`) and fills itself whenever a folder shows a pinned item, so a pinned file that was moved comes
+back once its new folder is opened.
+
 ## Settings
 
 Everything is a setting, on a graphical page: tabs, a tile with a drawing of each choice, switches, and a sketch of

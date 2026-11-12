@@ -1127,6 +1127,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
               {ngTr("Glow", "Alone"), {}}, {ngTr("Light from above", "Luce dall'alto"), {}}},
              6);
     heading(ngTr("Sections", "Sezioni"));
+    m_sidebarPinned = toggle(ngTr("Pinned folders and files", "Cartelle e file fissati in alto"));
     m_sidebarFilters = toggle(ngTr("Filters, at the bottom of the panel", "Filtri, in fondo al pannello"));
     m_devices = toggle(ngTr("Devices (otherwise the disk box is shown)", "Dispositivi (altrimenti c'è il riquadro del disco)"));
     page->addStretch();
@@ -1272,7 +1273,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
                  {m_motion, "GLASS_MOTION"}, {m_lavaStyle, "LAVA_STYLE"}, {m_lavaSize, "LAVA_SIZE"}, {m_lavaColours, "LAVA_COLORS"}, {m_lavaSpeed, "LAVA_SPEED"},
                  {m_rim, "GLASS_RIM"},      {m_devices, "DEVICES"},     {m_twoLines, "LIST"},        {m_rows, "ROWS"},        {m_icons, "ICONS"},
                  {m_mark, "MARK"},          {m_sigla, "SIGLA"},         {m_ago, "DATE_AGO"},         {m_tiles, "TILES"},          {m_rowDates, "ROW_DATES"},
-                 {m_rowWash, "ROW_WASH"}, {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}, {m_cardsInfo, "CARDS_INFO"}, {m_cardsMark, "CARDS_MARK"}, {m_cardsBadge, "CARDS_BADGE"}, {m_activitySize, "ACTIVITY_SIZE"}, {m_sidebarFilters, "SIDEBAR_FILTERS"}};
+                 {m_rowWash, "ROW_WASH"}, {m_hoverPreview, "PREVIEW_HOVER"}, {m_hoverDelay, "PREVIEW_HOVER"}, {m_float, "PREVIEW_FLOAT"}, {m_cards, "CARDS"}, {m_cardsFit, "CARDS_FIT"}, {m_cardsInfo, "CARDS_INFO"}, {m_cardsMark, "CARDS_MARK"}, {m_cardsBadge, "CARDS_BADGE"}, {m_activitySize, "ACTIVITY_SIZE"}, {m_sidebarFilters, "SIDEBAR_FILTERS"}, {m_sidebarPinned, "SIDEBAR_PINNED"}};
     for (const auto &entry : bound) {
         entry.widget->setEnabled(!ngSettingFromEnvironment(entry.name));
     }
@@ -1282,7 +1283,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_sideRow->setEnabled(m_glassPanel->isEnabled() && m_backdrop->isEnabled());
     quickSideRow->setEnabled(m_quickView->isChecked());
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters, m_rowWash}) {
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters, m_sidebarPinned, m_rowWash}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
@@ -1395,6 +1396,7 @@ void NgSettingsPage::loadSettings()
     }
     m_devices->setChecked(ngSetting("DEVICES").toLower() == QLatin1String("show"));
     m_sidebarFilters->setChecked(ngSetting("SIDEBAR_FILTERS").toLower() != QLatin1String("hide"));
+    m_sidebarPinned->setChecked(ngSetting("SIDEBAR_PINNED").toLower() != QLatin1String("hide"));
 
     m_twoLines->setChecked(ngSetting("LIST").toLower() != QLatin1String("columns"));
     static const NgRowStyle order[] = {NgRowStyle::Card, NgRowStyle::Open, NgRowStyle::Line, NgRowStyle::Stripe, NgRowStyle::None};
@@ -1456,6 +1458,7 @@ void NgSettingsPage::applySettings()
     setNgSetting("GLASS_RIM", m_rim->currentData().toString());
     setNgSetting("DEVICES", m_devices->isChecked() ? QStringLiteral("show") : QString());
     setNgSetting("SIDEBAR_FILTERS", m_sidebarFilters->isChecked() ? QString() : QStringLiteral("hide"));
+    setNgSetting("SIDEBAR_PINNED", m_sidebarPinned->isChecked() ? QString() : QStringLiteral("hide"));
 
     setNgSetting("LIST", m_twoLines->isChecked() ? QString() : QStringLiteral("columns"));
     if (m_rows->isEnabled()) {
@@ -1516,6 +1519,7 @@ void NgSettingsPage::restoreDefaults()
     m_folderSizes->setChecked(false);
     m_tiles->setChecked(true);
     m_sidebarFilters->setChecked(true);
+    m_sidebarPinned->setChecked(true);
     m_cards->setCurrentIndex(0);
     m_cardsFit->setCurrentIndex(0);
     m_cardsInfo->setCurrentIndex(0);

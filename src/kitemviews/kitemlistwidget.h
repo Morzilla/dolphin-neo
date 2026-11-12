@@ -60,6 +60,34 @@ DOLPHIN_EXPORT void ngDrawPin(QPainter *painter, const QRectF &box, const QColor
  * conversions: whoever starts the work tells which files it concerns and how far it is; the item widgets
  * read it here when they paint. A percent below 0 means "busy, no figure" (drawn as a turning arc).
  */
+/**
+ * dolphin-ng: the list of what is pinned to the top of its folder, for the "Pinned" section of the sidebar. The
+ * pin itself is the extended attribute user.ng.pinned on the file; this list (in dolphinrc) remembers where they
+ * are, filled when something is pinned or unpinned and whenever a folder shows a pinned item.
+ */
+class DOLPHIN_EXPORT NgPins : public QObject
+{
+    Q_OBJECT
+public:
+    static NgPins *self();
+    QStringList paths() const;
+    bool contains(const QString &path) const;
+    /** records (or forgets) a path; saved and announced a moment later, together with the others */
+    void set(const QString &path, bool pinned);
+    /** unpins for good: takes the attribute off the file and forgets it */
+    void unpin(const QString &path);
+    /** forgets what no longer exists or is no longer pinned */
+    void prune();
+
+Q_SIGNALS:
+    void changed();
+
+private:
+    NgPins();
+    QStringList m_paths;
+    QTimer m_save;
+};
+
 class DOLPHIN_EXPORT NgActivity : public QObject
 {
     Q_OBJECT
