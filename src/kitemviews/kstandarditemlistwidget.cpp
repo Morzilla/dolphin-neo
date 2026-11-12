@@ -3267,12 +3267,6 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
 }
 }
 
-// dolphin-ng: the red of a pushpin
-static QColor ngPinRed(bool dark)
-{
-    return dark ? QColor(236, 84, 72) : QColor(220, 58, 48);
-}
-
 // dolphin-ng: lays out the pill of quick actions (cards and two-line rows). With alignRight the pill ends at
 // `right` and `x` is the leftmost place it may start from.
 qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
@@ -3382,7 +3376,7 @@ qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &qu
             pixmap.setDevicePixelRatio(dpr);
             pixmap.fill(Qt::transparent);
             QPainter pinPainter(&pixmap);
-            ngDrawPin(&pinPainter, QRectF(0, 0, 18, 18), pinned ? ngPinRed(ngIsDark(option.palette)) : glyphColor, pinned, pinned ? 1.5 : 1.8);
+            ngDrawPin(&pinPainter, QRectF(0, 0, 18, 18), glyphColor, pinned, pinned ? 1.5 : 1.8); // filled when pinned
             pinPainter.end();
             cached = iconCache.insert(cacheKey, pixmap);
         }
@@ -4149,30 +4143,35 @@ void KStandardItemListWidget::paintNgPin(QPainter *painter)
     if (!data().value("ngPinned").toBool()) {
         return;
     }
-    // a white NeoLine pushpin on a red disc: at the top right corner of a card, on the corner of the preview of
-    // a two-line row, on the corner of the icon elsewhere. Red like a real pin, so it never reads as the
-    // selection or as the colour of a type.
+    // discreet: a small see-through disc with a hairline, the NeoLine pushpin filled in a light shade of the
+    // type's colour. At the top right corner of a card, on the corner of the preview of a two-line row, on
+    // the corner of the icon elsewhere.
     const bool dark = ngIsDark(styleOption().palette);
     qreal radius;
     QPointF centre;
     if (m_layout == CardsLayout) {
-        radius = 12.5;
-        centre = QPointF(rect().right() - 17, rect().top() + 17);
+        radius = 11;
+        centre = QPointF(rect().right() - 16, rect().top() + 16);
     } else if (ngTwoLineList()) {
-        radius = 10.5;
-        centre = m_ngRowThumb.isEmpty() ? QPointF(rect().left() + 14, rect().top() + 14) : QPointF(m_ngRowThumb.left() + 3, m_ngRowThumb.top() + 3);
+        radius = 9.5;
+        centre = m_ngRowThumb.isEmpty() ? QPointF(rect().left() + 13, rect().top() + 13) : QPointF(m_ngRowThumb.left() + 3, m_ngRowThumb.top() + 3);
     } else {
         const QRectF icon = m_iconRect;
-        radius = qBound(7.0, icon.height() * 0.24, 11.0);
+        radius = qBound(7.0, icon.height() * 0.22, 10.0);
         centre = QPointF(icon.right() - radius * 0.35, icon.top() + radius * 0.35);
     }
+    QColor tint = m_ngTint.isValid() ? m_ngTint : styleOption().palette.color(QPalette::Highlight);
+    tint = dark ? QColor::fromHslF(tint.hslHueF() < 0 ? 0 : tint.hslHueF(), qMin(tint.hslSaturationF(), 0.55), 0.78)
+                : QColor::fromHslF(tint.hslHueF() < 0 ? 0 : tint.hslHueF(), qMin(tint.hslSaturationF(), 0.65), 0.38);
+    QColor hairline = styleOption().palette.color(QPalette::Text);
+    hairline.setAlphaF(dark ? 0.16 : 0.14);
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
-    painter->setPen(QPen(dark ? QColor(18, 19, 22, 220) : QColor(255, 255, 255, 235), 2));
-    painter->setBrush(ngPinRed(dark));
+    painter->setPen(QPen(hairline, 1));
+    painter->setBrush(dark ? QColor(14, 15, 18, 150) : QColor(255, 255, 255, 190));
     painter->drawEllipse(centre, radius, radius);
-    const qreal glyph = radius * 1.45;
-    ngDrawPin(painter, QRectF(centre.x() - glyph / 2, centre.y() - glyph / 2, glyph, glyph), QColor(255, 255, 255), true, 2.0);
+    const qreal glyph = radius * 1.35;
+    ngDrawPin(painter, QRectF(centre.x() - glyph / 2, centre.y() - glyph / 2, glyph, glyph), tint, true, 1.6);
     painter->restore();
 }
 

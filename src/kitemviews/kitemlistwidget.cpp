@@ -423,9 +423,32 @@ void NgActivity::sweepFamilies()
     }
     bool removed = false;
     for (const QString &parentKey : std::as_const(parents)) {
-        bool busy = m_entries.contains(parentKey) || m_watched.contains(parentKey);
+        // busy only while something is really at work: the parent's process (or job) or a child's process.
+        // Being watched for late files does not count (the 30 s below cover them), and a process that is gone
+        // ends its mark here too, whatever happened to the polling in tick()
+        auto alive = [this](const QString &k) {
+            if (!m_pids.contains(k)) {
+                return false;
+            }
+            if (::kill(static_cast<pid_t>(m_pids.value(k)), 0) == 0) {
+                return true;
+            }
+            m_pids.remove(k);
+            m_entries.remove(k);
+            m_cancellers.remove(k);
+            if (m_progressFiles.contains(k)) {
+                QFile::remove(m_progressFiles.take(k));
+            }
+            saveProcesses();
+            Q_EMIT changed();
+            return false;
+        };
+        bool busy = m_pids.contains(parentKey) ? alive(parentKey) : (m_entries.contains(parentKey) || m_cancellers.contains(parentKey));
         for (auto it = m_links.cbegin(); it != m_links.cend() && !busy; ++it) {
-            busy = key(it->second) == parentKey && m_pids.contains(it.key());
+            busy = key(it->second) == parentKey && alive(it.key());
+        }
+        if (!busy && m_watched.contains(parentKey) && now - m_idleSince.value(parentKey, now) >= 10000) {
+            m_watched.remove(parentKey); // late files had their chance
         }
         if (busy) {
             m_idleSince.remove(parentKey);
