@@ -3919,6 +3919,12 @@ bool KStandardItemListWidget::ngRingSelection() const
     return m_layout == CardsLayout;
 }
 
+bool KStandardItemListWidget::ngNoHover() const
+{
+    const QUrl url = data().value("url").toUrl();
+    return NgActivity::self()->contains(url) || (NgActivity::self()->hasLinks() && !NgActivity::self()->familyOf(url).isEmpty());
+}
+
 bool KStandardItemListWidget::ngOwnSelection() const
 {
     return m_layout == CardsLayout || KItemListWidget::ngOwnSelection();

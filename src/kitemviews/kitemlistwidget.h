@@ -453,6 +453,8 @@ protected:
     virtual qreal ngSelectionRadius() const;
     /** dolphin-ng: the selection is a ring set off around the item, with a check (cards), not a tinted fill */
     virtual bool ngRingSelection() const;
+    /** dolphin-ng: no hover look (a file at work, or one of a family: the bubble and the progress say enough) */
+    virtual bool ngNoHover() const;
     /** dolphin-ng: the check of a ring selection, drawn by the item over its content */
     void ngPaintCheck(QPainter *painter, QWidget *widget);
 

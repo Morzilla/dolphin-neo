@@ -1039,7 +1039,9 @@ void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
         drawItemStyleOption(painter, widget, activeState | selectedState | QStyle::State_Enabled | QStyle::State_Item);
     }
 
-    if (m_hoverOpacity > 0.0 && ngRingSelection()) {
+    if (m_hoverOpacity > 0.0 && ngNoHover()) {
+        // nothing: no hover look on this item now
+    } else if (m_hoverOpacity > 0.0 && ngRingSelection()) {
         // the ring is drawn around the item, outside its rect: straight onto the painter, not into the cache
         const QStyle::State activeState(isActiveWindow() && widget->hasFocus() ? QStyle::State_Active | QStyle::State_Enabled : 0);
         const qreal opacity = painter->opacity();
@@ -1544,6 +1546,11 @@ void KItemListWidget::setPressed(bool enabled)
 }
 
 bool KItemListWidget::ngRingSelection() const
+{
+    return false;
+}
+
+bool KItemListWidget::ngNoHover() const
 {
     return false;
 }
