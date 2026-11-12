@@ -65,6 +65,28 @@ DOLPHIN_EXPORT void ngDrawPin(QPainter *painter, const QRectF &box, const QColor
  * pin itself is the extended attribute user.ng.pinned on the file; this list (in dolphinrc) remembers where they
  * are, filled when something is pinned or unpinned and whenever a folder shows a pinned item.
  */
+/**
+ * dolphin-ng: whether Ctrl or Shift is held (a selection being made). While it is, the quick actions that come with the
+ * pointer stay hidden and cannot be clicked. changed() is emitted when one of the two keys goes down or up.
+ */
+class DOLPHIN_EXPORT NgModifiers : public QObject
+{
+    Q_OBJECT
+public:
+    static NgModifiers *self();
+    static bool selecting();
+
+Q_SIGNALS:
+    void changed();
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
+private:
+    NgModifiers();
+    bool m_selecting = false;
+};
+
 class DOLPHIN_EXPORT NgPins : public QObject
 {
     Q_OBJECT

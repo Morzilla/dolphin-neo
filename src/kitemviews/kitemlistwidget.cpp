@@ -37,6 +37,8 @@
 #include <QPropertyAnimation>
 #include <QVariantAnimation>
 #include <QStyleOption>
+#include <QGuiApplication>
+#include <QKeyEvent>
 #include <KFileMetaData/UserMetaData>
 
 KItemListWidgetInformant::KItemListWidgetInformant() = default;
@@ -222,6 +224,43 @@ bool ngCardsStretch()
 }
 
 static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime);
+
+NgModifiers *NgModifiers::self()
+{
+    static NgModifiers *instance = new NgModifiers();
+    return instance;
+}
+
+NgModifiers::NgModifiers()
+{
+    qApp->installEventFilter(this); // every key that goes down or up, whichever widget has the focus
+}
+
+bool NgModifiers::selecting()
+{
+    return QGuiApplication::queryKeyboardModifiers() & (Qt::ControlModifier | Qt::ShiftModifier);
+}
+
+bool NgModifiers::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease || event->type() == QEvent::ApplicationDeactivate
+        || event->type() == QEvent::WindowDeactivate) {
+        bool now = m_selecting;
+        if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
+            const auto *key = static_cast<QKeyEvent *>(event);
+            const Qt::KeyboardModifiers held = key->modifiers();
+            now = held & (Qt::ControlModifier | Qt::ShiftModifier);
+            // (the press of Ctrl itself already carries it; its release no longer does)
+        } else {
+            now = false;
+        }
+        if (now != m_selecting) {
+            m_selecting = now;
+            Q_EMIT changed();
+        }
+    }
+    return QObject::eventFilter(watched, event);
+}
 
 NgPins *NgPins::self()
 {

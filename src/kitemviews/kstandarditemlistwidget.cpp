@@ -675,6 +675,12 @@ KStandardItemListWidget::KStandardItemListWidget(KItemListWidgetInformant *infor
             update();
         }
     });
+    // dolphin-ng: Ctrl or Shift down or up: the quick actions that come with the pointer hide or come back
+    connect(NgModifiers::self(), &NgModifiers::changed, this, [this] {
+        if (isHovered() && m_ngCardHoverPill) {
+            update();
+        }
+    });
     // after a tie the files move next to each other: paint the bubble again once they are there
     connect(NgActivity::self(), &NgActivity::linksChanged, this, [this] {
         QTimer::singleShot(450, this, [this] {
@@ -1328,6 +1334,9 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
     }
     if (NgActivity::self()->contains(data().value("url").toUrl())) {
         return 0; // a file at work: its quick actions, preview and menu buttons are hidden, so not clickable
+    }
+    if (m_ngCardHoverPill && NgModifiers::selecting()) {
+        return 0; // Ctrl or Shift held: the hidden actions are not clickable, the click selects
     }
     // 5: the pointer is on a name that was shortened to fit (hover only: the full name is shown as a tip)
     auto onShortenedName = [this, &pos] {
@@ -3656,6 +3665,9 @@ void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor 
     if (NgActivity::self()->contains(data().value("url").toUrl())) {
         return; // a file at work (or being made) shows only its progress: no quick actions over it
     }
+    if (m_ngCardHoverPill && NgModifiers::selecting()) {
+        return; // Ctrl or Shift held: a selection is being made, the actions that come with the pointer stay away
+    }
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
     // ---- the quick actions: icons in one pill, the main one with its label on a tint of the type
@@ -5275,7 +5287,8 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
     }
 
     // ---- the preview eye, on a dark disc so that it reads over a picture too
-    if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? m_ngReveal > 0.01 : isHovered()) && !NgActivity::self()->contains(data().value("url").toUrl())) {
+    if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? m_ngReveal > 0.01 : isHovered()) && !NgActivity::self()->contains(data().value("url").toUrl())
+        && !NgModifiers::selecting()) {
         painter->setOpacity(m_ngCardEyeInPill ? qBound(0.0, m_ngReveal, 1.0) : 1.0);
         if (!m_ngCardEyeInPill) {
             painter->setPen(Qt::NoPen);
