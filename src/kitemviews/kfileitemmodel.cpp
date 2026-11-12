@@ -720,6 +720,36 @@ QList<QPair<int, QVariant>> KFileItemModel::groups() const
             break;
         }
 
+        // dolphin-ng: what is pinned comes first (see lessThan) and has a group of its own, "Pinned"; the group the
+        // other items begin in starts again after it. Only for groups titled by words (ratings and permissions have
+        // titles of their own kind)
+        int pinned = 0;
+        while (pinned < m_itemData.count() && m_itemData.at(pinned)->ngPinned) {
+            ++pinned;
+        }
+        if (pinned > 0 && !m_groups.isEmpty() && m_groups.first().second.typeId() == QMetaType::QString) {
+            QList<QPair<int, QVariant>> groups{{0, ngTr("Pinned", "Fissati")}};
+            QVariant covering; // the group the first item after the pinned ones belongs to
+            for (const auto &group : std::as_const(m_groups)) {
+                if (group.first <= pinned) {
+                    covering = group.second;
+                    if (group.first == pinned) {
+                        continue; // it starts right there anyway
+                    }
+                } else {
+                    if (groups.size() == 1 && covering.isValid()) {
+                        groups.append({pinned, covering});
+                    }
+                    groups.append(group);
+                    continue;
+                }
+            }
+            if (groups.size() == 1 && covering.isValid() && pinned < m_itemData.count()) {
+                groups.append({pinned, covering});
+            }
+            m_groups = groups;
+        }
+
 #ifdef KFILEITEMMODEL_DEBUG
         qCDebug(DolphinDebug) << "[TIME] Calculating groups for" << count() << "items:" << timer.elapsed();
 #endif
