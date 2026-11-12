@@ -718,13 +718,16 @@ public:
         if (m_leading->isVisible()) {
             room -= m_leading->sizeHint().width() + layout()->spacing();
         }
-        int needed = 0;
+        // what one line needs: each widget at its width (a fixed-width gap has no size hint: its minimum width counts)
+        // and the spacing between them, with a little to spare so that nothing wraps on the edge
+        const int spacing = qMax(m_flow->spacing(), 6);
+        int needed = 12;
         for (int i = 0; i < m_flow->count(); ++i) {
             QWidget *widget = m_flow->itemAt(i)->widget();
             if (!widget || widget == m_sortCompact) {
                 continue;
             }
-            needed += widget->sizeHint().width() + 4;
+            needed += qMax(widget->sizeHint().width(), widget->minimumWidth()) + spacing;
         }
         const bool compact = needed > room;
         // when narrow, the groups also sit closer and the search box is shorter
@@ -734,6 +737,20 @@ public:
             }
         }
         m_filter->setFixedWidth(compact ? 150 : 210);
+        if (m_groups) {
+            // narrower still: the groups button keeps only its icon (its label is in the tooltip)
+            int compactNeeded = 12;
+            for (int i = 0; i < m_flow->count(); ++i) {
+                QWidget *widget = m_flow->itemAt(i)->widget();
+                if (!widget || widget == m_sortPill || widget == m_sortCaption) {
+                    continue;
+                }
+                const int width = widget == m_groups ? m_groupsTextWidth : m_gaps.contains(widget) ? 6 : qMax(widget->sizeHint().width(), widget->minimumWidth());
+                compactNeeded += width + spacing;
+            }
+            const bool iconOnly = compact && compactNeeded > room + 60;
+            m_groups->setToolButtonStyle(iconOnly ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
+        }
         m_sortPill->setVisible(!compact);
         if (m_sortCaption) {
             m_sortCaption->setVisible(!compact);
@@ -1057,7 +1074,10 @@ private:
             groups->setMenu(groupMenu);
             menuButton(groups);
             groups->setText(ngTr("Groups: %1", "Gruppi: %1").arg(currentGroup));
+            groups->setToolTip(groups->text());
             m_flow->addWidget(groups);
+            m_groups = groups;
+            m_groupsTextWidth = groups->sizeHint().width();
         }
 
         if (!list) {
@@ -1131,6 +1151,8 @@ private:
     QHBoxLayout *m_leadingLayout = nullptr;
     NgFlowLayout *m_flow;
     QPointer<QWidget> m_sortPill, m_sortCaption, m_sortCompact; // the sorting as a pill, or as one button when narrow
+    QPointer<QToolButton> m_groups; // the groups button (icon only when even the compact bar is too wide)
+    int m_groupsTextWidth = 0;
     QList<QPointer<QWidget>> m_gaps; // the spaces between the groups of the bar (narrower when the bar is)
     DolphinView::Mode m_modeBeforeCards = DolphinView::DetailsView; // the cards button goes back to this
     QLineEdit *m_filter;
