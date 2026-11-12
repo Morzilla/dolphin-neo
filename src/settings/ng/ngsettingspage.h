@@ -58,7 +58,7 @@ private:
     QCheckBox *m_glassPanel;
     QComboBox *m_backdrop;
     QComboBox *m_rim;
-    QCheckBox *m_devices;
+    QComboBox *m_devices; // disks and partitions: NG boxes at the foot of the panel | a classic section | hidden
     QWidget *m_deviceList; // one box per disk or partition: unticked, it is hidden (the places' own hiding)
     QList<std::pair<QString, QCheckBox *>> m_deviceBoxes; // device udi, its box
     void fillDevices();

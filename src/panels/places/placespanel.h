@@ -95,7 +95,7 @@ private:
     void ngApplyPalette(); // dolphin-ng: glass highlight
     void ngPaintPills(); // dolphin-ng: glass pill under the selected / hovered entry
     void ngApplyDevices(KFilePlacesModel *placesModel); // dolphin-ng: hide the Devices section when switched off
-    bool ngDevicesOff() const;
+    bool ngDeviceRowHidden(int group) const; // a row of this group gives way to the disk boxes, or is switched off
     QPalette m_ngPalette;
     void connectDeviceSignals(const QModelIndex &idx);
 

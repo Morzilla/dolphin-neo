@@ -6,7 +6,15 @@
 
 #include "dolphindockwidget.h"
 
+#include "dolphinplacesmodelsingleton.h"
 #include "kitemviews/kitemlistwidget.h"
+
+#include <KFilePlacesModel>
+#include <Solid/Device>
+#include <Solid/StorageAccess>
+#include <Solid/StorageVolume>
+
+#include <memory>
 
 #include <KConfig>
 #include <KConfigGroup>
@@ -30,6 +38,13 @@
 #include <QStorageInfo>
 #include <QTimer>
 #include <QUrl>
+
+namespace
+{
+QList<DolphinDockWidget::NgDisk> s_ngDisks;
+QElapsedTimer s_ngDisksAge;
+bool s_ngDisksDirty = true;
+}
 
 namespace
 {
@@ -312,6 +327,17 @@ DolphinDockWidget::DolphinDockWidget(const QString &title, QWidget *parent, Qt::
     setFeatures(DefaultDockWidgetFeatures);
 
     startTimer(30000); // disk usage box
+    {
+        KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel();
+        auto repaint = [this] {
+            s_ngDisksDirty = true;
+            update();
+        };
+        connect(places, &QAbstractItemModel::rowsInserted, this, repaint);
+        connect(places, &QAbstractItemModel::rowsRemoved, this, repaint);
+        connect(places, &QAbstractItemModel::dataChanged, this, repaint);
+        connect(places, &KFilePlacesModel::reloaded, this, repaint);
+    }
     ngApplySettings();
     connect(NgSettings::instance(), &NgSettings::changed, this, &DolphinDockWidget::ngApplySettings);
 }
@@ -663,47 +689,200 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
         painter.drawRoundedRect(edge, radius, radius);
     }
 
-    // disk usage of the home file system, at the bottom of the Places card (PlacesPanel leaves the room for it)
-    m_ngDiskBox = QRectF();
+    // the disks at the foot of the Places card (PlacesPanel leaves the room for them): the home file system, then the
+    // other disks and partitions, each a box with its usage; an unmounted one is a dashed box
+    m_ngDiskBoxes.clear();
     if (objectName() == QLatin1String("placesDock")) {
-        static QStorageInfo storage;
-        static QElapsedTimer age;
-        if (!age.isValid() || age.elapsed() > 15000) {
-            storage = QStorageInfo(QDir::homePath());
-            age.restart();
-        }
-        if (storage.isValid() && storage.bytesTotal() > 0 && card.height() > 200) {
-            const QRectF box(card.left() + 8, card.bottom() - 8 - 54, card.width() - 16, 54);
-            m_ngDiskBox = box;
-            m_ngDiskRoot = storage.rootPath();
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(ngIsDark(palette()) ? QColor(0, 0, 0, 62) : QColor(255, 255, 255, 130));
-            painter.drawRoundedRect(box, 10, 10);
-
-            const qreal used = 1.0 - qreal(storage.bytesAvailable()) / qreal(storage.bytesTotal());
+        const QList<NgDisk> disks = ngSidebarDisks();
+        const int room = ngDiskRoom();
+        if (!disks.isEmpty() && card.height() > 200 + room - 62) {
+            const bool compact = disks.size() > 3;
+            const bool alone = disks.size() == 1;
+            const bool darkGlass = ngIsDark(palette());
             QFont small = font();
-            small.setPointSizeF(small.pointSizeF() * 0.86);
+            small.setPointSizeF(small.pointSizeF() * (compact ? 0.82 : 0.86));
             painter.setFont(small);
-            painter.setPen(palette().color(QPalette::WindowText));
-            const QRectF textRect = box.adjusted(10, 8, -10, -24);
-            // a narrow panel has no room for both figures: the free space stays, the total goes
-            const QString total = KIO::convertSize(storage.bytesTotal());
-            const QString free = i18nc("@info:status Free disk space", "%1 free", KIO::convertSize(storage.bytesAvailable()));
-            const bool both = painter.fontMetrics().horizontalAdvance(total) + painter.fontMetrics().horizontalAdvance(free) + 12 <= textRect.width();
-            if (both) {
-                painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, total);
-            }
-            painter.drawText(textRect, (both ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter, painter.fontMetrics().elidedText(free, Qt::ElideRight, int(textRect.width())));
+            const QFontMetrics metrics(small);
+            qreal top = card.bottom() - room;
+            for (const NgDisk &disk : disks) {
+                const bool mounted = !disk.root.isEmpty();
+                const qreal height = !mounted ? 32 : compact ? 40 : 54;
+                const QRectF box(card.left() + 8, top, card.width() - 16, height);
+                top += height + 6;
+                m_ngDiskBoxes.append({box, disk.root, disk.udi});
 
-            const QRectF groove(box.left() + 10, box.bottom() - 16, box.width() - 20, 6);
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(ngIsDark(palette()) ? QColor(255, 255, 255, 44) : QColor(0, 0, 0, 36));
-            painter.drawRoundedRect(groove, 3, 3);
-            painter.setBrush(used > 0.9 ? QColor(224, 145, 79) : palette().color(QPalette::Highlight));
-            painter.drawRoundedRect(QRectF(groove.topLeft(), QSizeF(qMax(6.0, groove.width() * used), groove.height())), 3, 3);
+                if (mounted) {
+                    painter.setPen(Qt::NoPen);
+                    painter.setBrush(darkGlass ? QColor(0, 0, 0, 62) : QColor(255, 255, 255, 130));
+                } else {
+                    QColor line = palette().color(QPalette::WindowText);
+                    line.setAlpha(70);
+                    painter.setPen(QPen(line, 1, Qt::DashLine));
+                    painter.setBrush(Qt::NoBrush);
+                }
+                painter.drawRoundedRect(mounted ? box : box.adjusted(0.5, 0.5, -0.5, -0.5), 10, 10);
+
+                // the name (or, for the home disk alone, its size) on the left, the free space on the right
+                const QRectF textRect = !mounted ? box.adjusted(10, 0, -10, 0) : compact ? box.adjusted(10, 5, -10, -17) : box.adjusted(10, 8, -10, -24);
+                QString left;
+                if (disk.home) {
+                    left = alone ? KIO::convertSize(disk.total) : ngTr("Home", "Home") + QStringLiteral(" · ") + KIO::convertSize(disk.total);
+                } else {
+                    left = disk.fs.isEmpty() ? disk.name : disk.name + QStringLiteral(" · ") + disk.fs;
+                }
+                const QString right = mounted ? i18nc("@info:status Free disk space", "%1 free", KIO::convertSize(disk.free)) : ngTr("not mounted", "non montato");
+                QColor text = palette().color(QPalette::WindowText);
+                const int rightWidth = metrics.horizontalAdvance(right);
+                const bool both = rightWidth + 12 + qMin(metrics.horizontalAdvance(left), 40) <= textRect.width();
+                if (both) {
+                    QFont bold = small;
+                    bold.setWeight(disk.home && alone ? QFont::Normal : QFont::DemiBold);
+                    painter.setFont(bold);
+                    painter.setPen(text);
+                    painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter,
+                                     QFontMetrics(bold).elidedText(left, Qt::ElideRight, int(textRect.width() - rightWidth - 12)));
+                    painter.setFont(small);
+                }
+                if (!mounted) {
+                    text.setAlpha(150);
+                }
+                painter.setPen(text);
+                painter.drawText(textRect, (both ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter, metrics.elidedText(right, Qt::ElideRight, int(textRect.width())));
+
+                if (mounted && disk.total > 0) {
+                    const qreal used = 1.0 - qreal(disk.free) / qreal(disk.total);
+                    const qreal barHeight = compact ? 4 : 6;
+                    const QRectF groove(box.left() + 10, box.bottom() - (compact ? 11 : 16), box.width() - 20, barHeight);
+                    painter.setPen(Qt::NoPen);
+                    painter.setBrush(darkGlass ? QColor(255, 255, 255, 44) : QColor(0, 0, 0, 36));
+                    painter.drawRoundedRect(groove, barHeight / 2, barHeight / 2);
+                    painter.setBrush(used > 0.9 ? QColor(224, 145, 79) : palette().color(QPalette::Highlight));
+                    painter.drawRoundedRect(QRectF(groove.topLeft(), QSizeF(qMax(barHeight, groove.width() * used), groove.height())), barHeight / 2, barHeight / 2);
+                }
+            }
         }
     }
     return opaque;
+}
+
+namespace
+{
+
+QString ngFsName(const QString &fs)
+{
+    const QString lower = fs.toLower();
+    if (lower.startsWith(QLatin1String("ntfs"))) {
+        return QStringLiteral("NTFS");
+    }
+    if (lower == QLatin1String("vfat")) {
+        return QStringLiteral("FAT");
+    }
+    if (lower == QLatin1String("exfat")) {
+        return QStringLiteral("exFAT");
+    }
+    return lower;
+}
+}
+
+QList<DolphinDockWidget::NgDisk> DolphinDockWidget::ngSidebarDisks()
+{
+    static bool watching = false;
+    if (!watching) {
+        watching = true;
+        KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel();
+        auto dirty = [] {
+            s_ngDisksDirty = true;
+        };
+        QObject::connect(places, &QAbstractItemModel::rowsInserted, places, dirty);
+        QObject::connect(places, &QAbstractItemModel::rowsRemoved, places, dirty);
+        QObject::connect(places, &QAbstractItemModel::dataChanged, places, dirty);
+        QObject::connect(places, &QAbstractItemModel::modelReset, places, dirty);
+        QObject::connect(places, &KFilePlacesModel::reloaded, places, dirty);
+        QObject::connect(NgSettings::instance(), &NgSettings::changed, places, dirty);
+    }
+    // the free space is read again when it is older than 15 s
+    if (!s_ngDisksDirty && s_ngDisksAge.isValid() && s_ngDisksAge.elapsed() < 15000) {
+        return s_ngDisks;
+    }
+    s_ngDisksDirty = false;
+    s_ngDisksAge.restart();
+    s_ngDisks.clear();
+
+    const QStorageInfo home(QDir::homePath());
+    if (home.isValid() && home.bytesTotal() > 0) {
+        NgDisk disk;
+        disk.home = true;
+        disk.root = home.rootPath();
+        disk.total = home.bytesTotal();
+        disk.free = home.bytesAvailable();
+        s_ngDisks.append(disk);
+    }
+    const QString mode = ngSetting("DEVICES").toLower();
+    if (!mode.isEmpty() || ngGlassPlain()) {
+        return s_ngDisks; // the devices are a section of the list (classic), or hidden
+    }
+    // for screenshots: DOLPHIN_NG_DEMO_DISKS="Data|btrfs|310|500;Archive|NTFS" (name|fs|free GiB|total GiB; no sizes:
+    // not mounted) stands for the disks of the machine
+    if (const QString demo = qEnvironmentVariable("DOLPHIN_NG_DEMO_DISKS"); !demo.isEmpty()) {
+        for (const QString &entry : demo.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+            const QStringList parts = entry.split(QLatin1Char('|'));
+            NgDisk disk;
+            disk.udi = QStringLiteral("demo:") + parts.value(0);
+            disk.name = parts.value(0);
+            disk.fs = parts.value(1);
+            if (parts.size() >= 4) {
+                disk.root = QDir::homePath();
+                disk.free = qint64(parts.value(2).toDouble() * 1024 * 1024 * 1024);
+                disk.total = qint64(parts.value(3).toDouble() * 1024 * 1024 * 1024);
+            }
+            s_ngDisks.append(disk);
+        }
+        return s_ngDisks;
+    }
+    KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel();
+    for (int row = 0; row < places->rowCount(); ++row) {
+        const QModelIndex index = places->index(row, 0);
+        const auto group = places->groupType(index);
+        if ((group != KFilePlacesModel::DevicesType && group != KFilePlacesModel::RemovableDevicesType) || places->isHidden(index)) {
+            continue;
+        }
+        const Solid::Device device = places->deviceForIndex(index);
+        const auto *access = device.as<Solid::StorageAccess>();
+        if (!access) {
+            continue;
+        }
+        NgDisk disk;
+        disk.udi = device.udi();
+        disk.name = places->text(index);
+        if (const auto *volume = device.as<Solid::StorageVolume>()) {
+            disk.fs = ngFsName(volume->fsType());
+        }
+        if (access->isAccessible() && !access->filePath().isEmpty()) {
+            const QStorageInfo storage(access->filePath());
+            if (home.isValid() && storage.device() == home.device()) {
+                continue; // the home disk is already the first box
+            }
+            disk.root = access->filePath();
+            disk.total = storage.bytesTotal();
+            disk.free = storage.bytesAvailable();
+        }
+        s_ngDisks.append(disk);
+    }
+    return s_ngDisks;
+}
+
+int DolphinDockWidget::ngDiskRoom()
+{
+    const QList<NgDisk> disks = ngSidebarDisks();
+    if (disks.isEmpty()) {
+        return 62;
+    }
+    const bool compact = disks.size() > 3;
+    int room = 8;
+    for (const NgDisk &disk : disks) {
+        room += (disk.root.isEmpty() ? 32 : compact ? 40 : 54) + 6;
+    }
+    return room - 6;
 }
 
 void DolphinDockWidget::timerEvent(QTimerEvent *event)
@@ -728,12 +907,21 @@ bool DolphinDockWidget::eventFilter(QObject *watched, QEvent *event)
 
 bool DolphinDockWidget::ngDiskBoxEvent(QEvent *event)
 {
-    // a click on the disk usage box opens the root of that file system; the hand cursor announces it
+    // a click on a disk box opens the root of that file system (an unmounted one is mounted first); the hand cursor
+    // announces it
     if (event->type() != QEvent::MouseButtonPress && event->type() != QEvent::MouseButtonRelease && event->type() != QEvent::MouseMove) {
         return false;
     }
     auto *mouse = static_cast<QMouseEvent *>(event);
-    const bool inside = !m_ngDiskBox.isEmpty() && m_ngDiskBox.contains(mapFromGlobal(mouse->globalPosition().toPoint()));
+    const QPointF at = mapFromGlobal(mouse->globalPosition().toPoint());
+    int hit = -1;
+    for (int i = 0; i < m_ngDiskBoxes.size(); ++i) {
+        if (m_ngDiskBoxes.at(i).rect.contains(at)) {
+            hit = i;
+            break;
+        }
+    }
+    const bool inside = hit >= 0;
     if (event->type() == QEvent::MouseMove) {
         if (inside != m_ngDiskHover) {
             m_ngDiskHover = inside;
@@ -746,17 +934,45 @@ bool DolphinDockWidget::ngDiskBoxEvent(QEvent *event)
         return false;
     }
     if (event->type() == QEvent::MouseButtonPress) {
-        m_ngDiskPressed = inside && mouse->button() == Qt::LeftButton;
-        return m_ngDiskPressed;
+        m_ngDiskPressed = inside && mouse->button() == Qt::LeftButton ? hit : -1;
+        return m_ngDiskPressed >= 0;
     }
-    if (m_ngDiskPressed) {
-        m_ngDiskPressed = false;
-        if (inside && !m_ngDiskRoot.isEmpty()) {
-            Q_EMIT ngDiskRootRequested(QUrl::fromLocalFile(m_ngDiskRoot));
-        }
+    if (m_ngDiskPressed < 0) {
+        return false;
+    }
+    const bool same = hit == m_ngDiskPressed;
+    m_ngDiskPressed = -1;
+    if (!same) {
         return true;
     }
-    return false;
+    const NgDiskHit target = m_ngDiskBoxes.at(hit);
+    if (!target.root.isEmpty()) {
+        Q_EMIT ngDiskRootRequested(QUrl::fromLocalFile(target.root));
+        return true;
+    }
+    // not mounted: the places model mounts it (asking for a password if needed; errors reach the places panel)
+    KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel();
+    for (int row = 0; row < places->rowCount(); ++row) {
+        const QModelIndex index = places->index(row, 0);
+        if (places->deviceForIndex(index).udi() != target.udi) {
+            continue;
+        }
+        auto connection = std::make_shared<QMetaObject::Connection>();
+        *connection = connect(places, &KFilePlacesModel::setupDone, this, [this, places, udi = target.udi, connection](const QModelIndex &done, bool success) {
+            if (places->deviceForIndex(done).udi() != udi) {
+                return;
+            }
+            disconnect(*connection);
+            s_ngDisksDirty = true;
+            update();
+            if (success) {
+                Q_EMIT ngDiskRootRequested(places->url(done));
+            }
+        });
+        places->requestSetup(index);
+        break;
+    }
+    return true;
 }
 
 void DolphinDockWidget::mousePressEvent(QMouseEvent *event)

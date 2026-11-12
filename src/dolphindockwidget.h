@@ -8,6 +8,7 @@
 #define DOLPHIN_DOCK_WIDGET_H
 
 #include <QDockWidget>
+#include <QList>
 #include <QUrl>
 
 class QTimer;
@@ -39,9 +40,23 @@ public:
     /** dolphin-ng: true when the sidebar glass is off (SIDEBAR=plain) / when it shows the static image (not GLASS_MODE=live). */
     static bool ngGlassPlain();
     static bool ngGlassImageMode();
-    /** dolphin-ng: the disk usage box, in this widget's coordinates (empty when none is drawn), and the mount point it shows. */
-    QRectF ngDiskBox() const { return m_ngDiskBox; }
-    QString ngDiskRoot() const { return m_ngDiskRoot; }
+    /**
+     * dolphin-ng: the disks at the foot of the Places card: the file system of the home folder first, then (with the
+     * NG look of the Devices, the default) every disk and partition the places know and do not hide, each with its
+     * usage; an unmounted one is mounted by a click.
+     */
+    struct NgDisk {
+        QString udi; // empty for the home file system
+        QString name;
+        QString fs; // "btrfs", "NTFS"
+        QString root; // the mount point; empty when not mounted
+        qint64 total = 0;
+        qint64 free = 0;
+        bool home = false;
+    };
+    static QList<NgDisk> ngSidebarDisks();
+    /** dolphin-ng: the height the disk boxes take at the foot of the card, with the gap above the card's edge. */
+    static int ngDiskRoom();
 
 Q_SIGNALS:
     /** dolphin-ng: the disk usage box was clicked; \a url is the root of that file system. */
@@ -71,9 +86,13 @@ private:
     QTimer *m_glassTimer = nullptr;
     QTimer *m_lavaTimer = nullptr; // dolphin-ng: drives the animated ("lava lamp") backdrop
     bool ngDiskBoxEvent(QEvent *event);
-    QRectF m_ngDiskBox;
-    QString m_ngDiskRoot;
-    bool m_ngDiskPressed = false;
+    struct NgDiskHit {
+        QRectF rect;
+        QString root;
+        QString udi;
+    };
+    QList<NgDiskHit> m_ngDiskBoxes; // where the disk boxes were drawn, in this widget's coordinates
+    int m_ngDiskPressed = -1; // the box the press began on
     bool m_ngDiskHover = false;
     qreal m_glass = 75; // share (0-100) of the window tint removed under the card
 };

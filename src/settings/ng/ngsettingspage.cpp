@@ -1133,7 +1133,20 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     heading(ngTr("Sections", "Sezioni"));
     m_sidebarPinned = toggle(ngTr("Pinned folders and files", "Cartelle e file fissati in alto"));
     m_sidebarFilters = toggle(ngTr("Filters, at the bottom of the panel", "Filtri, in fondo al pannello"));
-    m_devices = toggle(ngTr("Devices: disks and partitions", "Dispositivi: dischi e partizioni"));
+    m_devices = new QComboBox(this);
+    m_devices->addItem(ngTr("NG: boxes with their usage, at the foot", "NG: riquadri con l'uso, in fondo"), QString());
+    m_devices->addItem(ngTr("Classic: a section of the sidebar", "Classico: una sezione della barra"), QStringLiteral("list"));
+    m_devices->addItem(ngTr("Hidden (removable ones stay)", "Nascosti (restano i rimovibili)"), QStringLiteral("hide"));
+    {
+        auto *row = new QWidget(this);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->addWidget(new QLabel(ngTr("Disks and partitions:", "Dischi e partizioni:"), row));
+        rowLayout->addWidget(m_devices);
+        rowLayout->addStretch();
+        page->addWidget(row);
+        m_parts.insert(m_devices, {row});
+    }
     m_deviceList = new QWidget(this);
     {
         auto *deviceLayout = new QVBoxLayout(m_deviceList);
@@ -1311,11 +1324,11 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_sideRow->setEnabled(m_glassPanel->isEnabled() && m_backdrop->isEnabled());
     quickSideRow->setEnabled(m_quickView->isChecked());
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_devices, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters, m_sidebarPinned, m_rowWash, m_folderContentDate}) {
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters, m_sidebarPinned, m_rowWash, m_folderContentDate}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
-    for (QComboBox *combo : {m_backdrop, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla, m_cards, m_cardsFit, m_cardsInfo, m_cardsMark, m_cardsBadge, m_activitySize}) {
+    for (QComboBox *combo : {m_backdrop, m_devices, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla, m_cards, m_cardsFit, m_cardsInfo, m_cardsMark, m_cardsBadge, m_activitySize}) {
         connect(combo, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     }
     for (QSlider *slider : {m_glass, m_blur, m_liveBlur, m_lavaSize, m_lavaSpeed}) {
@@ -1323,7 +1336,8 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     }
     connect(m_image, &KUrlRequester::textChanged, this, &NgSettingsPage::changed);
 
-    for (QCheckBox *box : {m_glassPanel, m_motion, m_icons, m_hoverPreview, m_devices}) {
+    connect(m_devices, &QComboBox::currentIndexChanged, this, &NgSettingsPage::updateDependencies);
+    for (QCheckBox *box : {m_glassPanel, m_motion, m_icons, m_hoverPreview}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::updateDependencies);
     }
     for (QComboBox *combo : {m_backdrop, m_lavaColours, m_mark}) {
@@ -1422,7 +1436,7 @@ void NgSettingsPage::updateDependencies()
     showOption(m_lavaSpeed, gradient || (picture && m_motion->isChecked()));
     showOption(m_rim, glass);
     showOption(m_devices, glass);
-    m_deviceList->setEnabled(!glass || m_devices->isChecked());
+    m_deviceList->setEnabled(!glass || m_devices->currentData().toString() != QLatin1String("hide"));
 
     const bool marks = !m_icons->isChecked();
     showOption(m_mark, marks);
@@ -1455,7 +1469,10 @@ void NgSettingsPage::loadSettings()
         const QString rim = ngSetting("GLASS_RIM").toLower();
         m_rim->setCurrentIndex(qMax(0, m_rim->findData(rim == QLatin1String("show") ? QStringLiteral("diagonal") : rim)));
     }
-    m_devices->setChecked(ngSetting("DEVICES").toLower() != QLatin1String("hide"));
+    {
+        const QString devices = ngSetting("DEVICES").toLower();
+        m_devices->setCurrentIndex(devices == QLatin1String("hide") ? 2 : devices.isEmpty() ? 0 : 1); // "show" was the old "list"
+    }
     fillDevices();
     m_sidebarFilters->setChecked(ngSetting("SIDEBAR_FILTERS").toLower() != QLatin1String("hide"));
     m_sidebarPinned->setChecked(ngSetting("SIDEBAR_PINNED").toLower() != QLatin1String("hide"));
@@ -1519,7 +1536,7 @@ void NgSettingsPage::applySettings()
                  : colours == 1 ? QStringLiteral("wallpaper")
                                 : QStringLiteral("%1,%2,%3").arg(m_lavaColour[0]->color().name(), m_lavaColour[1]->color().name(), m_lavaColour[2]->color().name()));
     setNgSetting("GLASS_RIM", m_rim->currentData().toString());
-    setNgSetting("DEVICES", m_devices->isChecked() ? QString() : QStringLiteral("hide"));
+    setNgSetting("DEVICES", m_devices->currentData().toString());
     if (KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel()) {
         for (const auto &[udi, box] : std::as_const(m_deviceBoxes)) {
             for (int row = 0; row < places->rowCount(); ++row) {
@@ -1581,7 +1598,7 @@ void NgSettingsPage::restoreDefaults()
     m_lavaSpeed->setValue(30);
     m_lavaColours->setCurrentIndex(0);
     m_rim->setCurrentIndex(0);
-    m_devices->setChecked(true);
+    m_devices->setCurrentIndex(0);
     for (const auto &entry : std::as_const(m_deviceBoxes)) {
         entry.second->setChecked(true);
     }
@@ -1618,7 +1635,7 @@ void NgSettingsPage::applyPreset(const QString &name)
     if (name == QLatin1String("classic")) {
         // as close to stock Dolphin as the fork gets
         m_glassPanel->setChecked(false);
-        m_devices->setChecked(true);
+        m_devices->setCurrentIndex(1); // the classic section
         m_sidebarFilters->setChecked(false);
         m_twoLines->setChecked(false);
         m_rows->setCurrentIndex(3); // alternating stripes
@@ -1626,7 +1643,7 @@ void NgSettingsPage::applyPreset(const QString &name)
         m_tiles->setChecked(false);
     } else if (name == QLatin1String("soft")) {
         m_glassPanel->setChecked(false);
-        m_devices->setChecked(true);
+        m_devices->setCurrentIndex(1);
     } else {
         m_rim->setCurrentIndex(qMax(0, m_rim->findData(QStringLiteral("diagonal"))));
         m_cardsMark->setCurrentIndex(1); // the type as the background of the cards

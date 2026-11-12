@@ -48,7 +48,7 @@ PlacesPanel::PlacesPanel(QWidget *parent)
 {
     m_ngPalette = palette(); // the stock palette, restored when the glass panel is turned off
     ngApplyPalette();
-    setViewportMargins(10, 12, 10, 12 + 62); // dolphin-ng: keep the entries inside the glass card drawn by the dock, above its disk usage box
+    setViewportMargins(10, 12, 10, 12 + DolphinDockWidget::ngDiskRoom()); // dolphin-ng: keep the entries inside the glass card drawn by the dock, above its disk boxes
     // dolphin-ng: a tighter list than KIO's own, and icons moved in so the selection pill's round end clears them
     // (read by Dialog NG's places view; the stock KIO ignores them)
     setProperty("ngRowPadding", 2);
@@ -99,8 +99,10 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     auto *placesModel = DolphinPlacesModelSingleton::instance().placesModel();
     setModel(placesModel);
 
-    // dolphin-ng: the "Devices" section (disks and partitions) can be switched off as a whole: NG settings, or
-    // DOLPHIN_NG_DEVICES=hide. Single disks are hidden as any place is (its "Hide" entry, or the NG settings).
+    // dolphin-ng: disks and partitions (NG settings > Sidebar, or DOLPHIN_NG_DEVICES): by default boxes with their
+    // usage at the foot of the card (the dock draws them; their rows here are hidden), "list" keeps KIO's own
+    // sections, "hide" hides the internal disks. Single disks are hidden as any place is (its "Hide" entry, or the
+    // NG settings).
     // KFilePlacesView decides row visibility itself on model changes, so hide the rows again right after it
     auto applyDevices = [this, placesModel] {
         QTimer::singleShot(0, this, [this, placesModel] {
@@ -231,26 +233,38 @@ void PlacesPanel::ngApplyPalette()
     viewport()->setPalette(glass);
 }
 
-bool PlacesPanel::ngDevicesOff() const
+bool PlacesPanel::ngDeviceRowHidden(int group) const
 {
-    return ngSetting("DEVICES").toLower() == QLatin1String("hide") && ngSetting("SIDEBAR").toLower() != QLatin1String("plain") && !allPlacesShown();
+    if (ngSetting("SIDEBAR").toLower() == QLatin1String("plain")) {
+        return false;
+    }
+    const QString mode = ngSetting("DEVICES").toLower();
+    if (mode.isEmpty()) {
+        return true; // boxes at the foot of the card
+    }
+    return mode == QLatin1String("hide") && group == KFilePlacesModel::DevicesType && !allPlacesShown();
 }
 
 void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
 {
-    const bool hide = ngDevicesOff();
     for (int row = 0; row < placesModel->rowCount(); ++row) {
         const QModelIndex index = placesModel->index(row, 0);
-        if (placesModel->groupType(index) != KFilePlacesModel::DevicesType) {
+        const auto group = placesModel->groupType(index);
+        if (group != KFilePlacesModel::DevicesType && group != KFilePlacesModel::RemovableDevicesType) {
             continue;
         }
-        if (hide) {
+        if (ngDeviceRowHidden(group)) {
             if (!isRowHidden(row)) {
                 setRowHidden(row, true);
             }
-        } else if (isRowHidden(row) && (allPlacesShown() || (!placesModel->isHidden(index) && !placesModel->isGroupHidden(KFilePlacesModel::DevicesType)))) {
+        } else if (isRowHidden(row) && (allPlacesShown() || (!placesModel->isHidden(index) && !placesModel->isGroupHidden(group)))) {
             setRowHidden(row, false);
         }
+    }
+    if (!m_ngLayouting) {
+        m_ngLayouting = true;
+        ngLayoutBottom(); // the disk boxes may be more or fewer now
+        m_ngLayouting = false;
     }
 }
 
@@ -261,10 +275,10 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
     const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
     // KFilePlacesView shows rows again on its own (delayed updates when devices are found, when the URL changes...):
     // whenever a device row that should be hidden is about to be painted, hide it again
-    if (ngDevicesOff() && !m_ngDevicesPending) {
+    if (!m_ngDevicesPending) {
         if (auto *devicesModel = qobject_cast<KFilePlacesModel *>(model())) {
             for (int row = 0; row < devicesModel->rowCount(); ++row) {
-                if (!isRowHidden(row) && devicesModel->groupType(devicesModel->index(row, 0)) == KFilePlacesModel::DevicesType) {
+                if (!isRowHidden(row) && ngDeviceRowHidden(devicesModel->groupType(devicesModel->index(row, 0)))) {
                     m_ngDevicesPending = true;
                     QTimer::singleShot(0, this, [this, devicesModel] {
                         ngApplyDevices(devicesModel);
@@ -721,13 +735,14 @@ void PlacesPanel::ngLayoutBottom()
         connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, &PlacesPanel::ngUpdateFade);
     }
     bool shown = m_ngBottom && !m_ngBottom->isHidden();
-    if (shown && height() - 12 - 62 - 12 - (m_ngBottom->height() + 8) < 190) {
+    const int diskRoom = DolphinDockWidget::ngDiskRoom();
+    if (shown && height() - 12 - diskRoom - 12 - (m_ngBottom->height() + 8) < 190) {
         // a short window: the places come first, the section steps aside (it is parked below the panel)
         m_ngBottom->move(14, height() + 20);
         shown = false;
     }
     const int extra = shown ? m_ngBottom->height() + 8 : 0;
-    setViewportMargins(10, 12, 10, 12 + 62 + extra);
+    setViewportMargins(10, 12, 10, 12 + diskRoom + extra);
     ngPlaceScrollBar();
     if (shown) {
         // when the places need a scroll bar it runs down the right edge of the whole panel: the section ends
@@ -735,7 +750,7 @@ void PlacesPanel::ngLayoutBottom()
         QScrollBar *bar = verticalScrollBar();
         Q_UNUSED(bar)
         const int beside = 0; // the bar floats inside the card, beside the places only
-        m_ngBottom->setGeometry(14, height() - 12 - 62 - m_ngBottom->height(), width() - 28 - beside, m_ngBottom->height());
+        m_ngBottom->setGeometry(14, height() - 12 - diskRoom - m_ngBottom->height(), width() - 28 - beside, m_ngBottom->height());
     }
 }
 

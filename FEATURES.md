@@ -123,8 +123,9 @@ The bar above the files has, from left to right:
 
 The places sit on a card of glass that shows the desktop behind it, blurred by the compositor (or a blurred copy
 of the wallpaper, or a plain panel). Below them come the **Pinned** items and the **Filters**; at the foot, the
-disk's usage. Disks and partitions keep their **Devices** section: NG settings → Sidebar lists them, to hide any
-one of them (or the whole section).
+disks: the home one first, then every other disk and partition as a box with its usage (an unmounted one is dashed:
+a click mounts and opens it). NG settings → Sidebar chooses between these boxes, the classic **Devices** section or
+none, and lists the disks to hide any one of them.
 
 ![The glass sidebar](ng/screenshots/features/sidebar.png)
 
