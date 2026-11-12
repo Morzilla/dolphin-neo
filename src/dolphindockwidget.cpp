@@ -862,6 +862,10 @@ QList<DolphinDockWidget::NgDisk> DolphinDockWidget::ngSidebarDisks()
             if (home.isValid() && storage.device() == home.device()) {
                 continue; // the home disk is already the first box
             }
+            const QString mount = access->filePath();
+            if (mount == QLatin1String("/") || mount.startsWith(QLatin1String("/boot")) || mount.startsWith(QLatin1String("/efi"))) {
+                continue; // the system's own partitions (the boot loader's): nothing to open there
+            }
             disk.root = access->filePath();
             disk.total = storage.bytesTotal();
             disk.free = storage.bytesAvailable();

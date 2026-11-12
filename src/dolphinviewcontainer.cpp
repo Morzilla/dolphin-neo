@@ -929,7 +929,10 @@ private:
             cards->setChecked(cardsOn);
             cards->setPopupMode(QToolButton::MenuButtonPopup);
             cards->setText(cardsOn ? ngTr("Cards: %1", "Card: %1").arg(QLatin1String(looks[int(ngCardStyle())])) : ngTr("Cards", "Card"));
-            cards->setToolTip(ngTr("Cards view: every item is a card with all its details. The arrow picks the kind of card.", "Vista a card: ogni elemento è una scheda con tutti i dettagli. La freccia sceglie il tipo di card."));
+            cards->setToolTip(cardsOn ? ngTr("A click goes to the next kind of card (Tessera, Scheda, Dossier); the arrow picks one, or goes back to the list.",
+                                             "Un clic passa al tipo di card seguente (Tessera, Scheda, Dossier); la freccia ne sceglie uno, o torna alla lista.")
+                                      : ngTr("Cards view: every item is a card with all its details. The arrow picks the kind of card.",
+                                             "Vista a card: ogni elemento è una scheda con tutti i dettagli. La freccia sceglie il tipo di card."));
             auto *menu = new QMenu(cards);
             auto *group = new QActionGroup(menu);
             for (int i = 0; i < 3; ++i) {
@@ -962,15 +965,27 @@ private:
                     ngSettingsInvalidate();
                 });
             }
+            if (cardsOn) {
+                menu->addSeparator();
+                QAction *back = menu->addAction(QIcon::fromTheme(QStringLiteral("view-list-details")), ngTr("Back to the list", "Torna alla lista"));
+                connect(back, &QAction::triggered, this, [this] {
+                    m_view->setViewMode(m_modeBeforeCards == DolphinView::CardsView ? DolphinView::DetailsView : m_modeBeforeCards);
+                });
+            }
             cards->setMenu(menu);
             menuButton(cards);
-            connect(cards, &QToolButton::clicked, this, [this, cardsOn] {
-                if (cardsOn) {
-                    m_view->setViewMode(m_modeBeforeCards == DolphinView::CardsView ? DolphinView::DetailsView : m_modeBeforeCards);
-                } else {
+            // a click: the cards view in the look used last; already there, the next look
+            connect(cards, &QToolButton::clicked, this, [this, cards, cardsOn] {
+                cards->setChecked(true);
+                if (!cardsOn) {
                     m_modeBeforeCards = m_view->viewMode();
                     m_view->setViewMode(DolphinView::CardsView);
+                    return;
                 }
+                static const char *const keys[] = {"a", "b", "c"};
+                setNgSetting("CARDS", QLatin1String(keys[(int(ngCardStyle()) + 1) % 3]));
+                ngSettingsInvalidate();
+                rebuild();
             });
             m_flow->addWidget(cards);
         }

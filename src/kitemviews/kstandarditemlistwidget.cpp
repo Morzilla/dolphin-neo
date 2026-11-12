@@ -3752,7 +3752,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     const KItemListStyleOption &option = styleOption();
     const QHash<QByteArray, QVariant> values = data();
     const NgCardStyle look = ngCardStyle();
-    const bool hovered = isHovered();
+    const bool hovered = isHovered() || ngDemoHovered();
     const QLocale locale;
     const qreal dpr = KItemViewsUtils::devicePixelRatio(this);
 
@@ -3982,7 +3982,9 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         return ngLayoutActionPill(quickActions, x, y, right, actionHeight, chipFm, false);
     };
     if (hovered) {
-        m_ngCardEye = QRectF(card.right() - 6 - (actionSide + 2), card.top() + 6, actionSide + 2, actionSide + 2);
+        // a pinned card keeps its pin in that corner (paintNgPin): the eye stands to its left
+        const qreal pinRoom = data().value("ngPinned").toBool() ? qMax(0.0, card.right() - rect().right() + 25) : 0;
+        m_ngCardEye = QRectF(card.right() - 6 - pinRoom - (actionSide + 2), card.top() + 6, actionSide + 2, actionSide + 2);
     }
     auto setName = [this, nameInfo, &nameFm, &name](qreal x, qreal top, qreal width) {
         if (!m_ngCardEye.isEmpty() && top < m_ngCardEye.bottom() && x + width > m_ngCardEye.left() - 6) {
@@ -4541,6 +4543,13 @@ void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter, const QRec
         painter->drawLine(QPointF(footer.left() + 6, footer.top() + 0.5), QPointF(footer.right() - 6, footer.top() + 0.5));
         writeLine(QRectF(footer.left() + 8, footer.top(), footer.width() - 16, foot), foot, shade(0.45, 1.0), QColor(107, 114, 128));
     }
+}
+
+// for screenshots: DOLPHIN_NG_DEMO_HOVER names the item drawn as if the pointer were on it (no input is sent)
+bool KStandardItemListWidget::ngDemoHovered() const
+{
+    static const QString name = qEnvironmentVariable("DOLPHIN_NG_DEMO_HOVER");
+    return !name.isEmpty() && data().value("text").toString() == name;
 }
 
 void KStandardItemListWidget::paintNgPin(QPainter *painter)
@@ -5440,7 +5449,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
     paintNgActionPill(painter, text, dark);
 
     // ---- the preview eye, on a dark disc so that it reads over a picture too
-    if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? m_ngReveal > 0.01 : isHovered()) && !NgActivity::self()->contains(data().value("url").toUrl())
+    if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? m_ngReveal > 0.01 : (isHovered() || ngDemoHovered())) && !NgActivity::self()->contains(data().value("url").toUrl())
         && !NgModifiers::selecting()) {
         painter->setOpacity(m_ngCardEyeInPill ? qBound(0.0, m_ngReveal, 1.0) : 1.0);
         if (!m_ngCardEyeInPill) {

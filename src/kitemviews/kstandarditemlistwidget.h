@@ -234,6 +234,7 @@ private:
     void paintNgFamily(QPainter *painter); // files tied together (NgActivity families): one bubble around them
     void paintNgFold(QPainter *painter);
     /** dolphin-ng: a pushpin on an item pinned to the top of the folder */
+    bool ngDemoHovered() const;
     void paintNgPin(QPainter *painter); // CARDS_BADGE=fold: the folded glass corner with the type and size
     void paintNgPreviewObject(QPainter *painter, const QRectF &band, const QPixmap &pixmap, bool whole = false);
     qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
