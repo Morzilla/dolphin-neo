@@ -226,6 +226,7 @@ private:
     void paintNgCardSheet(QPainter *painter);
     bool ngOwnSelection() const override;
     qreal ngSelectionRadius() const override;
+    bool ngRingSelection() const override;
     void paintNgCard(QPainter *painter, QWidget *widget);
     void paintNgActivity(QPainter *painter); // work in progress on this file (NgActivity): a ring on cards, a fill on rows
     void paintNgFamily(QPainter *painter); // files tied together (NgActivity families): one bubble around them

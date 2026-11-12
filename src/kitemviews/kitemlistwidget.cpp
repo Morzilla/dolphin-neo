@@ -33,6 +33,7 @@
 #include <cmath>
 #include <algorithm>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPropertyAnimation>
 #include <QStyleOption>
 
@@ -480,6 +481,19 @@ void NgActivity::setUntilProcessEnds(const QUrl &url, qint64 pid, const QString 
         m_progressFiles.insert(key(url), progressFile);
     }
     saveProcesses();
+}
+
+void NgActivity::setFamilyColour(const QString &family, const QColor &colour)
+{
+    if (m_familyColours.value(family) != colour) {
+        m_familyColours.insert(family, colour);
+        Q_EMIT changed(); // the other pieces of the bubble take it
+    }
+}
+
+QColor NgActivity::familyColour(const QString &family) const
+{
+    return m_familyColours.value(family);
 }
 
 void NgActivity::setHoveredStop(const QUrl &url)
@@ -1025,7 +1039,14 @@ void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
         drawItemStyleOption(painter, widget, activeState | selectedState | QStyle::State_Enabled | QStyle::State_Item);
     }
 
-    if (m_hoverOpacity > 0.0) {
+    if (m_hoverOpacity > 0.0 && ngRingSelection()) {
+        // the ring is drawn around the item, outside its rect: straight onto the painter, not into the cache
+        const QStyle::State activeState(isActiveWindow() && widget->hasFocus() ? QStyle::State_Active | QStyle::State_Enabled : 0);
+        const qreal opacity = painter->opacity();
+        painter->setOpacity(m_hoverOpacity * opacity);
+        drawItemStyleOption(painter, widget, activeState | selectedState | QStyle::State_MouseOver | QStyle::State_Item);
+        painter->setOpacity(opacity);
+    } else if (m_hoverOpacity > 0.0) {
         if (!m_hoverCache) {
             // Initialize the m_hoverCache pixmap to improve the drawing performance
             // when fading the hover background
@@ -1522,6 +1543,39 @@ void KItemListWidget::setPressed(bool enabled)
     }
 }
 
+bool KItemListWidget::ngRingSelection() const
+{
+    return false;
+}
+
+void KItemListWidget::ngPaintCheck(QPainter *painter, QWidget *widget)
+{
+    // the round check at the top left corner of a selected item with a ring selection, over its content
+    if (!m_selected || !ngRingSelection()) {
+        return;
+    }
+    const bool dark = ngIsDark(widget ? widget->palette() : m_styleOption.palette);
+    QColor accent = m_styleOption.palette.color(QPalette::Highlight);
+    if (dark && accent.lightness() < 150) {
+        accent = QColor::fromHsl(accent.hslHue() < 0 ? 210 : accent.hslHue(), qMax(accent.hslSaturation(), 150), 150);
+    }
+    const QRectF card = selectionRectFull();
+    const QPointF centre(card.left() + 10, card.top() + 10);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(QPen(QColor(0, 0, 0, 90), 3));
+    painter->setBrush(accent);
+    painter->drawEllipse(centre, 10, 10);
+    painter->setPen(QPen(QColor::fromHsl(accent.hslHue() < 0 ? 0 : accent.hslHue(), 60, 22), 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter->setBrush(Qt::NoBrush);
+    QPainterPath tick;
+    tick.moveTo(centre + QPointF(-4.2, 0.2));
+    tick.lineTo(centre + QPointF(-1.2, 3.2));
+    tick.lineTo(centre + QPointF(4.4, -2.8));
+    painter->drawPath(tick);
+    painter->restore();
+}
+
 bool KItemListWidget::ngOwnSelection() const
 {
     return m_alternateBackground && ngTwoLineList();
@@ -1545,6 +1599,28 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
         }
         const bool dark = ngIsDark(widget ? widget->palette() : m_styleOption.palette);
         const qreal radius = ngSelectionRadius();
+        if (ngRingSelection()) {
+            // cards: no fill (a tinted ground is what the bubble of files tied together looks like). A ring set off
+            // from the card by a small gap, and a round check at its top left corner; hover gives a faint ring
+            QColor accent = m_styleOption.palette.color(QPalette::Highlight);
+            if (dark && accent.lightness() < 150) {
+                accent = QColor::fromHsl(accent.hslHue() < 0 ? 210 : accent.hslHue(), qMax(accent.hslSaturation(), 150), 150);
+            }
+            const QRectF card = selectionRectFull();
+            painter->save();
+            painter->setRenderHint(QPainter::Antialiasing);
+            QColor ring = accent;
+            if (!selected) {
+                ring.setAlphaF(0.38);
+            }
+            const qreal width = selected ? 2.5 : 1.5;
+            const qreal gap = 2.5 + width / 2.0;
+            painter->setBrush(Qt::NoBrush);
+            painter->setPen(QPen(ring, width));
+            painter->drawRoundedRect(card.adjusted(-gap, -gap, gap, gap), radius + gap, radius + gap);
+            painter->restore(); // (the check is drawn over the card's content: ngPaintCheck)
+            return;
+        }
         const QRectF card = radius > 10 ? selectionRectFull() : selectionRectFull().adjusted(3, 3, -3, -3);
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);

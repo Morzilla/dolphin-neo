@@ -685,6 +685,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         KItemListWidget::paint(painter, option, widget);
         paintNgCard(painter, widget);
         paintNgFold(painter);
+        ngPaintCheck(painter, widget);
         paintNgActivity(painter);
         return;
     }
@@ -3913,6 +3914,11 @@ void KStandardItemListWidget::ngPlaceCardPixmap()
     m_iconRect = QRectF(m_pixmapPos, QSizeF(m_scaledPixmapSize)).intersected(area);
 }
 
+bool KStandardItemListWidget::ngRingSelection() const
+{
+    return m_layout == CardsLayout;
+}
+
 bool KStandardItemListWidget::ngOwnSelection() const
 {
     return m_layout == CardsLayout || KItemListWidget::ngOwnSelection();
@@ -4208,8 +4214,21 @@ void KStandardItemListWidget::paintNgFamily(QPainter *painter)
             }
         }
     }
-    QColor accent = styleOption().palette.color(QPalette::Highlight);
-    accent = QColor::fromHslF(accent.hslHueF() < 0 ? 0.55 : accent.hslHueF(), qMax<qreal>(accent.hslSaturationF(), 0.65), 0.62);
+    // the colour of the file at work (the parent of the family), the same on every piece of the bubble: the parent
+    // tells the colour of its own card, the others take it (until it has painted, the colour of its kind)
+    const QUrl parentUrl(family);
+    const QUrl ownUrl = data().value("url").toUrl();
+    if (ownUrl.adjusted(QUrl::StripTrailingSlash | QUrl::NormalizePathSegments).toString() == family && m_ngTint.isValid()) {
+        activity->setFamilyColour(family, m_ngTint);
+    }
+    QColor kindColour = activity->familyColour(family);
+    if (!kindColour.isValid()) {
+        const bool parentDir = parentUrl.isLocalFile() && QFileInfo(parentUrl.toLocalFile()).isDir();
+        kindColour = ngKindFor(parentUrl.adjusted(QUrl::StripTrailingSlash).fileName(), parentDir).tint;
+    }
+    const qreal hue = kindColour.hslHueF() < 0 ? 0.55 : kindColour.hslHueF();
+    const qreal saturation = kindColour.hslHueF() < 0 ? 0.0 : qMax<qreal>(kindColour.hslSaturationF(), 0.55);
+    QColor accent = QColor::fromHslF(hue, saturation, ngIsDark(styleOption().palette) ? 0.64 : 0.5);
     QColor fill = accent, border = accent;
     const qreal in = 1 - std::pow(1 - activity->growth(data().value("url").toUrl()), 3);
     fill.setAlphaF((cards ? 0.18 : 0.13) * in);

@@ -100,6 +100,9 @@ public:
     bool canCancel(const QUrl &url) const;
     void setCanceller(const QUrl &url, const std::function<void()> &cancel);
     void cancel(const QUrl &url);
+    /** the colour of a family's bubble: the colour of its parent's card, told by the parent when it paints */
+    void setFamilyColour(const QString &family, const QColor &colour);
+    QColor familyColour(const QString &family) const;
     /** the stop button under the pointer (drawn red), or none */
     void setHoveredStop(const QUrl &url);
     bool isStopHovered(const QUrl &url) const;
@@ -121,6 +124,7 @@ private:
     QHash<QString, qint64> m_linkedAt; // child key -> when it was tied (ms since epoch): it grows in
     QHash<QString, std::function<void()>> m_cancellers;
     QString m_hoveredStop;
+    QHash<QString, QColor> m_familyColours;
     /* processes of quick actions outlive Dolphin: they are written down, so a Dolphin started later shows them */
     void saveProcesses();
     void loadProcesses();
@@ -447,6 +451,10 @@ protected:
     virtual bool ngOwnSelection() const;
     /** dolphin-ng: the corner radius of that shape; above 10 the shape is the whole item (a card). */
     virtual qreal ngSelectionRadius() const;
+    /** dolphin-ng: the selection is a ring set off around the item, with a check (cards), not a tinted fill */
+    virtual bool ngRingSelection() const;
+    /** dolphin-ng: the check of a ring selection, drawn by the item over its content */
+    void ngPaintCheck(QPainter *painter, QWidget *widget);
 
 private:
 
