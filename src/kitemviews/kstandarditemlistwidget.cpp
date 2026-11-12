@@ -3430,8 +3430,10 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         }
     } else if (category == int(NgKind::Archive) || category == int(NgKind::Package)) {
         // a parcel: a box with its tape and a label
-        const qreal width = qMin(band.width() * 0.46, band.height() * 1.3);
-        const QRectF box(band.center().x() - width / 2.0, band.top() + 18 * u, width, band.height());
+        // whole (the Scheda): the box takes most of its column and stands entire, its lid included
+        const qreal width = whole ? qMin(band.width() * 0.84, band.height() * 1.15) : qMin(band.width() * 0.46, band.height() * 1.3);
+        const QRectF box = whole ? QRectF(band.center().x() - width / 2.0, band.top() + 16 * u, width, band.height() - 22 * u)
+                                 : QRectF(band.center().x() - width / 2.0, band.top() + 18 * u, width, band.height());
         QColor card = tint;
         card.setAlphaF(1.0);
         painter->setPen(Qt::NoPen);
