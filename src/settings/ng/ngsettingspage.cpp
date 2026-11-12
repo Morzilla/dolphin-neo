@@ -1287,6 +1287,10 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_hoverDelay->setSuffix(QStringLiteral(" ms"));
     formRow(ngTr("After:", "Dopo:"), m_hoverDelay);
     m_float = toggle(ngTr("Floats above the window (it can leave the pane)", "Galleggia sopra la finestra (può uscire dal riquadro)"));
+    // the open/save window (Dialog NG) has a setting of its own: one may want the quick preview here and not there
+    heading(ngTr("Open/Save window (Dialog NG)", "Finestra Apri/Salva (Dialog NG)"));
+    note(ngTr("The file window of every application, when Dialog NG is installed.", "La finestra dei file di tutte le applicazioni, se Dialog NG è installato."));
+    m_dialogQuick = toggle(ngTr("Quick preview when the mouse rests on a file", "Anteprima al volo fermando il mouse su un file"));
     page->addStretch();
 
     connect(tabGroup, &QButtonGroup::idClicked, this, [this](int index) {
@@ -1324,6 +1328,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_sideRow->setEnabled(m_glassPanel->isEnabled() && m_backdrop->isEnabled());
     quickSideRow->setEnabled(m_quickView->isChecked());
 
+    connect(m_dialogQuick, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     for (QCheckBox *box : {m_glassPanel, m_motion, m_twoLines, m_icons, m_ago, m_tiles, m_hoverPreview, m_folderSizes, m_rowDates, m_float, m_sidebarFilters, m_sidebarPinned, m_rowWash, m_folderContentDate}) {
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
@@ -1496,6 +1501,7 @@ void NgSettingsPage::loadSettings()
     m_hoverPreview->setChecked(hover > 0);
     m_hoverDelay->setValue(hover > 0 ? qBound(100, hover, 5000) : 700);
     m_float->setChecked(ngSetting("PREVIEW_FLOAT") == QLatin1String("1"));
+    m_dialogQuick->setChecked(KConfigGroup(KSharedConfig::openConfig(QStringLiteral("dialog-ngrc")), QStringLiteral("View")).readEntry("QuickPreview", true));
     m_tiles->setChecked(ngSetting("TILES").toLower() != QLatin1String("off"));
     static const char *const looks[] = {"a", "b", "c"};
     m_cards->setCurrentIndex(int(ngCardStyle()));
@@ -1571,6 +1577,11 @@ void NgSettingsPage::applySettings()
         ContentDisplaySettings::self()->save();
     }
     setNgSetting("PREVIEW_FLOAT", m_float->isChecked() ? QStringLiteral("1") : QString());
+    {
+        KConfigGroup dialog(KSharedConfig::openConfig(QStringLiteral("dialog-ngrc")), QStringLiteral("View"));
+        dialog.writeEntry("QuickPreview", m_dialogQuick->isChecked());
+        dialog.sync();
+    }
     setNgSetting("PREVIEW_HOVER", m_hoverPreview->isChecked() ? QString::number(m_hoverDelay->value()) : QString());
     setNgSetting("TILES", m_tiles->isChecked() ? QString() : QStringLiteral("off"));
     setNgSetting("CARDS", m_cards->currentData().toString());
@@ -1613,6 +1624,7 @@ void NgSettingsPage::restoreDefaults()
     m_hoverPreview->setChecked(false);
     m_hoverDelay->setValue(700);
     m_float->setChecked(false);
+    m_dialogQuick->setChecked(true);
     m_folderSizes->setChecked(false);
     m_tiles->setChecked(true);
     m_sidebarFilters->setChecked(true);
