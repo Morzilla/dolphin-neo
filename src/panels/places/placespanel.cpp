@@ -49,6 +49,10 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     m_ngPalette = palette(); // the stock palette, restored when the glass panel is turned off
     ngApplyPalette();
     setViewportMargins(10, 12, 10, 12 + 62); // dolphin-ng: keep the entries inside the glass card drawn by the dock, above its disk usage box
+    // dolphin-ng: a tighter list than KIO's own, and icons moved in so the selection pill's round end clears them
+    // (read by Dialog NG's places view; the stock KIO ignores them)
+    setProperty("ngRowPadding", 2);
+    setProperty("ngIconIndent", 7);
     // dolphin-ng: never fill the list background, whatever the style's base colour is, so the glass card shows through
     viewport()->setAutoFillBackground(false);
     setAutoFillBackground(false);
