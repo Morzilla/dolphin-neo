@@ -3214,8 +3214,8 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         // a flat folder: a darker back whose tab slopes down into its top edge, a lighter front over nearly all of
         // it. The count and the size are written at the bottom left of the front, large; a well-known folder of the
         // home (Downloads, Documents...) carries its own colour (the tint) and a line glyph at the top right
-        const qreal width = qMin(band.width() * 0.86, 160 * u);
-        const qreal height = qMin(band.height() - 14 * u, width * 0.72);
+        const qreal width = qMin(band.width() * 0.68, 128 * u); // about 3 : 2, not wider
+        const qreal height = qMin(band.height() - 14 * u, width * 0.76);
         const QRectF body(band.center().x() - width / 2.0, band.center().y() - height / 2.0 + 2 * u, width, height);
         const qreal hue = tint.hslHueF() < 0 ? 0 : tint.hslHueF();
         const qreal sat = tint.hslHueF() < 0 ? 0 : tint.hslSaturationF();
