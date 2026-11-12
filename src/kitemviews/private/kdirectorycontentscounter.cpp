@@ -369,7 +369,9 @@ void KDirectoryContentsCounter::slotResult(const QString &path, int count, long 
 void KDirectoryContentsCounter::showResult(const QString &path, int count, long long size, bool queued)
 {
     const auto shown = m_shown.constFind(path);
-    if (shown != m_shown.constEnd() && shown->first == count && shown->second == size) {
+    // a value from the cache is always told again: it is asked for when the item's data were read again (on hover,
+    // say), and those reset the folder's size to unknown
+    if (!queued && shown != m_shown.constEnd() && shown->first == count && shown->second == size) {
         return;
     }
     m_shown.insert(path, {count, size});
