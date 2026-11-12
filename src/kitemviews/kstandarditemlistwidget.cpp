@@ -1087,7 +1087,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
                 if (&chip == &m_ngChips.first()) {
                     wordsX = chip.rect.left();
                 }
-                const QString words = (&chip == &m_ngChips.first() ? QString() : QStringLiteral(" ·  ")) + chip.text;
+                const QString words = (&chip == &m_ngChips.first() ? QString() : QStringLiteral("  ·  ")) + chip.text;
                 painter->setPen(m_additionalInfoTextColor);
                 painter->drawText(QRectF(wordsX, chip.rect.top(), chip.rect.width() + 40, chip.rect.height()), Qt::AlignLeft | Qt::AlignVCenter, words);
                 wordsX += QFontMetricsF(painter->font()).horizontalAdvance(words);
@@ -2711,6 +2711,15 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
                 typeText = isDir ? i18nc("@item:intable", "Folder") : values.value("text").toString().section(QLatin1Char('.'), -1).toUpper();
             }
             chip(typeText, !m_ngObjectRow);
+            if (m_ngObjectRow && isDir) {
+                // the folder's drawing is small in a row: its item count and size are said in words too
+                if (values.contains("count") && values.value("count").toInt() >= 0) {
+                    chip(i18ncp("@item:intable", "%1 item", "%1 items", values.value("count").toInt()), false);
+                }
+                if (!m_ngInfoSize.isEmpty()) {
+                    chip(m_ngInfoSize, false);
+                }
+            }
             if (wantDates && m_ngTime.isEmpty()) {
                 // no time column: the dates become chips
                 if (modified.isValid()) {
@@ -3116,13 +3125,28 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
             const QRectF text = cover.adjusted(9 * u, 2 * u, -9 * u, -3 * u);
             const QString number = count >= 0 ? QString::number(count) : QString();
             const QString under = count >= 0 ? (sizeText.isEmpty() ? ngTr("items", "elementi") : ngTr("items · ", "elementi · ") + sizeText) : sizeText;
-            const qreal numberHeight = number.isEmpty() ? 0 : text.height() * 0.6, underHeight = text.height() - numberHeight;
             // on a light front (plain folders are pale grey) the writing is dark, on a coloured one light
             const bool lightFront = front.lightnessF() > 0.6;
-            write(QRectF(text.left(), text.top(), text.width(), numberHeight), number, numberHeight * 0.92, QFont::Black, lightFront ? shade(0.24, 0.6) : shade(0.96, 0.5),
-                  Qt::AlignLeft | Qt::AlignVCenter);
-            write(QRectF(text.left(), text.top() + numberHeight, text.width(), underHeight), under, qMin(underHeight * 0.8, 11 * u), QFont::Bold,
-                  lightFront ? shade(0.34, 0.5) : shade(0.88, 0.6), Qt::AlignLeft | Qt::AlignVCenter);
+            const QColor strong = lightFront ? shade(0.24, 0.6) : shade(0.96, 0.5), soft = lightFront ? shade(0.30, 0.5) : shade(0.90, 0.6);
+            if (count >= 0 && !sizeText.isEmpty()) {
+                // measured: two lines of the same weight, easy to read: "3 items" over "741.1 KiB" (just "3" if the
+                // words do not fit on the front)
+                const qreal half = text.height() / 2.0;
+                QFont probe(*font);
+                probe.setPixelSize(qMax(9, qRound(half * 0.78)));
+                probe.setWeight(QFont::Black);
+                QString first = QString::number(count) + QLatin1Char(' ') + ngTr("items", "elementi");
+                if (QFontMetricsF(probe).horizontalAdvance(first) > text.width()) {
+                    first = QString::number(count);
+                }
+                write(QRectF(text.left(), text.top(), text.width(), half), first, qMax(9.0, half * 0.78), QFont::Black, strong, Qt::AlignLeft | Qt::AlignVCenter);
+                write(QRectF(text.left(), text.top() + half, text.width(), half), sizeText, qMax(9.0, half * 0.72), QFont::Bold, soft, Qt::AlignLeft | Qt::AlignVCenter);
+            } else {
+                const qreal numberHeight = number.isEmpty() ? 0 : text.height() * 0.58, underHeight = text.height() - numberHeight;
+                write(QRectF(text.left(), text.top(), text.width(), numberHeight), number, numberHeight * 0.92, QFont::Black, strong, Qt::AlignLeft | Qt::AlignVCenter);
+                write(QRectF(text.left(), text.top() + numberHeight, text.width(), underHeight), under, qMax(9.0, qMin(underHeight * 0.85, 13 * u)), QFont::Bold, soft,
+                      Qt::AlignLeft | Qt::AlignVCenter);
+            }
         }
     } else if (category == int(NgKind::Sheet)) {
         const QRectF page = sheet(0.62);
@@ -4800,6 +4824,24 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             painter->drawRoundedRect(flap, 7, 7);
             painter->setPen(QPen(QColor(255, 255, 255, dark ? 70 : 160), 1));
             painter->drawLine(QPointF(flap.left() + 7, flap.top() + 0.5), QPointF(flap.right() - 7, flap.top() + 0.5));
+            if (m_ngInfoInside) {
+                // written on the front flap: how many items, and how much they take when it is measured
+                const QVariant items = data().value("count");
+                const int itemCount = items.isValid() && items.typeId() != QMetaType::QString ? items.toInt() : -1;
+                QString words = itemCount >= 0 ? i18ncp("@item:intable", "%1 item", "%1 items", itemCount) : QString();
+                if (!m_ngInfoSize.isEmpty()) {
+                    words += (words.isEmpty() ? QString() : QStringLiteral(" · ")) + m_ngInfoSize;
+                }
+                if (!words.isEmpty()) {
+                    QFont flapFont(m_customizedFont);
+                    flapFont.setPixelSize(qMax(11, qRound(flapHeight * 0.58)));
+                    flapFont.setWeight(QFont::Bold);
+                    painter->setFont(flapFont);
+                    painter->setPen(front.lightnessF() > 0.6 ? QColor(45, 49, 56) : QColor(240, 242, 245));
+                    const QRectF line(flap.left() + 11, flap.top(), flap.width() - 22, flapHeight);
+                    painter->drawText(line, Qt::AlignLeft | Qt::AlignVCenter, QFontMetricsF(flapFont).elidedText(words, Qt::ElideRight, line.width()));
+                }
+            }
             painter->restore();
         } else if (m_ngCategory == int(NgKind::Folder) || !m_ngCardPreview) {
             // no preview: a sketch of what a file of this kind holds (or of the folder), instead of its icon
@@ -4813,7 +4855,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             if (m_ngCategory == int(NgKind::Folder) && !m_ngCardPeek.isEmpty()) {
                 // a folder with something in it: the folder on the left, its first entries listed beside it
                 const QRectF left(m_ngCardThumb.left(), m_ngCardThumb.top(), m_ngCardThumb.width() * 0.40, m_ngCardThumb.height());
-                ngPaintContentSketch(painter, left, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, QString(), m_ngInfoInside ? &m_customizedFont : nullptr);
+                ngPaintContentSketch(painter, left, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, m_ngInfoSize, m_ngInfoInside ? &m_customizedFont : nullptr);
                 QFont peekFont = m_customizedFont;
                 peekFont.setPointSizeF(peekFont.pointSizeF() * 0.84);
                 const QFontMetricsF peekFm(peekFont);

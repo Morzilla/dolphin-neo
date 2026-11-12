@@ -141,15 +141,18 @@ void ContentDisplayTab::applySettings()
 {
     auto settings = ContentDisplaySettings::self();
 #ifndef Q_OS_WIN
-    if (m_numberOfItems->isChecked()) {
-        settings->setDirectorySizeMode(ContentDisplaySettings::EnumDirectorySizeMode::ContentCount);
-    } else if (m_sizeOfContents->isChecked()) {
-        settings->setDirectorySizeMode(ContentDisplaySettings::EnumDirectorySizeMode::ContentSize);
-    } else if (m_noDirectorySize->isChecked()) {
-        settings->setDirectorySizeMode(ContentDisplaySettings::EnumDirectorySizeMode::None);
+    // dolphin-ng: only what was changed on this tab: the NG page sets the folder size too, in the same dialog,
+    // and writing back the state this tab was opened with undid it
+    const int chosenMode = m_numberOfItems->isChecked() ? int(ContentDisplaySettings::EnumDirectorySizeMode::ContentCount)
+        : m_sizeOfContents->isChecked()                 ? int(ContentDisplaySettings::EnumDirectorySizeMode::ContentSize)
+        : m_noDirectorySize->isChecked()                ? int(ContentDisplaySettings::EnumDirectorySizeMode::None)
+                                                        : m_ngLoadedSizeMode;
+    if (chosenMode != m_ngLoadedSizeMode) {
+        settings->setDirectorySizeMode(ContentDisplaySettings::EnumDirectorySizeMode::type(chosenMode));
     }
-
-    settings->setRecursiveDirectorySizeLimit(m_recursiveDirectorySizeLimit->value());
+    if (m_recursiveDirectorySizeLimit->value() != m_ngLoadedSizeLimit) {
+        settings->setRecursiveDirectorySizeLimit(m_recursiveDirectorySizeLimit->value());
+    }
 #endif
     setSortingChoiceValue();
     settings->setUseShortRelativeDates(m_useRelatetiveDates->isChecked());
@@ -179,6 +182,8 @@ void ContentDisplayTab::loadSettings()
     m_sizeOfContents->setChecked(settings->directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentSize);
     m_noDirectorySize->setChecked(settings->directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::None);
     m_recursiveDirectorySizeLimit->setValue(settings->recursiveDirectorySizeLimit());
+    m_ngLoadedSizeMode = int(settings->directorySizeMode());
+    m_ngLoadedSizeLimit = m_recursiveDirectorySizeLimit->value();
 #endif
     m_useRelatetiveDates->setChecked(settings->useShortRelativeDates());
     m_useShortDates->setChecked(!settings->useShortRelativeDates());

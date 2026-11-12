@@ -29,6 +29,7 @@
 #include <QScrollArea>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <KMessageWidget>
 #include <QSlider>
 #include <QSpinBox>
 #include <QVBoxLayout>
@@ -1162,6 +1163,20 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_rowDates = toggle(ngTr("Created and modified, with the days elapsed", "Creato e modificato, con i giorni trascorsi"));
     m_folderSizes = toggle(ngTr("Folders: space used by the contents", "Cartelle: spazio occupato dal contenuto"));
     m_folderSizes->setToolTip(ngTr("Measures the contents of folders (Dolphin's setting “Folder size: size of contents”, with its depth limit). Otherwise only the number of items.", "Misura il contenuto delle cartelle (impostazione di Dolphin «Dimensione delle cartelle: dimensione del contenuto», con il suo limite di profondità). Altrimenti solo il numero di elementi."));
+    {
+        auto *warning = new KMessageWidget(ngTr("This can slow the computer down for a while: every folder you open is measured down to its "
+                                                "subfolders, which keeps the disk busy (a few seconds for large folders, longer on network "
+                                                "or slow disks). The window stays usable meanwhile; the sizes appear one by one.",
+                                                "Può rallentare il computer per un po': ogni cartella che apri viene misurata fino alle "
+                                                "sottocartelle e il disco resta occupato (qualche secondo per le cartelle grandi, di più su "
+                                                "dischi di rete o lenti). Intanto la finestra resta utilizzabile; le dimensioni compaiono "
+                                                "una alla volta."),
+                                           this);
+        warning->setMessageType(KMessageWidget::Warning);
+        warning->setCloseButtonVisible(false);
+        warning->setWordWrap(true);
+        page->addWidget(warning);
+    }
     page->addStretch();
 
     // ================= Cards =================

@@ -36,6 +36,8 @@ private:
 
     QRadioButton *m_numberOfItems;
     QRadioButton *m_sizeOfContents;
+    int m_ngLoadedSizeMode = -1; // dolphin-ng: what the tab was opened with (see applySettings)
+    int m_ngLoadedSizeLimit = -1;
     QRadioButton *m_noDirectorySize;
     QSpinBox *m_recursiveDirectorySizeLimit;
     QRadioButton *m_useRelatetiveDates;
