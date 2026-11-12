@@ -3707,9 +3707,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             bool monospace;
         };
         QList<Line> lines;
-        if (m_ngInfoInside && m_ngCardPreview && !isDir) {
-            lines.append({m_ngSigla, sizeText, false}); // a real preview: no drawing to write in
-        } else if (created.isValid()) {
+        if (created.isValid()) {
             lines.append({ngTr("Created", "Creato"), dateLine(created), false});
         }
         if (modified.isValid()) {
@@ -3934,6 +3932,121 @@ void KStandardItemListWidget::moveEvent(QGraphicsSceneMoveEvent *event)
     KItemListWidget::moveEvent(event);
     if (m_ngShowedFamily) {
         update();
+    }
+}
+
+void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter)
+{
+    // CARDS_BADGE=inside, a card with a real preview: the preview becomes the thing itself and the type and the
+    // size go on its border. A picture is a print with its white margin (slightly askew, each its own way), a
+    // video a frame on a strip of film, a page (PDF, documents) a sheet with a footer.
+    const QRectF band = m_ngCardThumb;
+    const QFontMetricsF base(m_customizedFont);
+    const qreal hue = m_ngTint.hslHueF() < 0 ? 0 : m_ngTint.hslHueF();
+    const qreal sat = m_ngTint.hslHueF() < 0 ? 0 : m_ngTint.hslSaturationF();
+    auto shade = [&](qreal lightness, qreal saturation) {
+        return QColor::fromHslF(hue, qBound<qreal>(0, sat * saturation, 1), lightness);
+    };
+    // the preview, cropped to fill a rectangle
+    auto picture = [&](const QRectF &target) {
+        const QSizeF size = QSizeF(m_pixmap.size()) / m_pixmap.devicePixelRatio();
+        if (size.isEmpty()) {
+            return;
+        }
+        const qreal scale = qMax(target.width() / size.width(), target.height() / size.height());
+        const QSizeF shown = target.size() / scale;
+        const QRectF source(QPointF((size.width() - shown.width()) / 2.0, m_ngCategory == int(NgKind::Image) ? (size.height() - shown.height()) / 2.0 : 0) * m_pixmap.devicePixelRatio(),
+                            shown * m_pixmap.devicePixelRatio());
+        painter->drawPixmap(target, m_pixmap, source);
+    };
+    auto writeLine = [&](const QRectF &r, qreal height, const QColor &typeColour, const QColor &sizeColour) {
+        QFont typeFont(m_customizedFont);
+        typeFont.setPixelSize(qMax(10, qRound(height * 0.58)));
+        typeFont.setWeight(QFont::Black);
+        typeFont.setLetterSpacing(QFont::PercentageSpacing, 104);
+        QFont sizeFont(m_customizedFont);
+        sizeFont.setPixelSize(qMax(9, qRound(height * 0.45)));
+        sizeFont.setWeight(QFont::Bold);
+        painter->setFont(typeFont);
+        painter->setPen(typeColour);
+        painter->drawText(r, Qt::AlignLeft | Qt::AlignVCenter, m_ngSigla);
+        const qreal typeWidth = QFontMetricsF(typeFont).horizontalAdvance(m_ngSigla) + 8;
+        painter->setFont(sizeFont);
+        painter->setPen(sizeColour);
+        painter->drawText(r.adjusted(typeWidth, 0, 0, 0), Qt::AlignRight | Qt::AlignVCenter,
+                          QFontMetricsF(sizeFont).elidedText(m_ngInfoSize, Qt::ElideLeft, r.width() - typeWidth));
+    };
+    // how wide the line of type and size is, at a given line height: the object is made at least that wide
+    auto lineWidth = [&](qreal height) {
+        QFont typeFont(m_customizedFont);
+        typeFont.setPixelSize(qMax(10, qRound(height * 0.58)));
+        typeFont.setWeight(QFont::Black);
+        typeFont.setLetterSpacing(QFont::PercentageSpacing, 104);
+        QFont sizeFont(m_customizedFont);
+        sizeFont.setPixelSize(qMax(9, qRound(height * 0.45)));
+        sizeFont.setWeight(QFont::Bold);
+        return QFontMetricsF(typeFont).horizontalAdvance(m_ngSigla) + 10 + QFontMetricsF(sizeFont).horizontalAdvance(m_ngInfoSize) + 6;
+    };
+    const QString name = data().value("text").toString();
+    const QString mime = data().value("mimetype").toString();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setRenderHint(QPainter::SmoothPixmapTransform);
+
+    if (m_ngCategory == int(NgKind::Image)) {
+        const qreal foot = qRound(qMax(20.0, base.height() * 1.55));
+        const qreal margin = qMax(5.0, band.width() * 0.025);
+        qreal width = qMin(band.width() * 0.8, (band.height() - 12 - foot - margin) * 1.6 + 2 * margin);
+        width = qMin(band.width() * 0.94, qMax(width, lineWidth(foot) + 2 * margin + 4));
+        const QRectF print(-width / 2.0, -(band.height() - 12) / 2.0, width, band.height() - 12);
+        painter->save();
+        painter->translate(band.center().x(), band.center().y() + 2);
+        painter->rotate(((int(qHash(name) % 7)) - 3) * 0.5);
+        painter->setPen(Qt::NoPen);
+        for (int i = 4; i >= 1; --i) { // its shadow on the band
+            painter->setBrush(QColor(0, 0, 0, 22));
+            painter->drawRoundedRect(print.translated(0, 2).adjusted(-i, -i + 1, i, i), 3 + i, 3 + i);
+        }
+        painter->setBrush(QColor(244, 244, 241));
+        painter->drawRoundedRect(print, 3, 3);
+        picture(print.adjusted(margin, margin, -margin, -foot));
+        writeLine(QRectF(print.left() + margin + 2, print.bottom() - foot, print.width() - 2 * margin - 4, foot), foot, shade(0.32, 0.9), shade(0.45, 0.35));
+        painter->restore();
+    } else if (m_ngCategory == int(NgKind::Media) || mime.startsWith(QLatin1String("video/"))) {
+        // a frame on a strip of film; type and size printed along its edge
+        const qreal edge = qRound(qMax(16.0, base.height() * 1.25));
+        const QRectF strip(band.left() + band.width() * 0.08, band.top() + 7, band.width() * 0.84, band.height() - 14);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(17, 18, 21));
+        painter->drawRoundedRect(strip, 4, 4);
+        const qreal hole = qMax(5.0, strip.height() * 0.06);
+        for (qreal x = strip.left() + 8; x + hole * 1.4 < strip.right() - 4; x += hole * 2.6) {
+            painter->setBrush(QColor(255, 255, 255, 50));
+            painter->drawRoundedRect(QRectF(x, strip.top() + hole * 0.6, hole * 1.4, hole), 1.5, 1.5);
+        }
+        const QRectF frame = strip.adjusted(8, hole * 2.2, -8, -edge - 2);
+        picture(frame);
+        writeLine(QRectF(frame.left() + 2, frame.bottom() + 1, frame.width() - 4, edge), edge, shade(0.72, 1.0), QColor(205, 209, 216));
+    } else {
+        // a sheet: the page itself, with a footer like a printed page
+        const qreal foot = qRound(qMax(20.0, base.height() * 1.5));
+        const qreal width = qMin(band.width() * 0.94, qMax(qMin(band.width() * 0.56, band.height() * 1.05), lineWidth(foot) + 16));
+        const QRectF page(band.center().x() - width / 2.0, band.top() + 10, width, band.height());
+        painter->setPen(Qt::NoPen);
+        for (int i = 3; i >= 1; --i) {
+            painter->setBrush(QColor(0, 0, 0, 22));
+            painter->drawRoundedRect(page.adjusted(-i, -i + 1, i, i), 3 + i, 3 + i);
+        }
+        painter->setBrush(QColor(255, 255, 255));
+        painter->drawRoundedRect(page, 3, 3);
+        const QRectF footer(page.left(), band.bottom() - foot - 3, page.width(), foot + 3);
+        painter->save();
+        painter->setClipRect(QRectF(page.left(), page.top(), page.width(), footer.top() - page.top()), Qt::IntersectClip);
+        picture(QRectF(page.left(), page.top(), page.width(), page.width() * 1.414));
+        painter->restore();
+        painter->fillRect(footer, QColor(255, 255, 255));
+        painter->setPen(QPen(QColor(226, 228, 233), 1));
+        painter->drawLine(QPointF(footer.left() + 6, footer.top() + 0.5), QPointF(footer.right() - 6, footer.top() + 0.5));
+        writeLine(QRectF(footer.left() + 8, footer.top(), footer.width() - 16, foot), foot, shade(0.45, 1.0), QColor(107, 114, 128));
     }
 }
 
@@ -4508,6 +4621,12 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             } else {
                 ngPaintContentSketch(painter, m_ngCardThumb, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, m_ngInfoSize, m_ngInfoInside ? &m_customizedFont : nullptr);
             }
+            painter->restore();
+        } else if (!m_pixmap.isNull() && m_ngInfoInside) {
+            // the preview as an object, its type and size written on its border
+            painter->save();
+            painter->setClipPath(band, Qt::IntersectClip);
+            paintNgPreviewObject(painter);
             painter->restore();
         } else if (!m_pixmap.isNull()) {
             painter->save();

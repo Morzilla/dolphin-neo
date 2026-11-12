@@ -230,6 +230,7 @@ private:
     void paintNgActivity(QPainter *painter); // work in progress on this file (NgActivity): a ring on cards, a fill on rows
     void paintNgFamily(QPainter *painter); // files tied together (NgActivity families): one bubble around them
     void paintNgFold(QPainter *painter); // CARDS_BADGE=fold: the folded glass corner with the type and size
+    void paintNgPreviewObject(QPainter *painter); // CARDS_BADGE=inside: a real preview as a print, a page or a film frame
     qreal ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
                              const QList<int> &origin = {});
     void paintNgActionPill(QPainter *painter, const QColor &text, bool dark);
