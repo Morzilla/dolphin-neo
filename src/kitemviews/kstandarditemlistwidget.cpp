@@ -1147,6 +1147,9 @@ int KStandardItemListWidget::ngActionAt(const QPointF &pos) const
     if (!m_ngCancelRect.isEmpty() && m_ngCancelRect.adjusted(-3, -3, 3, 3).contains(pos)) {
         return 6;
     }
+    if (NgActivity::self()->contains(data().value("url").toUrl())) {
+        return 0; // a file at work: its quick actions, preview and menu buttons are hidden, so not clickable
+    }
     // 5: the pointer is on a name that was shortened to fit (hover only: the full name is shown as a tip)
     auto onShortenedName = [this, &pos] {
         const TextInfo *name = m_textInfo.value("text");
@@ -3229,6 +3232,9 @@ qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &qu
 
 void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor &text, bool dark)
 {
+    if (NgActivity::self()->contains(data().value("url").toUrl())) {
+        return; // a file at work (or being made) shows only its progress: no quick actions over it
+    }
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
     // ---- the quick actions: icons in one pill, the main one with its label on a tint of the type
@@ -4465,7 +4471,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
     }
 
     // ---- the preview eye, on a dark disc so that it reads over a picture too
-    if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? m_ngReveal > 0.01 : isHovered())) {
+    if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? m_ngReveal > 0.01 : isHovered()) && !NgActivity::self()->contains(data().value("url").toUrl())) {
         painter->setOpacity(m_ngCardEyeInPill ? qBound(0.0, m_ngReveal, 1.0) : 1.0);
         if (!m_ngCardEyeInPill) {
             painter->setPen(Qt::NoPen);
