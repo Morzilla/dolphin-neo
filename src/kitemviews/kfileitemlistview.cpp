@@ -487,7 +487,15 @@ QSize KFileItemListView::availableIconSize() const
             return QSize(qRound(card.width()), qRound(card.width() * 2.4)); // 2.4: a phone screenshot is about 1 : 2.2
         }
         if (ngCardStyle() == NgCardStyle::Scheda) {
-            return QSize(qRound(qMin(card.height() * 1.3, card.width() * 0.38)), qRound(card.height())); // the object's column
+            // as wide as the object's column, and tall enough that a page (taller than wide) comes at that width
+            // too: fitted in the column's own height it came half as wide and was stretched, blurred
+            const qreal column = qMin(card.height() * 1.3, card.width() * 0.38);
+            return QSize(qRound(column), qRound(column * 2.4));
+        }
+        if (ngCardStyle() == NgCardStyle::Dossier) {
+            // the object in the header (see KStandardItemListWidget::updateCardsLayoutTextCache())
+            const qreal column = qMin(qRound(card.height() * 0.46) * 1.35, card.width() * 0.32);
+            return QSize(qRound(column), qRound(column * 2.4));
         }
     }
 

@@ -2098,12 +2098,17 @@ void KStandardItemListWidget::updatePixmapCache()
             if (m_layout == CardsLayout && ngCardStyle() == NgCardStyle::Tessera) {
                 cardPicture = QSizeF(widgetSize.width(), qRound(qMin(widgetSize.width() * 0.40, QFontMetricsF(m_customizedFont).height() * 9.0)));
             } else if (m_layout == CardsLayout && ngCardStyle() == NgCardStyle::Scheda) {
-                const qreal side = qBound(44.0, widgetSize.height() * 0.66, qMax(64.0, widgetSize.width() * 0.30));
-                cardPicture = QSizeF(side, side);
+                // the object's column: a page as wide as it (see updateCardsLayoutTextCache())
+                const qreal column = qMin(widgetSize.height() * 1.3, widgetSize.width() * 0.38);
+                cardPicture = QSizeF(column, column);
+            } else if (m_layout == CardsLayout && ngCardStyle() == NgCardStyle::Dossier) {
+                const qreal column = qMin(qRound(widgetSize.height() * 0.46) * 1.35, widgetSize.width() * 0.32);
+                cardPicture = QSizeF(column, column);
             }
             if (cardPicture.isValid()) {
+                // covering: the narrower side of the preview fills the place (a page its width), the rest is clipped
                 const QSize target = (cardPicture * dpr).toSize();
-                const Qt::AspectRatioMode mode = ngCardStyle() == NgCardStyle::Tessera ? Qt::KeepAspectRatioByExpanding : Qt::KeepAspectRatio;
+                const Qt::AspectRatioMode mode = Qt::KeepAspectRatioByExpanding;
                 m_pixmap = m_pixmap.scaled(target, mode, Qt::SmoothTransformation);
                 m_pixmap.setDevicePixelRatio(dpr);
             } else if (m_pixmap.width() / m_pixmap.devicePixelRatio() != maxIconWidth || m_pixmap.height() / m_pixmap.devicePixelRatio() != maxIconHeight) {
