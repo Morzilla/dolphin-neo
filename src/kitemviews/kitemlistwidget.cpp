@@ -1832,6 +1832,7 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal 
     const QRectF own = QRectF(pos(), size()).adjusted(inset, inset, -inset, -inset);
     QList<QRectF> cards{own};
     QList<qreal> progress{qMax<qreal>(m_ngSelProgress, 0.001)};
+    QList<bool> target{isSelected()}; // where each card is going: selected, or on its way out
     if (QGraphicsItem *container = parentItem()) {
         const auto siblings = container->childItems();
         for (QGraphicsItem *item : siblings) {
@@ -1840,6 +1841,7 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal 
                 const qreal otherInset = other->ngBlockInset();
                 cards.append(QRectF(other->pos(), other->size()).adjusted(otherInset, otherInset, -otherInset, -otherInset));
                 progress.append(other->ngSelectionProgress());
+                target.append(other->isSelected());
             }
         }
     }
@@ -1849,24 +1851,37 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal 
     auto under = [](const QRectF &a, const QRectF &b) { // b just below a in the same column
         return qAbs(a.left() - b.left()) < 1 && b.top() >= a.bottom() - 1 && b.top() - a.bottom() < 40;
     };
-    // the block: the selected cards reachable from this one through neighbours
+    // Two neighbours share an outline only when both stay selected, or when one leaves (or joins) a card that is
+    // already fully selected. A card going out next to one coming in (a click that moves the selection) is not
+    // tied to it: each fades on its own, no border slides from one to the other.
+    auto linkable = [](bool targetA, qreal progressA, bool targetB, qreal progressB) {
+        if (targetA == targetB) {
+            return true; // both coming in, or both going out (or both staying): one outline
+        }
+        return (targetA && progressA >= 0.999) || (targetB && progressB >= 0.999); // leaving (or joining) a settled card
+    };
+    // the block: the selected cards reachable from this one through neighbours that may be tied
     QList<QRectF> block{own};
     QList<qreal> blockProgress{progress[0]};
+    QList<bool> blockTarget{target[0]};
     QList<bool> taken(cards.size(), false);
     taken[0] = true;
     for (int k = 0; k < block.size(); ++k) {
         for (int i = 0; i < cards.size(); ++i) {
-            if (!taken[i] && (beside(block[k], cards[i]) || beside(cards[i], block[k]) || under(block[k], cards[i]) || under(cards[i], block[k]))) {
+            if (!taken[i] && (beside(block[k], cards[i]) || beside(cards[i], block[k]) || under(block[k], cards[i]) || under(cards[i], block[k]))
+                && linkable(blockTarget[k], blockProgress[k], target[i], progress[i])) {
                 taken[i] = true;
                 block.append(cards[i]);
                 blockProgress.append(progress[i]);
+                blockTarget.append(target[i]);
             }
         }
     }
     // A card on its way in (or out) next to one already selected: the outline of the block wraps it, growing
     // over it from the side they share (shrinking back that way). A card on its own fades in and out instead.
     auto adjacent = [&](int i, int j) {
-        return beside(block[i], block[j]) || beside(block[j], block[i]) || under(block[i], block[j]) || under(block[j], block[i]);
+        return (beside(block[i], block[j]) || beside(block[j], block[i]) || under(block[i], block[j]) || under(block[j], block[i]))
+            && linkable(blockTarget[i], blockProgress[i], blockTarget[j], blockProgress[j]);
     };
     auto anchorOf = [&](int i) { // the neighbour furthest along, if it is further along than this card
         int best = -1;
@@ -1905,7 +1920,7 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal 
         area.addRect(grownRect(i));
         for (int j = 0; j < block.size(); ++j) {
             const QRectF &b = block[j];
-            if (!beside(a, b) && !under(a, b)) {
+            if ((!beside(a, b) && !under(a, b)) || !linkable(blockTarget[i], blockProgress[i], blockTarget[j], blockProgress[j])) {
                 continue;
             }
             // the bridge: whole as soon as one of the two is already there and wraps the other
