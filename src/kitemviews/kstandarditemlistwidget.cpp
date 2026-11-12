@@ -4986,7 +4986,10 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             if (itemCount < 0 && m_ngCategory == int(NgKind::Folder) && m_ngCardPeek.isEmpty() && m_ngCardPeekMore == 0) {
                 itemCount = 0; // nothing was found in it: drawn as an empty folder
             }
-            if (m_ngCategory == int(NgKind::Folder) && !m_ngCardPeek.isEmpty() && !ngSpecialFolder(data().value("url").toUrl().toLocalFile())) {
+            // (the list of the first entries beside a small folder is kept behind CARDS_PEEK=show: by default a folder
+            // is drawn whole, like every other kind)
+            if (m_ngCategory == int(NgKind::Folder) && !m_ngCardPeek.isEmpty() && ngSetting("CARDS_PEEK").toLower() == QLatin1String("show")
+                && !ngSpecialFolder(data().value("url").toUrl().toLocalFile())) {
                 // a folder with something in it: the folder on the left, its first entries listed beside it
                 const QRectF left(m_ngCardThumb.left(), m_ngCardThumb.top(), m_ngCardThumb.width() * 0.40, m_ngCardThumb.height());
                 ngPaintContentSketch(painter, left, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, m_ngInfoSize, m_ngInfoInside ? &m_customizedFont : nullptr);
