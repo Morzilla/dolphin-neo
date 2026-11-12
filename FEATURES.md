@@ -110,7 +110,7 @@ The places sit on a card of glass that shows the desktop behind it, blurred by t
 of the wallpaper, or a plain panel). Below them come the **Pinned** items and the **Filters**; at the foot, the
 disk's usage.
 
-![The glass sidebar](ng/screenshots/sidebar-live-blur.png)
+![The glass sidebar](ng/screenshots/features/sidebar.png)
 
 ## Settings
 
