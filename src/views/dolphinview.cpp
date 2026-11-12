@@ -411,7 +411,11 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
             const KFileItem item = m_model->fileItem(index);
             const QList<NgQuickAction> actions = item.isNull() ? QList<NgQuickAction>() : ngQuickActionsFor(item.localPath(), item.mimetype());
             if (action - 10 < actions.count()) {
-                QToolTip::showText(QCursor::pos() + QPoint(0, 18), actions.at(action - 10).label, this);
+                QString tip = actions.at(action - 10).label;
+                if (actions.at(action - 10).program == QLatin1String("@pin")) {
+                    tip = m_model->ngIsPinned(item) ? ngTr("Unpin from the top", "Togli dall'alto") : ngTr("Pin to the top", "Fissa in alto");
+                }
+                QToolTip::showText(QCursor::pos() + QPoint(0, 18), tip, this);
                 m_ngActionTip = true;
             }
         } else if (m_ngActionTip) {
@@ -2892,6 +2896,15 @@ void DolphinView::ngRunQuickAction(const KFileItem &item, int number)
             KMessageBox::error(window(), ngTr("“%1” could not be started.", "Impossibile avviare «%1».").arg(program));
         }
     };
+    if (action.program == QLatin1String("@pin")) {
+        // pin or unpin: the whole selection when the file is part of it, otherwise this one file
+        KFileItemList items = selectedItems();
+        if (!items.contains(item)) {
+            items = {item};
+        }
+        ngSetPinned(items, !ngAllPinned(items));
+        return;
+    }
     if (action.program == QLatin1String("@cut") || action.program == QLatin1String("@copy")) {
         // this one file, whatever is selected
         auto *mimeData = new QMimeData();

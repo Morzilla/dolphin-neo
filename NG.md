@@ -77,9 +77,9 @@ a sheet with a footer, a video a frame on a strip of film.
 
 ## Pinned to the top
 
-Right-click → **Pin to the Top** (or Ctrl+Alt+P on the selection) keeps files and folders at the top of their
-folder, before everything else, whatever the sorting; among themselves they follow the chosen order. A small red
-pushpin marks them. The mark is kept with the file itself, as the extended attribute `user.ng.pinned`, so it
+The pushpin button in the quick actions, right-click → **Pin to the Top**, or Ctrl+Alt+P on the selection keep files and folders at the top of their
+folder, before everything else, whatever the sorting; among themselves they follow the chosen order. A white pushpin on
+a red disc marks them, and their pushpin button turns red. The mark is kept with the file itself, as the extended attribute `user.ng.pinned`, so it
 follows the file when it is moved or renamed (it is not kept on file systems without extended attributes, such
 as FAT). Right-click → **Unpin from the Top** takes it away.
 

@@ -3267,6 +3267,12 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
 }
 }
 
+// dolphin-ng: the red of a pushpin
+static QColor ngPinRed(bool dark)
+{
+    return dark ? QColor(236, 84, 72) : QColor(220, 58, 48);
+}
+
 // dolphin-ng: lays out the pill of quick actions (cards and two-line rows). With alignRight the pill ends at
 // `right` and `x` is the leftmost place it may start from.
 qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &quickActions, qreal x, qreal y, qreal right, qreal actionHeight, const QFontMetricsF &chipFm, bool alignRight,
@@ -3281,14 +3287,15 @@ qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &qu
         bool divided;
     };
     QList<Item> items;
-    auto build = [&](bool labelled, int count) {
+    auto build = [&](bool labelled, const QList<int> &shown) {
         items.clear();
         qreal total = 2 * inner;
         int previous = -1;
-        for (int i = 0; i < count; ++i) {
+        for (const int i : shown) {
             const NgQuickAction &action = quickActions.at(i);
-            const bool clipboard = action.program == QLatin1String("@cut") || action.program == QLatin1String("@copy");
-            const int group = action.main ? 0 : clipboard ? 3 : action.program.startsWith(QLatin1Char('@')) ? 1 : 2;
+            // cut, copy and pin: the tools of the file itself, in one group at the end
+            const bool own = action.program == QLatin1String("@cut") || action.program == QLatin1String("@copy") || action.program == QLatin1String("@pin");
+            const int group = action.main ? 0 : own ? 3 : action.program.startsWith(QLatin1Char('@')) ? 1 : 2;
             const qreal width = (action.main && labelled) ? 8 + 18 + 6 + chipFm.horizontalAdvance(action.label) + 12 : button + 2;
             const bool divided = previous >= 0 && group != previous;
             total += width + (divided ? divider : 0);
@@ -3297,28 +3304,50 @@ qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &qu
         }
         return total;
     };
-    int count = quickActions.count();
-    bool labelled = true;
-    qreal total = build(true, count);
-    // the first thing to give way is an extra action at the end, down to the main one + the application +
-    // "open with"; below that the label goes
-    int keep = 1;
-    for (int i = 0; i < quickActions.count(); ++i) {
-        if (quickActions.at(i).program.startsWith(QLatin1Char('@'))) {
-            keep = i + 1;
+    // what gives way when there is no room, in this order: the extra actions (from the last), then the
+    // applications and "open with", then — after the label of the main one — cut, copy and pin; the main action stays
+    auto isOwn = [&](int i) {
+        const QString &program = quickActions.at(i).program;
+        return program == QLatin1String("@cut") || program == QLatin1String("@copy") || program == QLatin1String("@pin");
+    };
+    QList<int> extras, apps, own;
+    for (int i = quickActions.count() - 1; i >= 0; --i) {
+        if (quickActions.at(i).main) {
+            continue;
+        }
+        if (isOwn(i)) {
+            own.append(i);
+        } else if (quickActions.at(i).program.startsWith(QLatin1Char('@'))) {
+            apps.append(i);
+        } else {
+            extras.append(i);
         }
     }
-    while (total > right - x && count > keep) {
-        total = build(true, --count);
+    QList<int> shown;
+    for (int i = 0; i < quickActions.count(); ++i) {
+        shown.append(i);
+    }
+    bool labelled = true;
+    qreal total = build(true, shown);
+    for (const int i : std::as_const(extras)) {
+        if (total <= right - x) {
+            break;
+        }
+        shown.removeOne(i);
+        total = build(true, shown);
     }
     if (total > right - x) {
         labelled = false;
-        count = quickActions.count();
-        total = build(false, count);
-        while (total > right - x && count > 1) {
-            total = build(false, --count);
+        total = build(false, shown);
+        for (const int i : apps + own) {
+            if (total <= right - x) {
+                break;
+            }
+            shown.removeOne(i);
+            total = build(false, shown);
         }
     }
+    const int count = shown.count();
     if (count == 0 || total > right - x) {
         return y;
     }
@@ -3343,8 +3372,20 @@ qreal KStandardItemListWidget::ngLayoutActionPill(const QList<NgQuickAction> &qu
         static QHash<QString, QPixmap> iconCache;
         const QColor glyphColor = option.palette.color(QPalette::Text);
         const bool isApp = action.program.startsWith(QLatin1String("@app"));
-        const QString cacheKey = action.icon + QLatin1Char('|') + QString::number(dpr) + QLatin1Char('|') + (isApp ? QString() : glyphColor.name());
+        const bool isPin = action.program == QLatin1String("@pin");
+        const bool pinned = isPin && data().value("ngPinned").toBool();
+        const QString cacheKey = action.icon + (pinned ? QStringLiteral("-on") : QString()) + QLatin1Char('|') + QString::number(dpr) + QLatin1Char('|') + (isApp ? QString() : glyphColor.name());
         auto cached = iconCache.constFind(cacheKey);
+        if (cached == iconCache.constEnd() && isPin) {
+            // drawn here in the NeoLine style: an outline pin, a filled red one when the item is pinned
+            QPixmap pixmap(QSize(18, 18) * dpr);
+            pixmap.setDevicePixelRatio(dpr);
+            pixmap.fill(Qt::transparent);
+            QPainter pinPainter(&pixmap);
+            ngDrawPin(&pinPainter, QRectF(0, 0, 18, 18), pinned ? ngPinRed(ngIsDark(option.palette)) : glyphColor, pinned, pinned ? 1.5 : 1.8);
+            pinPainter.end();
+            cached = iconCache.insert(cacheKey, pixmap);
+        }
         if (cached == iconCache.constEnd()) {
             QPixmap pixmap = QIcon::fromTheme(action.icon, QIcon::fromTheme(QStringLiteral("application-x-executable"))).pixmap(isApp ? QSize(22, 22) : QSize(18, 18), dpr);
             if (!isApp) {
@@ -4108,43 +4149,30 @@ void KStandardItemListWidget::paintNgPin(QPainter *painter)
     if (!data().value("ngPinned").toBool()) {
         return;
     }
-    // a red pushpin on a small dark (or light) disc: at the top right corner of a card, on the corner of the icon
-    // elsewhere. Red like a real pin, so it never reads as the selection or as the colour of a type.
+    // a white NeoLine pushpin on a red disc: at the top right corner of a card, on the corner of the preview of
+    // a two-line row, on the corner of the icon elsewhere. Red like a real pin, so it never reads as the
+    // selection or as the colour of a type.
     const bool dark = ngIsDark(styleOption().palette);
     qreal radius;
     QPointF centre;
     if (m_layout == CardsLayout) {
-        radius = 11;
-        centre = QPointF(rect().right() - 16, rect().top() + 16);
+        radius = 12.5;
+        centre = QPointF(rect().right() - 17, rect().top() + 17);
     } else if (ngTwoLineList()) {
-        // two-line rows: on the corner of the small preview, or of the row where the type mark is
-        radius = 9;
-        centre = m_ngRowThumb.isEmpty() ? QPointF(rect().left() + 13, rect().top() + 13) : QPointF(m_ngRowThumb.left() + 2, m_ngRowThumb.top() + 2);
+        radius = 10.5;
+        centre = m_ngRowThumb.isEmpty() ? QPointF(rect().left() + 14, rect().top() + 14) : QPointF(m_ngRowThumb.left() + 3, m_ngRowThumb.top() + 3);
     } else {
         const QRectF icon = m_iconRect;
-        radius = qBound(6.0, icon.height() * 0.22, 10.0);
+        radius = qBound(7.0, icon.height() * 0.24, 11.0);
         centre = QPointF(icon.right() - radius * 0.35, icon.top() + radius * 0.35);
     }
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
-    painter->setPen(QPen(dark ? QColor(0, 0, 0, 110) : QColor(0, 0, 0, 40), 1.2));
-    painter->setBrush(dark ? QColor(22, 23, 27, 235) : QColor(252, 252, 252, 245));
+    painter->setPen(QPen(dark ? QColor(18, 19, 22, 220) : QColor(255, 255, 255, 235), 2));
+    painter->setBrush(ngPinRed(dark));
     painter->drawEllipse(centre, radius, radius);
-
-    const qreal s = radius * 0.62;
-    const QColor red = dark ? QColor(255, 104, 92) : QColor(224, 62, 52);
-    painter->translate(centre);
-    painter->rotate(40);
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(red);
-    painter->drawRoundedRect(QRectF(-0.46 * s, -1.0 * s, 0.92 * s, 0.32 * s), 0.12 * s, 0.12 * s); // the head
-    QPolygonF body;
-    body << QPointF(-0.27 * s, -0.7 * s) << QPointF(0.27 * s, -0.7 * s) << QPointF(0.40 * s, 0.06 * s) << QPointF(-0.40 * s, 0.06 * s);
-    painter->drawPolygon(body);
-    painter->drawRoundedRect(QRectF(-0.64 * s, 0.02 * s, 1.28 * s, 0.24 * s), 0.1 * s, 0.1 * s); // the collar
-    QColor needle = dark ? QColor(214, 218, 226) : QColor(92, 96, 104);
-    painter->setPen(QPen(needle, qMax(1.0, 0.16 * s), Qt::SolidLine, Qt::RoundCap));
-    painter->drawLine(QPointF(0, 0.3 * s), QPointF(0, 1.05 * s));
+    const qreal glyph = radius * 1.45;
+    ngDrawPin(painter, QRectF(centre.x() - glyph / 2, centre.y() - glyph / 2, glyph, glyph), QColor(255, 255, 255), true, 2.0);
     painter->restore();
 }
 

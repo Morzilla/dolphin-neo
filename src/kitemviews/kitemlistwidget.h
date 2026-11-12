@@ -51,6 +51,9 @@ DOLPHIN_EXPORT QString ngSetting(const char *name, const QString &fallback = QSt
 DOLPHIN_EXPORT int ngSettingInt(const char *name, int fallback);
 /** dolphin-ng: the interface text, in Italian when the desktop language is Italian and in English otherwise. */
 DOLPHIN_EXPORT QString ngTr(const char *english, const char *italian);
+/** dolphin-ng: the pushpin in the NeoLine style (24 grid, 1.7 round stroke), tilted, fitted in `box`; `filled`
+ *  for a pinned item. Used by the quick action and by the mark on pinned items. */
+DOLPHIN_EXPORT void ngDrawPin(QPainter *painter, const QRectF &box, const QColor &ink, bool filled, qreal stroke = 1.7);
 
 /**
  * dolphin-ng: work in progress on files, shown on their cards and rows. Copies, moves, extractions,

@@ -727,6 +727,47 @@ static QString ngTranscriber()
     return path;
 }
 
+// dolphin-ng: pin to the top / unpin, the last button of the quick actions (drawn by ngDrawPin)
+static NgQuickAction ngPinAction()
+{
+    NgQuickAction pin;
+    pin.label = ngTr("Pin to the top / Unpin", "Fissa in alto / Togli dall'alto");
+    pin.program = QStringLiteral("@pin");
+    pin.icon = QStringLiteral("ng-pin");
+    return pin;
+}
+
+void ngDrawPin(QPainter *painter, const QRectF &box, const QColor &ink, bool filled, qreal stroke)
+{
+    // drawn upright on the 24 grid, then tilted like a pin pushed into a board
+    QPainterPath body;
+    body.moveTo(10, 4);
+    body.lineTo(10, 8.6);
+    body.lineTo(7.2, 11.8);
+    body.quadTo(6.8, 12.3, 7.2, 12.9);
+    body.lineTo(7.6, 13.4);
+    body.lineTo(16.4, 13.4);
+    body.lineTo(16.8, 12.9);
+    body.quadTo(17.2, 12.3, 16.8, 11.8);
+    body.lineTo(14, 8.6);
+    body.lineTo(14, 4);
+    body.closeSubpath();
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->translate(box.center());
+    const qreal k = qMin(box.width(), box.height()) / 24.0;
+    painter->scale(k, k);
+    painter->rotate(40);
+    painter->translate(-12, -12);
+    QPen pen(ink, stroke, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    painter->setPen(pen);
+    painter->setBrush(filled ? QBrush(ink) : Qt::NoBrush);
+    painter->drawPath(body);
+    painter->drawLine(QPointF(8.6, 4), QPointF(15.4, 4)); // the head
+    painter->drawLine(QPointF(12, 13.4), QPointF(12, 20.5)); // the needle
+    painter->restore();
+}
+
 static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, const QString &mime)
 {
     QList<NgQuickAction> actions;
@@ -743,7 +784,7 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
         copy.label = ngTr("Copy", "Copia");
         copy.program = QStringLiteral("@copy");
         copy.icon = QStringLiteral("edit-copy");
-        return {cut, copy};
+        return {cut, copy, ngPinAction()};
     }
     const QFileInfo info(localPath);
     const QString base = info.completeBaseName();
@@ -871,6 +912,7 @@ static QList<NgQuickAction> ngQuickActionsCompute(const QString &localPath, cons
         copy.program = QStringLiteral("@copy");
         copy.icon = QStringLiteral("edit-copy");
         list.append(copy);
+        list.append(ngPinAction());
         apps = appsForMime.insert(mime, list);
     }
     int at = actions.isEmpty() ? 0 : 1;
