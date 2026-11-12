@@ -9,13 +9,13 @@ it installs into your home directory next to it.
 
 **A tour of the features, with screenshots: [FEATURES.md](FEATURES.md).**
 
-| List, cards | List, open rows |
+| Cards | Rows |
 |---|---|
-| ![list with cards](ng/screenshots/list-cards.png) | ![list with open rows](ng/screenshots/list-open.png) |
+| ![Folders as cards, the Tessera look](ng/screenshots/features/home-cards.png) | ![Folders as drawn rows](ng/screenshots/features/home-rows.png) |
 
-| Preview card | Icons view |
+| Selecting several files | Work in progress, on the files |
 |---|---|
-| ![preview card](ng/screenshots/preview-card.png) | ![icons view](ng/screenshots/icons-tiles.png) |
+| ![Several cards selected, in one bubble](ng/screenshots/features/selection.png) | ![Copies and quick actions shown on the files](ng/screenshots/features/work-cards.png) |
 
 ## Cards view
 
@@ -26,16 +26,17 @@ grid that re-flows with the window. Three looks:
   table, lines of code, a waveform…), a folder shows its first pictures or lists its first entries. Type and size
   are one badge on the picture; the actions are a pill that fades in on hover.
 - **Scheda** – the picture on the left, everything in three lines.
-- **Dossier** – the days elapsed, large.
+- **Dossier** – an identity card: what the file holds (pages and words, size in pixels and when it was taken,
+  duration and quality, what a folder contains), where it came from, its tags and rating.
 
 Quick actions by kind of file (resize, extract, convert, open with the next application, cut, copy), a quick view
 on hover, a preview card with zoom.
 
-![Cards, the Tessera look](ng/screenshots/cards-tessera.png)
+![Cards, the Tessera look](ng/screenshots/features/tessera.png)
 
 | Scheda | Dossier |
 |---|---|
-| ![Scheda](ng/screenshots/cards-scheda.png) | ![Dossier](ng/screenshots/cards-dossier.png) |
+| ![Scheda](ng/screenshots/features/scheda.png) | ![Dossier](ng/screenshots/features/dossier.png) |
 
 ## Work in progress, on the files
 
@@ -96,7 +97,7 @@ back once its new folder is opened.
 Everything is a setting, on a graphical page: tabs, a tile with a drawing of each choice, switches, and a sketch of
 the window that follows what you pick.
 
-![The NG settings page, on the Rows tab](ng/screenshots/settings.png)
+![The NG settings page](ng/screenshots/features/settings.png)
 
 ## Glass sidebar
 
@@ -104,6 +105,12 @@ The places panel is a sheet of glass. Its backdrop is a setting: a blurred copy 
 gradient, or the real blur of the desktop behind the window, done by the compositor (below).
 
 ![The sidebar with the compositor's blur of the desktop behind it](ng/screenshots/sidebar-live-blur.png)
+
+At the foot of the glass, the disks: the home one, then every other disk and partition as a box with its usage (an
+unmounted one is dashed, and a click mounts and opens it). Settings → NG → Sidebar can show them as the classic
+Devices section instead, and hide any one of them.
+
+![Disks and partitions at the foot of the sidebar](ng/screenshots/features/disks.png)
 
 ## Part of the NG desktop
 
