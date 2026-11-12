@@ -1206,6 +1206,15 @@ void KItemListWidget::setSelected(bool selected)
         selectedChanged(selected);
         clearHoverCache();
         update();
+        if (ngRingSelection() && parentItem()) {
+            // dolphin-ng: selected cards next to each other share one outline: the others redraw their part of it
+            const auto siblings = parentItem()->childItems();
+            for (QGraphicsItem *item : siblings) {
+                if (item != this && item->isVisible()) {
+                    item->update();
+                }
+            }
+        }
     }
 }
 
@@ -1606,6 +1615,123 @@ bool KItemListWidget::ngNoHover() const
     return false;
 }
 
+// dolphin-ng: the outline of the block of selected cards this one belongs to (cards next to each other, side by
+// side or one above the other), in this item's coordinates. Every card of the block computes the same outline and
+// draws the part of it inside its own reach (its rect and half of the gaps around it), so the pieces join.
+static QPainterPath ngRoundedOutline(const QPainterPath &area, qreal radius)
+{
+    QPainterPath rounded;
+    const QList<QPolygonF> polygons = area.toSubpathPolygons();
+    for (QPolygonF polygon : polygons) {
+        if (polygon.size() > 1 && polygon.first() == polygon.last()) {
+            polygon.removeLast();
+        }
+        // drop the points in the middle of a straight run
+        QPolygonF corners;
+        for (int i = 0; i < polygon.size(); ++i) {
+            const QPointF a = polygon.at((i + polygon.size() - 1) % polygon.size()), p = polygon.at(i), b = polygon.at((i + 1) % polygon.size());
+            const bool straight = (qAbs(a.x() - p.x()) < 0.01 && qAbs(p.x() - b.x()) < 0.01) || (qAbs(a.y() - p.y()) < 0.01 && qAbs(p.y() - b.y()) < 0.01);
+            if (!straight) {
+                corners.append(p);
+            }
+        }
+        const int n = corners.size();
+        if (n < 3) {
+            continue;
+        }
+        for (int i = 0; i < n; ++i) {
+            const QPointF a = corners.at((i + n - 1) % n), p = corners.at(i), b = corners.at((i + 1) % n);
+            const qreal la = QLineF(p, a).length(), lb = QLineF(p, b).length();
+            const qreal r = qMin(radius, qMin(la, lb) / 2.0);
+            const QPointF from = p + (a - p) * (r / la), to = p + (b - p) * (r / lb);
+            if (i == 0) {
+                rounded.moveTo(from);
+            } else {
+                rounded.lineTo(from);
+            }
+            rounded.quadTo(p, to);
+        }
+        rounded.closeSubpath();
+    }
+    return rounded;
+}
+
+QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach) const
+{
+    const QRectF own(pos(), size());
+    QList<QRectF> cards{own};
+    if (QGraphicsItem *container = parentItem()) {
+        const auto siblings = container->childItems();
+        for (QGraphicsItem *item : siblings) {
+            auto *other = dynamic_cast<KItemListWidget *>(item);
+            if (other && other != this && other->isVisible() && other->isSelected()) {
+                cards.append(QRectF(other->pos(), other->size()));
+            }
+        }
+    }
+    auto beside = [](const QRectF &a, const QRectF &b) { // b just right of a on the same row
+        return qAbs(a.top() - b.top()) < 1 && b.left() >= a.right() - 1 && b.left() - a.right() < 40;
+    };
+    auto under = [](const QRectF &a, const QRectF &b) { // b just below a in the same column
+        return qAbs(a.left() - b.left()) < 1 && b.top() >= a.bottom() - 1 && b.top() - a.bottom() < 40;
+    };
+    // the block: the selected cards reachable from this one through neighbours
+    QList<QRectF> block{own};
+    QList<bool> taken(cards.size(), false);
+    taken[0] = true;
+    for (int k = 0; k < block.size(); ++k) {
+        for (int i = 0; i < cards.size(); ++i) {
+            if (!taken[i] && (beside(block[k], cards[i]) || beside(cards[i], block[k]) || under(block[k], cards[i]) || under(cards[i], block[k]))) {
+                taken[i] = true;
+                block.append(cards[i]);
+            }
+        }
+    }
+    QPainterPath area;
+    area.setFillRule(Qt::WindingFill);
+    for (const QRectF &a : std::as_const(block)) {
+        area.addRect(a.adjusted(-grow, -grow, grow, grow));
+        for (const QRectF &b : std::as_const(block)) {
+            if (beside(a, b)) {
+                area.addRect(QRectF(a.right(), a.top() - grow, b.left() - a.right(), a.height() + 2 * grow));
+                // a 2x2 group: fill the gap where the four meet
+                for (const QRectF &c : std::as_const(block)) {
+                    if (under(a, c)) {
+                        for (const QRectF &d : std::as_const(block)) {
+                            if (under(b, d)) {
+                                area.addRect(QRectF(a.right(), a.bottom(), b.left() - a.right(), c.top() - a.bottom()));
+                            }
+                        }
+                    }
+                }
+            }
+            if (under(a, b)) {
+                area.addRect(QRectF(a.left() - grow, a.bottom(), a.width() + 2 * grow, b.top() - a.bottom()));
+            }
+        }
+    }
+    if (reach) {
+        // this card's part: up to half of the gap towards a neighbour of the block, a little more elsewhere
+        qreal left = grow + 3, right = grow + 3, top = grow + 3, bottom = grow + 3;
+        for (const QRectF &b : std::as_const(block)) {
+            if (beside(own, b)) {
+                right = (b.left() - own.right()) / 2.0;
+            }
+            if (beside(b, own)) {
+                left = (own.left() - b.right()) / 2.0;
+            }
+            if (under(own, b)) {
+                bottom = (b.top() - own.bottom()) / 2.0;
+            }
+            if (under(b, own)) {
+                top = (own.top() - b.bottom()) / 2.0;
+            }
+        }
+        *reach = QRectF(-left, -top, own.width() + left + right, own.height() + top + bottom);
+    }
+    return ngRoundedOutline(area.simplified(), ngSelectionRadius() + grow).translated(-own.topLeft());
+}
+
 void KItemListWidget::ngPaintCheck(QPainter *painter, QWidget *widget)
 {
     // the round check at the top left corner of a selected item with a ring selection, over its content
@@ -1673,9 +1799,21 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
             }
             const qreal width = selected ? 2.5 : 1.5;
             const qreal gap = 2.5 + width / 2.0;
-            painter->setBrush(Qt::NoBrush);
-            painter->setPen(QPen(ring, width));
-            painter->drawRoundedRect(card.adjusted(-gap, -gap, gap, gap), radius + gap, radius + gap);
+            if (selected) {
+                // one outline around the block of selected cards next to each other, with a faint veil inside
+                QRectF reach;
+                const QPainterPath block = ngSelectionBlock(gap, &reach);
+                painter->setClipRect(reach, Qt::IntersectClip);
+                QColor veil = accent;
+                veil.setAlphaF(0.07);
+                painter->setPen(QPen(ring, width));
+                painter->setBrush(veil);
+                painter->drawPath(block);
+            } else {
+                painter->setBrush(Qt::NoBrush);
+                painter->setPen(QPen(ring, width));
+                painter->drawRoundedRect(card.adjusted(-gap, -gap, gap, gap), radius + gap, radius + gap);
+            }
             painter->restore(); // (the check is drawn over the card's content: ngPaintCheck)
             return;
         }

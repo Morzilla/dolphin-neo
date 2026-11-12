@@ -3944,7 +3944,9 @@ QRectF KStandardItemListWidget::boundingRect() const
 void KStandardItemListWidget::moveEvent(QGraphicsSceneMoveEvent *event)
 {
     KItemListWidget::moveEvent(event);
-    if (m_ngShowedFamily) {
+    // the bubble and the outline of a block of selected cards depend on where the neighbours are: when the
+    // cards reflow (the window is resized, files come and go) they are drawn again where they land
+    if (m_ngShowedFamily || isSelected()) {
         update();
     }
 }

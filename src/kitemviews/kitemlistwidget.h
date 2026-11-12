@@ -463,6 +463,9 @@ protected:
     virtual bool ngNoHover() const;
     /** dolphin-ng: the check of a ring selection, drawn by the item over its content */
     void ngPaintCheck(QPainter *painter, QWidget *widget);
+    /** dolphin-ng: the outline of the block of selected cards this one is part of (item coordinates); \a reach
+     *  receives the part this item draws */
+    QPainterPath ngSelectionBlock(qreal grow, QRectF *reach) const;
 
 private:
 
