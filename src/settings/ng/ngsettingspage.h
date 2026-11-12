@@ -95,6 +95,7 @@ private:
     QComboBox *m_cardsInfo;
     QComboBox *m_cardsMark;
     QComboBox *m_cardsBadge; // the type and size badge on the band of a Tessera: solid or glass
+    QComboBox *m_activitySize = nullptr; // ACTIVITY_SIZE: the capsule of work in progress on cards
     QCheckBox *m_quickView;
     QSpinBox *m_quickDelay;
     QComboBox *m_quickSide;

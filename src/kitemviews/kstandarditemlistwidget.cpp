@@ -3892,17 +3892,6 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
     const bool busy = e.percent < 0;
     const bool waiting = busy && activity->parentOf(url).isValid(); // a file being made from another one: it waits, quietly
     const bool stoppable = activity->canCancel(url);
-    // the stop button: a small round button with a cross
-    auto stopButton = [&](const QRectF &box) {
-        painter->setPen(QPen(QColor(255, 255, 255, 40), 1));
-        painter->setBrush(QColor(18, 20, 24, 235));
-        painter->drawEllipse(box);
-        const qreal d = box.width() * 0.2;
-        painter->setPen(QPen(QColor(235, 238, 242), qMax<qreal>(1.4, box.width() * 0.09), Qt::SolidLine, Qt::RoundCap));
-        painter->drawLine(box.center() + QPointF(-d, -d), box.center() + QPointF(d, d));
-        painter->drawLine(box.center() + QPointF(d, -d), box.center() + QPointF(-d, d));
-        m_ngCancelRect = box;
-    };
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
 
@@ -3965,37 +3954,81 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
             painter->restore();
             return;
         }
-        painter->fillRect(area, QColor(10, 11, 14, 165));
-        // the ring and, under it, what is going on: both above the type and size badges at the foot of the band
+        painter->fillRect(area, QColor(10, 11, 14, 120));
+        // one capsule in the middle of the preview: a small ring with the figure, what is going on and the time
+        // left, the stop button at its end (red under the pointer). Its size: ACTIVITY_SIZE small, medium, large.
+        const QString sizeChoice = ngSetting("ACTIVITY_SIZE").toLower();
+        const qreal k = sizeChoice == QLatin1String("small") ? 0.85 : sizeChoice == QLatin1String("large") ? 1.25 : 1.0;
+        const qreal h = qRound(qBound<qreal>(24, m_customizedFontMetrics.height() * 1.7, 40) * k);
+        const qreal inset = qRound(h * 0.13);
+        const qreal d = h - 2 * inset; // the ring and the stop button
+        const qreal gap = qRound(h * 0.26);
         QFont labelFont(m_customizedFont);
-        labelFont.setPixelSize(qMax(9, qRound(m_customizedFontMetrics.height() * 0.62)));
+        labelFont.setPixelSize(qMax(9, qRound(h * 0.4)));
         labelFont.setWeight(QFont::DemiBold);
-        const QFontMetricsF fm(labelFont);
-        const qreal labelHeight = e.text.isEmpty() ? 0 : fm.height() + 6;
-        const qreal room = area.height() - (area.height() > 110 ? 36 : 30) - 8; // the badges take the foot
-        qreal radius = qBound<qreal>(16, qMin(area.width(), area.height()) * 0.22, 36);
-        radius = qMax<qreal>(12, qMin(radius, (room - labelHeight - 6) / 2.0 - qMax<qreal>(3, radius * 0.16)));
-        const qreal width = qMax<qreal>(3, radius * 0.16);
-        const qreal block = 2 * (radius + width) + (labelHeight > 0 ? labelHeight + 4 : 0);
-        const qreal top = area.top() + 6 + qMax<qreal>(0, (room - block) / 2.0);
-        ring(QPointF(area.center().x(), top + width + radius), radius, width);
-        if (!e.text.isEmpty()) {
-            // on a solid pill of its own
-            const QString shown = fm.elidedText(e.text, Qt::ElideRight, area.width() - 28);
-            const qreal w = fm.horizontalAdvance(shown) + 18;
-            const QRectF label(area.center().x() - w / 2, top + 2 * (radius + width) + 4, w, labelHeight);
+        QFont leftFont(labelFont);
+        leftFont.setWeight(QFont::Normal);
+        const QFontMetricsF fm(labelFont), fmLeft(leftFont);
+        QString timeLeft;
+        if (!busy && e.percent >= 3 && e.percent < 100 && e.startedAt) {
+            const qint64 secs = (QDateTime::currentMSecsSinceEpoch() - e.startedAt) / 1000 * (100 - e.percent) / e.percent;
+            timeLeft = secs >= 3600 ? QStringLiteral("%1 h").arg(secs / 3600) : QStringLiteral("%1:%2").arg(secs / 60).arg(secs % 60, 2, 10, QLatin1Char('0'));
+        }
+        const qreal leftWidth = timeLeft.isEmpty() ? 0 : fmLeft.horizontalAdvance(timeLeft) + gap * 0.6;
+        const qreal fixed = inset + d + gap + leftWidth + (stoppable ? gap * 0.7 + d : inset * 2.5);
+        const QString shown = fm.elidedText(e.text, Qt::ElideRight, qMax<qreal>(20, area.width() - 16 - fixed));
+        const qreal w = fixed + fm.horizontalAdvance(shown);
+        const qreal centreY = qBound(area.top() + h / 2 + 4, area.top() + area.height() * 0.42, area.bottom() - 34 - h / 2);
+        const QRectF capsule(qRound(area.center().x() - w / 2), qRound(centreY - h / 2), qRound(w), h);
+        painter->setPen(Qt::NoPen);
+        for (int i = 3; i >= 1; --i) { // a soft shadow under it
+            painter->setBrush(QColor(0, 0, 0, 26));
+            painter->drawRoundedRect(capsule.adjusted(-i, -i + 2, i, i + 2), h / 2 + i, h / 2 + i);
+        }
+        painter->setPen(QPen(QColor(255, 255, 255, 22), 1));
+        painter->setBrush(QColor(18, 20, 24, 238));
+        painter->drawRoundedRect(capsule.adjusted(0.5, 0.5, -0.5, -0.5), h / 2, h / 2);
+        // the ring
+        const qreal stroke = qMax<qreal>(2.2, d * 0.11);
+        const QRectF ringBox(capsule.left() + inset + stroke / 2, capsule.top() + inset + stroke / 2, d - stroke, d - stroke);
+        painter->setBrush(Qt::NoBrush);
+        painter->setPen(QPen(QColor(255, 255, 255, 38), stroke));
+        painter->drawEllipse(ringBox);
+        painter->setPen(QPen(accent, stroke, Qt::SolidLine, Qt::RoundCap));
+        if (busy) {
+            painter->drawArc(ringBox, qRound(90 * 16 - activity->phase() * 360 * 16), -100 * 16);
+        } else {
+            painter->drawArc(ringBox, 90 * 16, -qRound(e.percent * 3.6 * 16));
+            QFont figure(m_customizedFont);
+            figure.setPixelSize(qMax(7, qRound(d * (e.percent >= 100 ? 0.27 : 0.33))));
+            figure.setWeight(QFont::Bold);
+            painter->setFont(figure);
+            painter->setPen(QColor(240, 242, 245));
+            painter->drawText(ringBox.adjusted(-2, 0, 2, 0), Qt::AlignCenter, QString::number(e.percent) + QLatin1Char('%'));
+        }
+        // what is going on, and the time left
+        qreal x = capsule.left() + inset + d + gap;
+        painter->setFont(labelFont);
+        painter->setPen(QColor(236, 239, 243));
+        painter->drawText(QRectF(x, capsule.top(), fm.horizontalAdvance(shown) + 1, h), Qt::AlignLeft | Qt::AlignVCenter, shown);
+        x += fm.horizontalAdvance(shown);
+        if (!timeLeft.isEmpty()) {
+            painter->setFont(leftFont);
+            painter->setPen(QColor(168, 174, 184));
+            painter->drawText(QRectF(x + gap * 0.6, capsule.top(), leftWidth, h), Qt::AlignLeft | Qt::AlignVCenter, timeLeft);
+        }
+        // the stop button
+        if (stoppable) {
+            const QRectF stop(capsule.right() - inset - d, capsule.top() + inset, d, d);
+            const bool hot = activity->isStopHovered(url);
             painter->setPen(Qt::NoPen);
-            painter->setBrush(QColor(18, 20, 24, 235));
-            painter->drawRoundedRect(label, label.height() / 2, label.height() / 2);
-            painter->setFont(labelFont);
-            painter->setPen(QColor(235, 238, 242));
-            painter->drawText(label, Qt::AlignCenter, shown);
-            if (stoppable) {
-                stopButton(QRectF(label.right() + 5, label.top(), label.height(), label.height()));
-            }
-        } else if (stoppable) {
-            const qreal side = qMax<qreal>(18, radius * 0.7);
-            stopButton(QRectF(area.center().x() + radius + width + 4, top, side, side));
+            painter->setBrush(hot ? QColor(214, 72, 66) : QColor(255, 255, 255, 18));
+            painter->drawEllipse(stop);
+            const qreal c = d * 0.17;
+            painter->setPen(QPen(hot ? QColor(255, 255, 255) : QColor(222, 226, 232), qMax<qreal>(1.5, d * 0.08), Qt::SolidLine, Qt::RoundCap));
+            painter->drawLine(stop.center() + QPointF(-c, -c), stop.center() + QPointF(c, c));
+            painter->drawLine(stop.center() + QPointF(c, -c), stop.center() + QPointF(-c, c));
+            m_ngCancelRect = stop;
         }
         // and a line of the same colour along the bottom edge of the preview
         if (!busy) {
@@ -4032,17 +4065,29 @@ void KStandardItemListWidget::paintNgActivity(QPainter *painter)
             const QString figure = QString::number(e.percent) + QLatin1Char('%');
             const QString caption = busy ? e.text : (e.text.isEmpty() ? figure : QString(e.text + QStringLiteral(" · ") + figure));
             const QFontMetricsF fm(f);
-            const qreal w = qMin(fm.horizontalAdvance(caption) + 22, row.width() * 0.45);
+            const qreal pillHeight = fm.height() * 1.7;
+            const qreal stopRoom = stoppable ? pillHeight - 4 + 4 : 0;
+            const qreal w = qMin(fm.horizontalAdvance(caption) + 22 + stopRoom, row.width() * 0.45);
             // solid, over the end of the row: it covers the date while the work runs
-            const QRectF pill(row.right() - w - 8, row.center().y() - fm.height() * 0.85, w, fm.height() * 1.7);
+            const QRectF pill(row.right() - w - 8, row.center().y() - pillHeight / 2, w, pillHeight);
             painter->setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 110), 1));
             painter->setBrush(QColor(16, 17, 21));
             painter->drawRoundedRect(pill, pill.height() / 2, pill.height() / 2);
             painter->setFont(f);
             painter->setPen(accent.lighter(135));
-            painter->drawText(pill, Qt::AlignCenter, fm.elidedText(caption, Qt::ElideRight, pill.width() - 14));
+            const QRectF textBox = pill.adjusted(0, 0, -stopRoom, 0);
+            painter->drawText(textBox, Qt::AlignCenter, fm.elidedText(caption, Qt::ElideRight, textBox.width() - 14));
             if (stoppable) {
-                stopButton(QRectF(pill.left() - pill.height() - 4, pill.top(), pill.height(), pill.height()));
+                const QRectF stop(pill.right() - pill.height() + 2, pill.top() + 2, pill.height() - 4, pill.height() - 4);
+                const bool hot = activity->isStopHovered(url);
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(hot ? QColor(214, 72, 66) : QColor(255, 255, 255, 18));
+                painter->drawEllipse(stop);
+                const qreal c = stop.width() * 0.18;
+                painter->setPen(QPen(hot ? QColor(255, 255, 255) : QColor(222, 226, 232), 1.6, Qt::SolidLine, Qt::RoundCap));
+                painter->drawLine(stop.center() + QPointF(-c, -c), stop.center() + QPointF(c, c));
+                painter->drawLine(stop.center() + QPointF(c, -c), stop.center() + QPointF(-c, c));
+                m_ngCancelRect = stop;
             }
         }
     }

@@ -64,6 +64,7 @@ public:
     struct Entry {
         int percent = -1;
         QString text;
+        qint64 startedAt = 0; // ms since epoch: with the percentage, it gives the time left
     };
     static NgActivity *self();
     void set(const QUrl &url, int percent, const QString &text);
@@ -99,6 +100,9 @@ public:
     bool canCancel(const QUrl &url) const;
     void setCanceller(const QUrl &url, const std::function<void()> &cancel);
     void cancel(const QUrl &url);
+    /** the stop button under the pointer (drawn red), or none */
+    void setHoveredStop(const QUrl &url);
+    bool isStopHovered(const QUrl &url) const;
 
 Q_SIGNALS:
     void changed();
@@ -116,6 +120,7 @@ private:
     QHash<QString, QUrl> m_watched; // parent key -> parent
     QHash<QString, qint64> m_linkedAt; // child key -> when it was tied (ms since epoch): it grows in
     QHash<QString, std::function<void()>> m_cancellers;
+    QString m_hoveredStop;
     /* processes of quick actions outlive Dolphin: they are written down, so a Dolphin started later shows them */
     void saveProcesses();
     void loadProcesses();

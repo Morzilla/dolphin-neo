@@ -371,6 +371,8 @@ DolphinView::DolphinView(const QUrl &url, QWidget *parent)
     connect(controller, &KItemListController::itemHovered, this, &DolphinView::slotItemHovered);
     connect(controller, &KItemListController::itemUnhovered, this, &DolphinView::slotItemUnhovered);
     connect(controller, &KItemListController::ngActionHovered, this, [this](int index, int action) {
+        // the stop button on a file at work turns red under the pointer
+        NgActivity::self()->setHoveredStop(action == 6 && index >= 0 ? m_model->fileItem(index).url() : QUrl());
         // the picture of a card: a larger view after a short rest (CARDS_QUICKVIEW=off disables, a number sets the delay)
         const QString quick = ngSetting("CARDS_QUICKVIEW").toLower();
         if (action == 4 && quick != QLatin1String("off") && !m_dragging) {

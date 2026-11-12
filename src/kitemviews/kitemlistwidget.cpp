@@ -305,6 +305,9 @@ void NgActivity::set(const QUrl &url, int percent, const QString &text)
         return;
     }
     Entry &e = m_entries[key(url)];
+    if (!e.startedAt) {
+        e.startedAt = QDateTime::currentMSecsSinceEpoch();
+    }
     if (e.percent == percent && e.text == text) {
         return;
     }
@@ -477,6 +480,20 @@ void NgActivity::setUntilProcessEnds(const QUrl &url, qint64 pid, const QString 
         m_progressFiles.insert(key(url), progressFile);
     }
     saveProcesses();
+}
+
+void NgActivity::setHoveredStop(const QUrl &url)
+{
+    const QString k = url.isValid() ? key(url) : QString();
+    if (k != m_hoveredStop) {
+        m_hoveredStop = k;
+        Q_EMIT changed();
+    }
+}
+
+bool NgActivity::isStopHovered(const QUrl &url) const
+{
+    return !m_hoveredStop.isEmpty() && m_hoveredStop == key(url);
 }
 
 bool NgActivity::canCancel(const QUrl &url) const
