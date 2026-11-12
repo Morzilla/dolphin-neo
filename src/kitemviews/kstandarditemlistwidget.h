@@ -356,6 +356,9 @@ private:
     qint64 m_ngBadgeGlassKey = 0;
     int m_ngBadgeGlassShade = 70; // how dark the veil over it is: more over a light picture, so the white text reads
     // CARDS_BADGE=fold: type and size written on the back of the band's corner, folded over like a page in glass
+    // CARDS_BADGE=inside: the type and the size written into the drawing of the file
+    bool m_ngInfoInside = false;
+    QString m_ngInfoSize;
     QString m_ngFoldType;
     QString m_ngFoldSize;
     qreal m_ngFoldFill = 0; // 0..1, how heavy the file is (log scale): the larger, the larger the fold

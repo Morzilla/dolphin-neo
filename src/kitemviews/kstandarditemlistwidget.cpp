@@ -2942,9 +2942,27 @@ QList<QPixmap> ngFolderPictures(const QString &folder, const QStringList &names,
 // dolphin-ng: the band of a card whose file has no preview shows a small drawing of the kind of content: a page of
 // text, a table, lines of code, a waveform... The kind comes from the category of the file and, where the category
 // is too wide (audio or video, text or slides), from its extension.
-void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, const QString &sigla, const QColor &tint, bool dark, int count = -1)
+void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, const QString &sigla, const QColor &tint, bool dark, int count = -1,
+                          const QString &sizeText = QString(), const QFont *font = nullptr)
 {
     painter->setRenderHint(QPainter::Antialiasing);
+    // CARDS_BADGE=inside: the type and the size are part of the drawing (printed on the box, the type as the page's
+    // title, the size as its last line...), in the drawing's own colours
+    const bool info = font != nullptr;
+    auto write = [&](const QRectF &r, const QString &t, qreal px, QFont::Weight weight, const QColor &colour, Qt::Alignment align) {
+        if (!info || t.isEmpty()) {
+            return;
+        }
+        QFont f(*font);
+        f.setPixelSize(qMax(7, qRound(px)));
+        f.setWeight(weight);
+        if (weight >= QFont::Black) {
+            f.setLetterSpacing(QFont::PercentageSpacing, 104);
+        }
+        painter->setFont(f);
+        painter->setPen(colour);
+        painter->drawText(r, align, QFontMetricsF(f).elidedText(t, Qt::ElideRight, r.width()));
+    };
     const QString ext = sigla.toLower();
     static const QSet<QString> audio{QStringLiteral("mp3"), QStringLiteral("flac"), QStringLiteral("ogg"), QStringLiteral("wav"), QStringLiteral("opus"), QStringLiteral("m4a"),
                                      QStringLiteral("aac"), QStringLiteral("wma")};
@@ -2993,12 +3011,25 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         painter->drawRoundedRect(cover, 7 * u, 7 * u);
         painter->setPen(QPen(QColor(255, 255, 255, dark ? 60 : 150), 1));
         painter->drawLine(QPointF(cover.left() + 7 * u, cover.top() + 0.5), QPointF(cover.right() - 7 * u, cover.top() + 0.5));
+        if (info) {
+            const QRectF text = cover.adjusted(9 * u, 3 * u, -9 * u, -4 * u);
+            const QString number = count >= 0 ? QString::number(count) : QString();
+            const QString under = count >= 0 ? (sizeText.isEmpty() ? ngTr("items", "elementi") : ngTr("items · ", "elementi · ") + sizeText) : sizeText;
+            write(QRectF(text.left(), text.top(), text.width(), text.height() * 0.6), number, 20 * u, QFont::Black, QColor(255, 255, 255, 240), Qt::AlignLeft | Qt::AlignBottom);
+            write(QRectF(text.left(), text.top() + text.height() * (number.isEmpty() ? 0.25 : 0.6), text.width(), text.height() * 0.4), under, 8.5 * u, QFont::DemiBold,
+                  QColor(255, 255, 255, 200), Qt::AlignLeft | Qt::AlignVCenter);
+        }
     } else if (category == int(NgKind::Sheet)) {
         const QRectF page = sheet(0.62);
         const qreal left = page.left() + 9 * u, right = page.right() - 9 * u, top = page.top() + 10 * u, rowHeight = 15 * u;
         QColor head = tint;
         head.setAlphaF(0.55);
         painter->fillRect(QRectF(left, top, right - left, rowHeight), head);
+        if (info) {
+            painter->fillRect(QRectF(left, top, right - left, rowHeight), tint.darker(115));
+            write(QRectF(left + 5 * u, top, right - left - 10 * u, rowHeight), sigla, 9.5 * u, QFont::Black, QColor(255, 255, 255), Qt::AlignLeft | Qt::AlignVCenter);
+            write(QRectF(left + 5 * u, top, right - left - 10 * u, rowHeight), sizeText, 8 * u, QFont::DemiBold, QColor(255, 255, 255, 220), Qt::AlignRight | Qt::AlignVCenter);
+        }
         painter->setPen(QPen(faint, 1));
         for (int row = 0; row <= 6; ++row) {
             painter->drawLine(QPointF(left, top + row * rowHeight), QPointF(right, top + row * rowHeight));
@@ -3024,6 +3055,18 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         QColor bright = tint.lighter(125), soft(120, 128, 140);
         for (int i = 0; i < 7; ++i) {
             const qreal x = editor.left() + 10 * u + indent[i] * 12 * u, y = editor.top() + 11 * u + i * 12 * u;
+            if (info && (i == 0 || i == 5)) {
+                const QRectF line(editor.left() + 10 * u, y - 4.5 * u, editor.width() - 20 * u, 13 * u);
+                if (i == 0) {
+                    write(line, QStringLiteral("#!") + sigla, 10 * u, QFont::Black, bright, Qt::AlignLeft | Qt::AlignVCenter);
+                } else {
+                    write(line, QStringLiteral("# ") + sizeText, 9 * u, QFont::DemiBold, QColor(120, 128, 140), Qt::AlignLeft | Qt::AlignVCenter);
+                }
+                continue;
+            }
+            if (info && i == 6) {
+                continue;
+            }
             bar(x, y, editor.width() * 0.16, 4.5 * u, i % 3 == 0 ? bright : soft);
             bar(x + editor.width() * 0.16 + 5 * u, y, editor.width() * length[i], 4.5 * u, i % 2 ? QColor(170, 178, 190) : soft);
         }
@@ -3032,11 +3075,22 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         const int count = 34;
         const qreal step = band.width() * 0.8 / count, x0 = band.left() + band.width() * 0.1;
         QColor wave = tint.lighter(120);
+        const qreal middle = info ? band.top() + band.height() * 0.38 : band.center().y();
         for (int i = 0; i < count; ++i) {
             const qreal amount = 0.18 + 0.82 * qAbs(std::sin(i * 0.55) * std::cos(i * 0.23 + 1.0));
-            const qreal height = band.height() * 0.62 * amount;
+            const qreal height = band.height() * (info ? 0.5 : 0.62) * amount;
             wave.setAlphaF(0.55 + 0.4 * amount);
-            bar(x0 + i * step, band.center().y() - height / 2.0, qMax(2.0, step * 0.55), height, wave);
+            bar(x0 + i * step, middle - height / 2.0, qMax(2.0, step * 0.55), height, wave);
+        }
+        if (info) {
+            const qreal baseline = band.bottom() - 22 * u;
+            QColor rule = tint;
+            rule.setAlphaF(0.5);
+            painter->setPen(QPen(rule, 1.5));
+            painter->drawLine(QPointF(x0, baseline), QPointF(x0 + count * step, baseline));
+            const QRectF text(x0, baseline + 2 * u, count * step, 18 * u);
+            write(text, sigla, 11.5 * u, QFont::Black, tint.lighter(130), Qt::AlignLeft | Qt::AlignVCenter);
+            write(text, sizeText, 9.5 * u, QFont::DemiBold, QColor(214, 218, 225), Qt::AlignRight | Qt::AlignVCenter);
         }
     } else if (category == int(NgKind::Media)) {
         // a frame of film with the play mark
@@ -3061,6 +3115,11 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         painter->setPen(QPen(tint.lighter(125), 2 * u, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         painter->setBrush(tint.lighter(125));
         painter->drawPath(play);
+        if (info) {
+            const QRectF text = QRectF(frame.left() + 15 * u, frame.bottom() - 18 * u, frame.width() - 30 * u, 15 * u);
+            write(text, sigla, 9.5 * u, QFont::Black, tint.lighter(140), Qt::AlignLeft | Qt::AlignVCenter);
+            write(text, sizeText, 8 * u, QFont::DemiBold, QColor(220, 223, 228), Qt::AlignRight | Qt::AlignVCenter);
+        }
     } else if (category == int(NgKind::Archive) || category == int(NgKind::Package)) {
         // a parcel: a box with its tape and a label
         const qreal width = qMin(band.width() * 0.46, band.height() * 1.3);
@@ -3073,15 +3132,27 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         painter->setBrush(card.lighter(118));
         painter->drawRoundedRect(QRectF(box.left() - 4 * u, box.top() - 6 * u, box.width() + 8 * u, 15 * u), 4 * u, 4 * u);
         if (category == int(NgKind::Archive)) {
-            // the zip: teeth down the middle
+            // the zip: teeth down the middle (down the left side when the box carries its type and size)
+            const qreal teeth = info ? box.left() + 11 * u : box.center().x();
             for (int i = 0; i < 7; ++i) {
-                bar(box.center().x() - (i % 2 ? 0 : 5 * u), box.top() + 14 * u + i * 8 * u, 5 * u, 4.5 * u, QColor(255, 255, 255, 190));
+                bar(teeth - (i % 2 ? 0 : 5 * u), box.top() + 14 * u + i * 8 * u, 5 * u, 4.5 * u, QColor(255, 255, 255, 190));
             }
         } else {
             painter->setBrush(QColor(255, 255, 255, 70));
             painter->drawRect(QRectF(box.center().x() - 5 * u, box.top() - 6 * u, 10 * u, band.height()));
-            painter->setBrush(paper);
-            painter->drawRoundedRect(QRectF(box.left() + 8 * u, box.top() + 22 * u, box.width() * 0.34, 20 * u), 2 * u, 2 * u);
+            if (!info) {
+                painter->setBrush(paper);
+                painter->drawRoundedRect(QRectF(box.left() + 8 * u, box.top() + 22 * u, box.width() * 0.34, 20 * u), 2 * u, 2 * u);
+            }
+        }
+        if (info) {
+            // printed on the side of the box, in a pale shade of the box itself
+            const QRectF side = box.adjusted(category == int(NgKind::Archive) ? 20 * u : 6 * u, 16 * u, -6 * u, 0);
+            const QColor print = QColor::fromHslF(card.hslHueF() < 0 ? 0 : card.hslHueF(), qMin<qreal>(1, card.hslSaturationF() * 0.6), 0.9);
+            write(QRectF(side.left(), side.top(), side.width(), 26 * u), sigla, 22 * u, QFont::Black, print, Qt::AlignHCenter | Qt::AlignVCenter);
+            QColor small = print;
+            small.setAlphaF(0.85);
+            write(QRectF(side.left(), side.top() + 25 * u, side.width(), 16 * u), sizeText, 10 * u, QFont::Bold, small, Qt::AlignHCenter | Qt::AlignVCenter);
         }
     } else if (category == int(NgKind::Image)) {
         // a picture that could not be previewed: sky, sun and hills
@@ -3104,6 +3175,11 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         hills.closeSubpath();
         painter->setClipRect(view, Qt::IntersectClip);
         painter->fillPath(hills, tint.darker(115));
+        if (info) {
+            const QRectF text(view.left() + 7 * u, view.top() + 66 * u, view.width() - 14 * u, 16 * u);
+            write(text, sigla, 10 * u, QFont::Black, QColor(255, 255, 255, 240), Qt::AlignLeft | Qt::AlignVCenter);
+            write(text, sizeText, 8.5 * u, QFont::DemiBold, QColor(255, 255, 255, 210), Qt::AlignRight | Qt::AlignVCenter);
+        }
     } else if (slides.contains(ext)) {
         // a slide: a title and a small chart
         const qreal width = qMin(band.width() * 0.66, band.height() * 2.2);
@@ -3111,8 +3187,13 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         painter->setPen(paperEdge.alpha() ? QPen(paperEdge, 1) : QPen(Qt::NoPen));
         painter->setBrush(paper);
         painter->drawRoundedRect(slide, 5 * u, 5 * u);
-        bar(slide.left() + 10 * u, slide.top() + 11 * u, slide.width() * 0.42, 6 * u, tint);
-        bar(slide.left() + 10 * u, slide.top() + 24 * u, slide.width() * 0.30, 4 * u, faint);
+        if (info) {
+            write(QRectF(slide.left() + 10 * u, slide.top() + 6 * u, slide.width() * 0.6, 16 * u), sigla, 14 * u, QFont::Black, tint, Qt::AlignLeft | Qt::AlignVCenter);
+            write(QRectF(slide.left() + 10 * u, slide.top() + 21 * u, slide.width() * 0.6, 11 * u), sizeText, 8.5 * u, QFont::DemiBold, grey, Qt::AlignLeft | Qt::AlignVCenter);
+        } else {
+            bar(slide.left() + 10 * u, slide.top() + 11 * u, slide.width() * 0.42, 6 * u, tint);
+            bar(slide.left() + 10 * u, slide.top() + 24 * u, slide.width() * 0.30, 4 * u, faint);
+        }
         static const qreal heights[] = {0.30, 0.52, 0.40, 0.70};
         for (int i = 0; i < 4; ++i) {
             const qreal h = band.height() * heights[i] * 0.7;
@@ -3126,9 +3207,17 @@ void ngPaintContentSketch(QPainter *painter, const QRectF &band, int category, c
         // a page of text: a heading in the colour of the type, then lines
         const QRectF page = sheet(0.56);
         const qreal left = page.left() + 11 * u, width = page.width() - 22 * u;
-        bar(left, page.top() + 14 * u, width * 0.62, 5 * u, tint);
+        if (info) {
+            write(QRectF(left, page.top() + 6 * u, width, 20 * u), sigla, 17 * u, QFont::Black, tint, Qt::AlignLeft | Qt::AlignVCenter);
+        } else {
+            bar(left, page.top() + 14 * u, width * 0.62, 5 * u, tint);
+        }
         static const qreal lines[] = {1.0, 1.0, 0.82, 0.0, 1.0, 0.94, 0.6};
         for (int i = 0; i < 7; ++i) {
+            if (info && i == 4) {
+                write(QRectF(left, page.top() + 30 * u + i * 10 * u - 4 * u, width, 12 * u), sizeText, 9 * u, QFont::Bold, QColor(96, 102, 112), Qt::AlignLeft | Qt::AlignVCenter);
+                break;
+            }
             if (lines[i] > 0) {
                 bar(left, page.top() + 30 * u + i * 10 * u, width * lines[i], 4 * u, i < 3 ? grey : faint);
             }
@@ -3324,6 +3413,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     m_ngAgo.clear();
     m_ngCardEye = QRectF();
     m_ngFoldType.clear();
+    m_ngInfoInside = false;
     m_ngCardEyeInPill = false;
     m_ngCardMenu = QRectF();
     m_ngCardActions.clear();
@@ -3567,6 +3657,11 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         if (ngSetting("CARDS_BADGE").toLower() == QLatin1String("row")) {
             // the chips in a row of their own under the name
             y = chipRow(x0, y, right, {m_ngSigla, sizeText, countText}, 1) + 8;
+        } else if (ngSetting("CARDS_BADGE").toLower() == QLatin1String("inside")) {
+            // no badge: the type and the size are written into the drawing of the file (ngPaintContentSketch); a
+            // real preview has nothing written on it, the card's first line says them instead
+            m_ngInfoInside = true;
+            m_ngInfoSize = sizeText;
         } else if (ngSetting("CARDS_BADGE").toLower() == QLatin1String("fold")) {
             // no chips: the corner of the band folds over, with the type and the size on its back (paintNgFold)
             m_ngFoldType = m_ngSigla;
@@ -3608,7 +3703,9 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
             bool monospace;
         };
         QList<Line> lines;
-        if (created.isValid()) {
+        if (m_ngInfoInside && m_ngCardPreview && !isDir) {
+            lines.append({m_ngSigla, sizeText, false}); // a real preview: no drawing to write in
+        } else if (created.isValid()) {
             lines.append({ngTr("Created", "Creato"), dateLine(created), false});
         }
         if (modified.isValid()) {
@@ -4367,7 +4464,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
             if (m_ngCategory == int(NgKind::Folder) && !m_ngCardPeek.isEmpty()) {
                 // a folder with something in it: the folder on the left, its first entries listed beside it
                 const QRectF left(m_ngCardThumb.left(), m_ngCardThumb.top(), m_ngCardThumb.width() * 0.40, m_ngCardThumb.height());
-                ngPaintContentSketch(painter, left, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount);
+                ngPaintContentSketch(painter, left, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, QString(), m_ngInfoInside ? &m_customizedFont : nullptr);
                 QFont peekFont = m_customizedFont;
                 peekFont.setPointSizeF(peekFont.pointSizeF() * 0.84);
                 const QFontMetricsF peekFm(peekFont);
@@ -4405,7 +4502,7 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
                                       rest > 0 ? ngTr("+ %1 more", "+ altri %1").arg(rest) : QStringLiteral("…"));
                 }
             } else {
-                ngPaintContentSketch(painter, m_ngCardThumb, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount);
+                ngPaintContentSketch(painter, m_ngCardThumb, m_ngCategory, m_ngSigla, m_ngTint, dark, itemCount, m_ngInfoSize, m_ngInfoInside ? &m_customizedFont : nullptr);
             }
             painter->restore();
         } else if (!m_pixmap.isNull()) {
