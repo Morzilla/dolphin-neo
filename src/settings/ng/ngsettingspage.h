@@ -15,6 +15,7 @@ class KColorButton;
 class KUrlRequester;
 class QCheckBox;
 class QComboBox;
+class QListWidget;
 class QFormLayout;
 class QSlider;
 class QSpinBox;
@@ -59,7 +60,9 @@ private:
     QComboBox *m_backdrop;
     QComboBox *m_rim;
     QComboBox *m_devices;
-    QComboBox *m_disksPos; // the disk boxes at the foot of the panel, or above the pinned items and the filters // disks and partitions: NG boxes at the foot of the panel | a classic section | hidden
+    QComboBox *m_disksPos;
+    QListWidget *m_sectionOrder; // the sidebar's sections, dragged into their order; the checks show or hide them
+    void fillSectionOrder(const QStringList &order, bool pinned, bool filters, bool disks); // the disk boxes at the foot of the panel, or above the pinned items and the filters // disks and partitions: NG boxes at the foot of the panel | a classic section | hidden
     QWidget *m_deviceList; // one box per disk or partition: unticked, it is hidden (the places' own hiding)
     QList<std::pair<QString, QCheckBox *>> m_deviceBoxes; // device udi, its box
     void fillDevices();

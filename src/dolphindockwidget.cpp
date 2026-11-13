@@ -707,7 +707,7 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
     if (objectName() == QLatin1String("placesDock")) {
         const QList<NgDisk> disks = ngSidebarDisks();
         const int room = ngDiskRoom();
-        if (!disks.isEmpty() && card.height() > 200 + room - 62) {
+        if (room > 0 && !disks.isEmpty() && card.height() > 200 + room - 62) {
             const bool compact = disks.size() > 3;
             const bool alone = disks.size() == 1;
             const bool darkGlass = ngIsDark(palette());
@@ -715,9 +715,9 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
             small.setPointSizeF(small.pointSizeF() * (compact ? 0.82 : 0.86));
             painter.setFont(small);
             const QFontMetrics metrics(small);
-            // above the pinned items and the filters when the panel put them at the foot (DISKS_POS=above)
-            const int belowDisks = widget() ? widget()->property("ngBelowDisks").toInt() : 0;
-            qreal top = card.bottom() - room - belowDisks;
+            // where the panel gave them room (its sections' order), in this widget's coordinates
+            const QVariant disksY = widget() ? widget()->property("ngDisksY") : QVariant();
+            qreal top = disksY.isValid() && disksY.toInt() >= 0 ? widget()->mapTo(this, QPoint(0, disksY.toInt())).y() : card.bottom() - room;
             for (const NgDisk &disk : disks) {
                 const bool mounted = !disk.root.isEmpty();
                 const qreal height = !mounted ? 32 : compact ? 40 : 54;
@@ -891,6 +891,9 @@ QList<DolphinDockWidget::NgDisk> DolphinDockWidget::ngSidebarDisks()
 
 int DolphinDockWidget::ngDiskRoom()
 {
+    if (ngSetting("SIDEBAR_DISKS").toLower() == QLatin1String("hide")) {
+        return 0; // the disks section switched off
+    }
     const QList<NgDisk> disks = ngSidebarDisks();
     if (disks.isEmpty()) {
         return 62;

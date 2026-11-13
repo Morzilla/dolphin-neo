@@ -3672,15 +3672,21 @@ class NgFilterPanel : public QWidget
     // dolphin-ng: the sections at the bottom of the sidebar: what is pinned to the top of its folder
     // (SIDEBAR_PINNED=hide switches it off), then the filters of the view (SIDEBAR_FILTERS=hide)
 public:
-    NgFilterPanel(NgSortBar *bar, QWidget *parent, std::function<void(const QUrl &)> open)
+    // part: 0 both sections, 1 the pinned items only, 2 the filters only (the sidebar orders them one by one)
+    NgFilterPanel(NgSortBar *bar, QWidget *parent, std::function<void(const QUrl &)> open, int part = 0)
         : QWidget(parent)
         , m_bar(bar)
         , m_open(std::move(open))
+        , m_part(part)
     {
         setAttribute(Qt::WA_NoSystemBackground);
         setMouseTracking(true);
         setCursor(Qt::PointingHandCursor);
-        bar->onFiltersChanged = [this] {
+        // several panels listen to the same bar: each one adds itself to the chain
+        bar->onFiltersChanged = [this, previous = bar->onFiltersChanged] {
+            if (previous) {
+                previous();
+            }
             refresh();
         };
         connect(NgSettings::instance(), &NgSettings::changed, this, [this] {
@@ -3697,12 +3703,12 @@ public:
     {
         m_entries = m_bar ? m_bar->filters() : QList<NgSortBar::FilterEntry>();
         const bool filtersOff = ngSetting("SIDEBAR_FILTERS").toLower() == QLatin1String("hide");
-        if (filtersOff || m_entries.count() < 2) {
+        if (filtersOff || m_entries.count() < 2 || m_part == 1) {
             m_entries.clear();
         }
         // the pinned items: folders first, then files, each by name; no more than fit comfortably
         m_pins.clear();
-        if (ngSetting("SIDEBAR_PINNED").toLower() != QLatin1String("hide")) {
+        if (ngSetting("SIDEBAR_PINNED").toLower() != QLatin1String("hide") && m_part != 2) {
             const QStringList paths = NgPins::self()->paths();
             QMimeDatabase mimes;
             for (const QString &path : paths) {
@@ -3933,15 +3939,16 @@ protected:
 private:
     QPointer<NgSortBar> m_bar;
     std::function<void(const QUrl &)> m_open;
+    int m_part = 0;
     QList<NgSortBar::FilterEntry> m_entries;
     QList<Pin> m_pins;
     int m_hover = -1;
 };
 
-QWidget *ngCreateFilterPanel(QWidget *sortBar, QWidget *parent, std::function<void(const QUrl &)> open)
+QWidget *ngCreateFilterPanel(QWidget *sortBar, QWidget *parent, std::function<void(const QUrl &)> open, int part)
 {
     auto *bar = dynamic_cast<NgSortBar *>(sortBar);
-    return bar ? new NgFilterPanel(bar, parent, std::move(open)) : nullptr;
+    return bar ? new NgFilterPanel(bar, parent, std::move(open), part) : nullptr;
 }
 
 void ngSortBarSetLeadingActions(QWidget *bar, const QList<QAction *> &actions)

@@ -28,11 +28,16 @@ class StorageAccess;
 /**
  * @brief Combines bookmarks and mounted devices as list.
  */
+/** dolphin-ng: the sidebar's sections in their order ("places", "pinned", "filters", "disks"; see SIDEBAR_ORDER). */
+QStringList ngSidebarOrder();
+
 class PlacesPanel : public KFilePlacesView
 {
 public:
     /** dolphin-ng: a widget kept at the bottom of the panel, above the disk usage box (the filters section). */
     void ngSetBottomWidget(QWidget *widget);
+    /** dolphin-ng: the pinned items and the filters, two sections the sidebar orders with the disks (SIDEBAR_ORDER). */
+    void ngSetSections(QWidget *pinned, QWidget *filters);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -47,6 +52,8 @@ private:
     QWidget *m_ngFadeTop = nullptr; // live blur: the list fades into the glass where it continues, see ngUpdateFade()
     QWidget *m_ngFadeBottom = nullptr;
     QWidget *m_ngBottom = nullptr;
+    QWidget *m_ngPinned = nullptr;
+    QWidget *m_ngFilters = nullptr;
     bool m_ngLayouting = false;
     bool m_ngDevicesPending = false;
     bool m_ngBarWatched = false;

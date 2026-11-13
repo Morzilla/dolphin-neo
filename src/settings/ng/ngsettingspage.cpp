@@ -7,6 +7,9 @@
 #include "kitemviews/kitemlistwidget.h"
 #include "dolphin_contentdisplaysettings.h"
 #include "dolphinplacesmodelsingleton.h"
+#include "panels/places/placespanel.h"
+
+#include <QListWidget>
 
 #include <Solid/Device>
 
@@ -1131,8 +1134,29 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
               {ngTr("Glow", "Alone"), {}}, {ngTr("Light from above", "Luce dall'alto"), {}}},
              6);
     heading(ngTr("Sections", "Sezioni"));
+    note(ngTr("Drag them into their order: what is above the places stays at the top of the panel, what is below at its foot. The check shows or hides a section.",
+              "Trascinale nel loro ordine: quello che sta sopra le risorse resta in alto nel pannello, quello sotto in fondo. La spunta mostra o nasconde una sezione."));
+    m_sectionOrder = new QListWidget(this);
+    m_sectionOrder->setDragDropMode(QAbstractItemView::InternalMove);
+    m_sectionOrder->setDefaultDropAction(Qt::MoveAction);
+    m_sectionOrder->setSelectionMode(QAbstractItemView::SingleSelection);
+    page->addWidget(m_sectionOrder);
+    connect(m_sectionOrder->model(), &QAbstractItemModel::rowsMoved, this, &NgSettingsPage::changed);
+    connect(m_sectionOrder, &QListWidget::itemChanged, this, [this](QListWidgetItem *item) {
+        // the checks drive the switches the rest of the page knows
+        const QString name = item->data(Qt::UserRole).toString();
+        const bool on = item->checkState() == Qt::Checked;
+        if (name == QLatin1String("pinned")) {
+            m_sidebarPinned->setChecked(on);
+        } else if (name == QLatin1String("filters")) {
+            m_sidebarFilters->setChecked(on);
+        }
+        Q_EMIT changed();
+    });
     m_sidebarPinned = toggle(ngTr("Pinned folders and files", "Cartelle e file fissati in alto"));
     m_sidebarFilters = toggle(ngTr("Filters, at the bottom of the panel", "Filtri, in fondo al pannello"));
+    m_sidebarPinned->hide(); // driven by the list above
+    m_sidebarFilters->hide();
     m_devices = new QComboBox(this);
     m_devices->addItem(ngTr("NG: boxes with their usage, at the foot", "NG: riquadri con l'uso, in fondo"), QString());
     m_devices->addItem(ngTr("Classic: a section of the sidebar", "Classico: una sezione della barra"), QStringLiteral("list"));
@@ -1384,6 +1408,40 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
 
 NgSettingsPage::~NgSettingsPage() = default;
 
+void NgSettingsPage::fillSectionOrder(const QStringList &order, bool pinned, bool filters, bool disks)
+{
+    const QSignalBlocker blocker(m_sectionOrder);
+    m_sectionOrder->clear();
+    for (const QString &name : order) {
+        auto *item = new QListWidgetItem(m_sectionOrder);
+        item->setData(Qt::UserRole, name);
+        if (name == QLatin1String("places")) {
+            item->setText(ngTr("Places (KDE's places, always shown)", "Risorse (i luoghi di KDE, sempre visibili)"));
+            item->setIcon(QIcon::fromTheme(QStringLiteral("folder-root")));
+            QFont bold = item->font();
+            bold.setBold(true);
+            item->setFont(bold);
+            item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
+            continue;
+        }
+        item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled | Qt::ItemIsUserCheckable);
+        if (name == QLatin1String("pinned")) {
+            item->setText(ngTr("Pinned folders and files", "Cartelle e file fissati"));
+            item->setIcon(QIcon::fromTheme(QStringLiteral("pin")));
+            item->setCheckState(pinned ? Qt::Checked : Qt::Unchecked);
+        } else if (name == QLatin1String("filters")) {
+            item->setText(ngTr("Filters, with their counts", "Filtri, con i numeri"));
+            item->setIcon(QIcon::fromTheme(QStringLiteral("view-filter")));
+            item->setCheckState(filters ? Qt::Checked : Qt::Unchecked);
+        } else if (name == QLatin1String("disks")) {
+            item->setText(ngTr("Disks, with their usage", "Dischi, con l'uso"));
+            item->setIcon(QIcon::fromTheme(QStringLiteral("drive-harddisk")));
+            item->setCheckState(disks ? Qt::Checked : Qt::Unchecked);
+        }
+    }
+    m_sectionOrder->setFixedHeight(m_sectionOrder->sizeHintForRow(0) * m_sectionOrder->count() + 2 * m_sectionOrder->frameWidth() + 4);
+}
+
 // the disks and partitions the places know, as boxes: unticking one hides it in the sidebar (and in the file dialogs,
 // as the places' own "Hide" does)
 void NgSettingsPage::fillDevices()
@@ -1470,7 +1528,7 @@ void NgSettingsPage::updateDependencies()
     showOption(m_lavaSpeed, gradient || (picture && m_motion->isChecked()));
     showOption(m_rim, glass);
     showOption(m_devices, glass);
-    showOption(m_disksPos, glass && m_devices->currentData().toString().isEmpty()); // only with the NG disk boxes
+    showOption(m_disksPos, false); // the disks' place is in the sections' order now
     m_deviceList->setEnabled(!glass || m_devices->currentData().toString() != QLatin1String("hide"));
 
     const bool marks = !m_icons->isChecked();
@@ -1509,6 +1567,8 @@ void NgSettingsPage::loadSettings()
         m_devices->setCurrentIndex(devices == QLatin1String("hide") ? 2 : devices.isEmpty() ? 0 : 1); // "show" was the old "list"
         m_disksPos->setCurrentIndex(ngSetting("DISKS_POS").toLower() == QLatin1String("above") ? 1 : 0);
     }
+    fillSectionOrder(ngSidebarOrder(), ngSetting("SIDEBAR_PINNED").toLower() != QLatin1String("hide"),
+                     ngSetting("SIDEBAR_FILTERS").toLower() != QLatin1String("hide"), ngSetting("SIDEBAR_DISKS").toLower() != QLatin1String("hide"));
     fillDevices();
     m_sidebarFilters->setChecked(ngSetting("SIDEBAR_FILTERS").toLower() != QLatin1String("hide"));
     m_sidebarPinned->setChecked(ngSetting("SIDEBAR_PINNED").toLower() != QLatin1String("hide"));
@@ -1582,6 +1642,19 @@ void NgSettingsPage::applySettings()
     setNgSetting("GLASS_RIM", m_rim->currentData().toString());
     setNgSetting("DEVICES", m_devices->currentData().toString());
     setNgSetting("DISKS_POS", m_disksPos->currentData().toString());
+    {
+        QStringList order;
+        bool disks = true;
+        for (int row = 0; row < m_sectionOrder->count(); ++row) {
+            const QListWidgetItem *item = m_sectionOrder->item(row);
+            order.append(item->data(Qt::UserRole).toString());
+            if (item->data(Qt::UserRole).toString() == QLatin1String("disks")) {
+                disks = item->checkState() == Qt::Checked;
+            }
+        }
+        setNgSetting("SIDEBAR_ORDER", order.join(QLatin1Char(',')));
+        setNgSetting("SIDEBAR_DISKS", disks ? QString() : QStringLiteral("hide"));
+    }
     if (KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel()) {
         for (const auto &[udi, box] : std::as_const(m_deviceBoxes)) {
             for (int row = 0; row < places->rowCount(); ++row) {
@@ -1652,6 +1725,7 @@ void NgSettingsPage::restoreDefaults()
     m_rim->setCurrentIndex(0);
     m_devices->setCurrentIndex(0);
     m_disksPos->setCurrentIndex(0);
+    fillSectionOrder({QStringLiteral("places"), QStringLiteral("pinned"), QStringLiteral("filters"), QStringLiteral("disks")}, true, true, true);
     for (const auto &entry : std::as_const(m_deviceBoxes)) {
         entry.second->setChecked(true);
     }

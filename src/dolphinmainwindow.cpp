@@ -2667,9 +2667,12 @@ void DolphinMainWindow::setupDockWidgets()
     connect(m_placesPanel, &PlacesPanel::placeActivated, this, &DolphinMainWindow::slotPlaceActivated);
     connect(placesDock, &DolphinDockWidget::ngDiskRootRequested, this, &DolphinMainWindow::slotPlaceActivated); // dolphin-ng: disk usage box
     // dolphin-ng: the pinned items and the filters as sidebar sections
-    m_placesPanel->ngSetBottomWidget(ngCreateFilterPanel(m_ngSortBar, m_placesPanel, [this](const QUrl &url) {
-        slotPlaceActivated(url);
-    }));
+    {
+        auto open = [this](const QUrl &url) {
+            slotPlaceActivated(url);
+        };
+        m_placesPanel->ngSetSections(ngCreateFilterPanel(m_ngSortBar, m_placesPanel, open, 1), ngCreateFilterPanel(m_ngSortBar, m_placesPanel, open, 2));
+    }
     connect(m_placesPanel, &PlacesPanel::tabRequested, this, &DolphinMainWindow::openNewTab);
     connect(m_placesPanel, &PlacesPanel::activeTabRequested, this, &DolphinMainWindow::openNewTabAndActivate);
     connect(m_placesPanel, &PlacesPanel::newWindowRequested, this, [this](const QUrl &url) {

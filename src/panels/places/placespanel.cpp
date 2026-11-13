@@ -723,6 +723,45 @@ void PlacesPanel::ngPlaceScrollBar()
     m_ngOverlayBar->raise();
 }
 
+void PlacesPanel::ngSetSections(QWidget *pinned, QWidget *filters)
+{
+    m_ngPinned = pinned;
+    m_ngFilters = filters;
+    for (QWidget *widget : {pinned, filters}) {
+        if (widget) {
+            widget->setParent(this);
+            widget->installEventFilter(this);
+            widget->raise();
+        }
+    }
+    ngLayoutBottom();
+}
+
+// dolphin-ng: the order of the sidebar's sections (NG settings > Sidebar): before "places", fixed at the top; after
+// it, fixed at the foot; the places scroll in between
+QStringList ngSidebarOrder()
+{
+    QStringList order;
+    const QStringList known{QStringLiteral("places"), QStringLiteral("pinned"), QStringLiteral("filters"), QStringLiteral("disks")};
+    for (const QString &name : ngSetting("SIDEBAR_ORDER").toLower().split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        if (known.contains(name.trimmed()) && !order.contains(name.trimmed())) {
+            order.append(name.trimmed());
+        }
+    }
+    if (order.isEmpty()) {
+        // the earlier setting: the disks above the filters, or at the foot
+        order = ngSetting("DISKS_POS").toLower() == QLatin1String("above")
+            ? QStringList{QStringLiteral("places"), QStringLiteral("disks"), QStringLiteral("pinned"), QStringLiteral("filters")}
+            : QStringList{QStringLiteral("places"), QStringLiteral("pinned"), QStringLiteral("filters"), QStringLiteral("disks")};
+    }
+    for (const QString &name : known) {
+        if (!order.contains(name)) {
+            order.append(name);
+        }
+    }
+    return order;
+}
+
 void PlacesPanel::ngLayoutBottom()
 {
     if (!m_ngBarWatched) {
@@ -734,42 +773,82 @@ void PlacesPanel::ngLayoutBottom()
         connect(verticalScrollBar(), &QScrollBar::valueChanged, this, &PlacesPanel::ngUpdateFade);
         connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, &PlacesPanel::ngUpdateFade);
     }
-    bool shown = m_ngBottom && !m_ngBottom->isHidden();
-    const int diskRoom = DolphinDockWidget::ngDiskRoom();
-    if (shown && height() - 12 - diskRoom - 12 - (m_ngBottom->height() + 8) < 190) {
-        // a short window: the places come first, the section steps aside (it is parked below the panel)
-        m_ngBottom->move(14, height() + 20);
-        shown = false;
+    // the old single section (pinned items and filters together), when the window set that one
+    if (m_ngBottom && !m_ngPinned && !m_ngFilters) {
+        m_ngFilters = m_ngBottom;
     }
-    const int extra = shown ? m_ngBottom->height() + 8 : 0;
-    setViewportMargins(10, 12, 10, 12 + diskRoom + extra);
+    const QStringList order = ngSidebarOrder();
+    const int placesAt = order.indexOf(QStringLiteral("places"));
+    const int diskRoom = DolphinDockWidget::ngDiskRoom();
+    auto widgetOf = [this](const QString &name) -> QWidget * {
+        return name == QLatin1String("pinned") ? m_ngPinned : name == QLatin1String("filters") ? m_ngFilters : nullptr;
+    };
+    bool sectionsShown = true;
+    auto heightOf = [&](const QString &name) {
+        if (name == QLatin1String("disks")) {
+            return diskRoom;
+        }
+        QWidget *widget = widgetOf(name);
+        return sectionsShown && widget && !widget->isHidden() ? widget->height() + 8 : 0;
+    };
+    auto total = [&](int from, int to) {
+        int sum = 0;
+        for (int i = from; i < to; ++i) {
+            sum += heightOf(order.at(i));
+        }
+        return sum;
+    };
+    int topTotal = total(0, placesAt);
+    int bottomTotal = total(placesAt + 1, order.count());
+    if (height() - 24 - topTotal - bottomTotal < 150) {
+        // a short window: the places come first, the pinned items and the filters step aside (parked below)
+        sectionsShown = false;
+        topTotal = total(0, placesAt);
+        bottomTotal = total(placesAt + 1, order.count());
+    }
+    for (QWidget *widget : {m_ngPinned, m_ngFilters}) {
+        if (widget && !sectionsShown) {
+            widget->move(14, height() + 20);
+        }
+    }
+    setViewportMargins(10, 12 + topTotal, 10, 12 + bottomTotal);
     ngPlaceScrollBar();
-    // DISKS_POS=above: the disks above the pinned items and the filters, which go to the foot of the card; the dock
-    // draws the disks this much higher
-    const bool disksAbove = shown && ngSetting("DISKS_POS").toLower() == QLatin1String("above");
-    const int belowDisks = disksAbove ? extra : 0;
-    if (property("ngBelowDisks").toInt() != belowDisks) {
-        setProperty("ngBelowDisks", belowDisks);
+
+    // top down, then bottom up; the disks are drawn by the dock where they are given room
+    int disksAt = -1;
+    int y = 12;
+    for (int i = 0; i < placesAt; ++i) {
+        const QString &name = order.at(i);
+        if (name == QLatin1String("disks")) {
+            disksAt = y;
+        } else if (QWidget *widget = widgetOf(name); widget && sectionsShown && !widget->isHidden()) {
+            widget->setGeometry(14, y, width() - 28, widget->height());
+        }
+        y += heightOf(name);
+    }
+    y = height() - 12;
+    for (int i = order.count() - 1; i > placesAt; --i) {
+        const QString &name = order.at(i);
+        y -= heightOf(name);
+        if (name == QLatin1String("disks")) {
+            disksAt = y;
+        } else if (QWidget *widget = widgetOf(name); widget && sectionsShown && !widget->isHidden()) {
+            widget->setGeometry(14, y + 8, width() - 28, widget->height());
+        }
+    }
+    if (property("ngDisksY").toInt() != disksAt) {
+        setProperty("ngDisksY", disksAt);
         if (parentWidget()) {
             parentWidget()->update();
         }
-    }
-    if (disksAbove) {
-        m_ngBottom->setGeometry(14, height() - 12 - m_ngBottom->height(), width() - 28, m_ngBottom->height());
-    } else if (shown) {
-        // when the places need a scroll bar it runs down the right edge of the whole panel: the section ends
-        // beside it instead of under it
-        QScrollBar *bar = verticalScrollBar();
-        Q_UNUSED(bar)
-        const int beside = 0; // the bar floats inside the card, beside the places only
-        m_ngBottom->setGeometry(14, height() - 12 - diskRoom - m_ngBottom->height(), width() - 28 - beside, m_ngBottom->height());
     }
 }
 
 bool PlacesPanel::eventFilter(QObject *watched, QEvent *event)
 {
     const bool barToggled = m_ngBarWatched && watched == verticalScrollBar() && (event->type() == QEvent::Show || event->type() == QEvent::Hide);
-    if (barToggled || (watched == m_ngBottom && (event->type() == QEvent::Resize || event->type() == QEvent::Show || event->type() == QEvent::Hide))) {
+    const bool section = watched == m_ngBottom || watched == m_ngPinned || watched == m_ngFilters;
+    if (barToggled || (section && (event->type() == QEvent::Resize || event->type() == QEvent::Show || event->type() == QEvent::Hide))) {
         if (!m_ngLayouting) {
             m_ngLayouting = true;
             ngLayoutBottom();
