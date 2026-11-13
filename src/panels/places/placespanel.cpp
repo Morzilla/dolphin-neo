@@ -744,7 +744,19 @@ void PlacesPanel::ngLayoutBottom()
     const int extra = shown ? m_ngBottom->height() + 8 : 0;
     setViewportMargins(10, 12, 10, 12 + diskRoom + extra);
     ngPlaceScrollBar();
-    if (shown) {
+    // DISKS_POS=above: the disks above the pinned items and the filters, which go to the foot of the card; the dock
+    // draws the disks this much higher
+    const bool disksAbove = shown && ngSetting("DISKS_POS").toLower() == QLatin1String("above");
+    const int belowDisks = disksAbove ? extra : 0;
+    if (property("ngBelowDisks").toInt() != belowDisks) {
+        setProperty("ngBelowDisks", belowDisks);
+        if (parentWidget()) {
+            parentWidget()->update();
+        }
+    }
+    if (disksAbove) {
+        m_ngBottom->setGeometry(14, height() - 12 - m_ngBottom->height(), width() - 28, m_ngBottom->height());
+    } else if (shown) {
         // when the places need a scroll bar it runs down the right edge of the whole panel: the section ends
         // beside it instead of under it
         QScrollBar *bar = verticalScrollBar();

@@ -1147,6 +1147,19 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
         page->addWidget(row);
         m_parts.insert(m_devices, {row});
     }
+    m_disksPos = new QComboBox(this);
+    m_disksPos->addItem(ngTr("At the foot of the panel", "In fondo al pannello"), QString());
+    m_disksPos->addItem(ngTr("Above the filters", "Sopra i filtri"), QStringLiteral("above"));
+    {
+        auto *row = new QWidget(this);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->addWidget(new QLabel(ngTr("Where the disks go:", "Posizione dei dischi:"), row));
+        rowLayout->addWidget(m_disksPos);
+        rowLayout->addStretch();
+        page->addWidget(row);
+        m_parts.insert(m_disksPos, {row});
+    }
     m_deviceList = new QWidget(this);
     {
         auto *deviceLayout = new QVBoxLayout(m_deviceList);
@@ -1349,7 +1362,7 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
         connect(box, &QCheckBox::toggled, this, &NgSettingsPage::changed);
     }
     connect(m_hoverDelay, &QSpinBox::valueChanged, this, &NgSettingsPage::changed);
-    for (QComboBox *combo : {m_backdrop, m_devices, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla, m_cards, m_cardsFit, m_cardsInfo, m_cardsMark, m_cardsBadge, m_activitySize}) {
+    for (QComboBox *combo : {m_backdrop, m_devices, m_disksPos, m_lavaStyle, m_lavaColours, m_rim, m_rows, m_mark, m_sigla, m_cards, m_cardsFit, m_cardsInfo, m_cardsMark, m_cardsBadge, m_activitySize}) {
         connect(combo, &QComboBox::currentIndexChanged, this, &NgSettingsPage::changed);
     }
     for (QSlider *slider : {m_glass, m_blur, m_liveBlur, m_lavaSize, m_lavaSpeed}) {
@@ -1457,6 +1470,7 @@ void NgSettingsPage::updateDependencies()
     showOption(m_lavaSpeed, gradient || (picture && m_motion->isChecked()));
     showOption(m_rim, glass);
     showOption(m_devices, glass);
+    showOption(m_disksPos, glass && m_devices->currentData().toString().isEmpty()); // only with the NG disk boxes
     m_deviceList->setEnabled(!glass || m_devices->currentData().toString() != QLatin1String("hide"));
 
     const bool marks = !m_icons->isChecked();
@@ -1493,6 +1507,7 @@ void NgSettingsPage::loadSettings()
     {
         const QString devices = ngSetting("DEVICES").toLower();
         m_devices->setCurrentIndex(devices == QLatin1String("hide") ? 2 : devices.isEmpty() ? 0 : 1); // "show" was the old "list"
+        m_disksPos->setCurrentIndex(ngSetting("DISKS_POS").toLower() == QLatin1String("above") ? 1 : 0);
     }
     fillDevices();
     m_sidebarFilters->setChecked(ngSetting("SIDEBAR_FILTERS").toLower() != QLatin1String("hide"));
@@ -1566,6 +1581,7 @@ void NgSettingsPage::applySettings()
                                 : QStringLiteral("%1,%2,%3").arg(m_lavaColour[0]->color().name(), m_lavaColour[1]->color().name(), m_lavaColour[2]->color().name()));
     setNgSetting("GLASS_RIM", m_rim->currentData().toString());
     setNgSetting("DEVICES", m_devices->currentData().toString());
+    setNgSetting("DISKS_POS", m_disksPos->currentData().toString());
     if (KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel()) {
         for (const auto &[udi, box] : std::as_const(m_deviceBoxes)) {
             for (int row = 0; row < places->rowCount(); ++row) {
@@ -1635,6 +1651,7 @@ void NgSettingsPage::restoreDefaults()
     m_lavaColours->setCurrentIndex(0);
     m_rim->setCurrentIndex(0);
     m_devices->setCurrentIndex(0);
+    m_disksPos->setCurrentIndex(0);
     for (const auto &entry : std::as_const(m_deviceBoxes)) {
         entry.second->setChecked(true);
     }

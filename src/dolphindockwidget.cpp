@@ -715,7 +715,9 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
             small.setPointSizeF(small.pointSizeF() * (compact ? 0.82 : 0.86));
             painter.setFont(small);
             const QFontMetrics metrics(small);
-            qreal top = card.bottom() - room;
+            // above the pinned items and the filters when the panel put them at the foot (DISKS_POS=above)
+            const int belowDisks = widget() ? widget()->property("ngBelowDisks").toInt() : 0;
+            qreal top = card.bottom() - room - belowDisks;
             for (const NgDisk &disk : disks) {
                 const bool mounted = !disk.root.isEmpty();
                 const qreal height = !mounted ? 32 : compact ? 40 : 54;
