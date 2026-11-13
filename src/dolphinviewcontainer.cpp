@@ -1113,6 +1113,18 @@ private:
                     });
                 });
             }
+            // folders as items like the files (each in the group of its size, date...), or first as Dolphin keeps them
+            groupMenu->addSeparator();
+            QAction *foldersWithFiles = groupMenu->addAction(ngTr("Folders with the files", "Cartelle insieme ai file"));
+            foldersWithFiles->setCheckable(true);
+            foldersWithFiles->setChecked(ngSetting("GROUPS_FOLDERS").toLower() != QLatin1String("first"));
+            foldersWithFiles->setEnabled(grouped);
+            foldersWithFiles->setToolTip(ngTr("In groups, each folder goes where its own size, date or name puts it, not first",
+                                              "Nei gruppi ogni cartella va dove la mettono la sua dimensione, data o nome, non per prima"));
+            connect(foldersWithFiles, &QAction::toggled, this, [](bool on) {
+                setNgSetting("GROUPS_FOLDERS", on ? QString() : QStringLiteral("first"));
+                ngSettingsInvalidate();
+            });
             groups->setMenu(groupMenu);
             menuButton(groups);
             groups->setText(ngTr("Groups: %1", "Gruppi: %1").arg(currentGroup));

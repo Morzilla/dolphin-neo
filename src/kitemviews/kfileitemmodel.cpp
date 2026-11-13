@@ -263,6 +263,12 @@ Qt::strong_ordering decimalAwareNaturalCompare(const QString &a, const QString &
 }
 }
 
+// dolphin-ng: grouped views keep the folders first (as Dolphin does) only when asked to
+static bool ngGroupsFoldersFirst()
+{
+    return ngSetting("GROUPS_FOLDERS").toLower() == QLatin1String("first");
+}
+
 KFileItemModel::KFileItemModel(QObject *parent)
     : KItemModelBase("text", parent)
     , m_dirLister(nullptr)
@@ -283,6 +289,13 @@ KFileItemModel::KFileItemModel(QObject *parent)
     , m_expandedDirs()
     , m_urlsToExpand()
 {
+    // dolphin-ng: the Groups menu's "folders with the files" changes the order of a grouped view
+    connect(NgSettings::instance(), &NgSettings::changed, this, [this] {
+        if (m_sortDirsFirst && groupedSorting() && count() > 0) {
+            m_groups.clear();
+            resortAllItems();
+        }
+    });
     m_collator.setNumericMode(true);
 
     loadSortingSettings();
@@ -1303,6 +1316,10 @@ void KFileItemModel::onGroupedSortingChanged(bool current)
 {
     Q_UNUSED(current)
     m_groups.clear();
+    // dolphin-ng: folders come first only when not grouped (see lessThan): the order changes with the grouping
+    if (m_sortDirsFirst) {
+        resortAllItems();
+    }
 }
 
 void KFileItemModel::onGroupRoleChanged(const QByteArray &current, const QByteArray &previous, bool resortItems)
@@ -2590,7 +2607,9 @@ bool KFileItemModel::lessThan(const ItemData *a, const ItemData *b, const QColla
         }
     }
 
-    if (m_sortDirsFirst
+    // dolphin-ng: in a grouped view folders are items like any other (each goes to the group of its own date, size or
+    // name, not to the front of the folder), unless the Groups menu says to keep them first (GROUPS_FOLDERS=first)
+    if ((m_sortDirsFirst && (!groupedSorting() || ngGroupsFoldersFirst()))
         || (ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentCount && m_sortRole == SizeRole)) {
         const bool isDirA = a->item.isDir();
         const bool isDirB = b->item.isDir();
@@ -2678,13 +2697,13 @@ int KFileItemModel::sortRoleCompare(const ItemData *a, const ItemData *b, const 
 
         KIO::filesize_t sizeA = 0;
         if (itemA.isDir()) {
-            sizeA = a->values.value("size").toULongLong();
+            sizeA = qMax(0LL, a->values.value("size").toLongLong()); // dolphin-ng: not counted yet (-1, -2): 0, not huge
         } else {
             sizeA = itemA.size();
         }
         KIO::filesize_t sizeB = 0;
         if (itemB.isDir()) {
-            sizeB = b->values.value("size").toULongLong();
+            sizeB = qMax(0LL, b->values.value("size").toLongLong());
         } else {
             sizeB = itemB.size();
         }
@@ -2927,10 +2946,12 @@ QList<QPair<int, QVariant>> KFileItemModel::sizeRoleGroups() const
         KIO::filesize_t fileSize = !item.isNull() ? item.size() : ~0U;
         QString newGroupValue;
         if (!item.isNull() && item.isDir()) {
-            if (ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentCount || m_sortDirsFirst) {
+            // dolphin-ng: a folder goes to the group of its size, as a file does (only its count known: "Folders")
+            if (ContentDisplaySettings::directorySizeMode() == ContentDisplaySettings::EnumDirectorySizeMode::ContentCount
+                || (m_sortDirsFirst && ngGroupsFoldersFirst())) {
                 newGroupValue = i18nc("@title:group Size", "Folders");
             } else {
-                fileSize = ngGroupData(i)->values.value("size").toULongLong();
+                fileSize = qMax(0LL, ngGroupData(i)->values.value("size").toLongLong());
             }
         }
 
