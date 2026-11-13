@@ -84,8 +84,15 @@ Q_SIGNALS:
     void storageTearDownSuccessful();
     void openInSplitViewRequested(const QUrl &url);
 
+public:
+    // dolphin-ng: folded sections (a click on their title): their first row is only the title, the others are hidden
+    bool ngHeaderOnly(const QModelIndex &index) const;
+
 protected:
     void paintEvent(QPaintEvent *event) override; // dolphin-ng: section titles as pills
+    void mousePressEvent(QMouseEvent *event) override; // dolphin-ng: a click on a section title folds it
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
     void dragMoveEvent(QDragMoveEvent *event) override;
 
 private Q_SLOTS:
@@ -103,6 +110,12 @@ private:
     void ngPaintPills(); // dolphin-ng: glass pill under the selected / hovered entry
     void ngApplyDevices(KFilePlacesModel *placesModel); // dolphin-ng: hide the Devices section when switched off
     bool ngDeviceRowHidden(int group) const; // a row of this group gives way to the disk boxes, or is switched off
+    bool ngRowShown(const KFilePlacesModel *placesModel, int row) const; // not hidden by KDE, nor given way to the disk boxes
+    bool ngFirstOfGroup(const KFilePlacesModel *placesModel, int row) const; // the first shown row of its section
+    bool ngRowHiddenByNg(const KFilePlacesModel *placesModel, int row) const; // a disk row, or a row of a folded section
+    QString ngTitleAt(const QPoint &pos) const; // the section whose title pill is there
+    QList<std::pair<QRect, QString>> m_ngTitleHits; // the title pills as painted, and their sections
+    QString m_ngTitleHover;
     QPalette m_ngPalette;
     void connectDeviceSignals(const QModelIndex &idx);
 

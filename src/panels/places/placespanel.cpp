@@ -42,6 +42,112 @@
 #include <QTimer>
 
 #include <Solid/StorageAccess>
+#include <QAbstractItemDelegate>
+#include <QMouseEvent>
+
+namespace
+{
+// dolphin-ng: the key of a section of the places, for the folded sections (SIDEBAR_COLLAPSED)
+QString ngGroupKey(int group)
+{
+    switch (group) {
+    case KFilePlacesModel::PlacesType:
+        return QStringLiteral("places");
+    case KFilePlacesModel::RemoteType:
+        return QStringLiteral("remote");
+    case KFilePlacesModel::RecentlySavedType:
+        return QStringLiteral("recent");
+    case KFilePlacesModel::SearchForType:
+        return QStringLiteral("search");
+    case KFilePlacesModel::DevicesType:
+        return QStringLiteral("devices");
+    case KFilePlacesModel::RemovableDevicesType:
+        return QStringLiteral("removable");
+    case KFilePlacesModel::TagsType:
+        return QStringLiteral("tags");
+    default:
+        return QStringLiteral("other");
+    }
+}
+
+// dolphin-ng: in front of KFilePlacesView's own delegate: the first row of a folded section is only its title (the
+// panel paints the title pill), everything else goes to the original delegate as before
+class NgCollapseDelegate : public QAbstractItemDelegate
+{
+public:
+    NgCollapseDelegate(QAbstractItemDelegate *inner, PlacesPanel *panel)
+        : QAbstractItemDelegate(panel)
+        , m_inner(inner)
+        , m_panel(panel)
+    {
+        connect(inner, &QAbstractItemDelegate::sizeHintChanged, this, &QAbstractItemDelegate::sizeHintChanged);
+        connect(inner, &QAbstractItemDelegate::commitData, this, &QAbstractItemDelegate::commitData);
+        connect(inner, &QAbstractItemDelegate::closeEditor, this, &QAbstractItemDelegate::closeEditor);
+    }
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        if (!m_panel->ngHeaderOnly(index)) {
+            m_inner->paint(painter, option, index);
+        }
+    }
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        QSize size = m_inner->sizeHint(option, index);
+        if (m_panel->ngHeaderOnly(index)) {
+            size.setHeight(qMax(option.fontMetrics.height() + 6, size.height() - plainHeight(option, index)));
+        }
+        return size;
+    }
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        return m_inner->createEditor(parent, option, index);
+    }
+    void destroyEditor(QWidget *editor, const QModelIndex &index) const override
+    {
+        m_inner->destroyEditor(editor, index);
+    }
+    void setEditorData(QWidget *editor, const QModelIndex &index) const override
+    {
+        m_inner->setEditorData(editor, index);
+    }
+    void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
+    {
+        m_inner->setModelData(editor, model, index);
+    }
+    void updateEditorGeometry(QWidget *editor, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        m_inner->updateEditorGeometry(editor, option, index);
+    }
+    bool editorEvent(QEvent *event, QAbstractItemModel *model, const QStyleOptionViewItem &option, const QModelIndex &index) override
+    {
+        return m_inner->editorEvent(event, model, option, index);
+    }
+    bool helpEvent(QHelpEvent *event, QAbstractItemView *view, const QStyleOptionViewItem &option, const QModelIndex &index) override
+    {
+        return m_inner->helpEvent(event, view, option, index);
+    }
+
+private:
+    // the height of a row without a title: a row that follows another one of its section
+    int plainHeight(const QStyleOptionViewItem &option, const QModelIndex &index) const
+    {
+        const QAbstractItemModel *model = index.model();
+        for (int row = 1; model && row < model->rowCount(); ++row) {
+            if (m_panel->isRowHidden(row) || m_panel->isRowHidden(row - 1)) {
+                continue;
+            }
+            const QModelIndex here = model->index(row, 0);
+            if (here.data(KFilePlacesModel::GroupRole) == model->index(row - 1, 0).data(KFilePlacesModel::GroupRole)) {
+                return m_inner->sizeHint(option, here).height();
+            }
+        }
+        return option.fontMetrics.height() + 14;
+    }
+
+    QAbstractItemDelegate *m_inner;
+    PlacesPanel *m_panel;
+};
+}
 
 PlacesPanel::PlacesPanel(QWidget *parent)
     : KFilePlacesView(parent)
@@ -98,6 +204,7 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     // Set the model here so that it's loaded in time for the sizeHint to properly apply (setting it upon showEvent is too late)
     auto *placesModel = DolphinPlacesModelSingleton::instance().placesModel();
     setModel(placesModel);
+    setItemDelegate(new NgCollapseDelegate(itemDelegate(), this)); // dolphin-ng: folded sections
 
     // dolphin-ng: disks and partitions (NG settings > Sidebar, or DOLPHIN_NG_DEVICES): by default boxes with their
     // usage at the foot of the card (the dock draws them; their rows here are hidden), "list" keeps KIO's own
@@ -108,7 +215,7 @@ PlacesPanel::PlacesPanel(QWidget *parent)
         // the rows at once (KFilePlacesView's own update for this change has run already: it was connected first),
         // and once more after the event loop, for the updates KFilePlacesView delays
         for (int row = 0; row < placesModel->rowCount(); ++row) {
-            if (!isRowHidden(row) && ngDeviceRowHidden(placesModel->groupType(placesModel->index(row, 0)))) {
+            if (!isRowHidden(row) && ngRowHiddenByNg(placesModel, row)) {
                 setRowHidden(row, true);
             }
         }
@@ -123,6 +230,8 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     connect(placesModel, &KFilePlacesModel::groupHiddenChanged, this, applyDevices);
     connect(placesModel, &KFilePlacesModel::reloaded, this, applyDevices);
     connect(this, &KFilePlacesView::allPlacesShownChanged, this, applyDevices);
+    // a folded section shows the entry of the open folder: follow the selection
+    connect(selectionModel(), &QItemSelectionModel::selectionChanged, this, applyDevices);
     applyDevices();
     connect(NgSettings::instance(), &NgSettings::changed, this, [this, placesModel] {
         ngApplyPalette();
@@ -161,7 +270,7 @@ void PlacesPanel::ngPaintPills()
     }
     if (viewport()->underMouse()) {
         const QModelIndex hovered = indexAt(viewport()->mapFromGlobal(QCursor::pos()));
-        if (hovered.isValid() && !selected.contains(hovered)) {
+        if (hovered.isValid() && !selected.contains(hovered) && !ngHeaderOnly(hovered)) {
             rows.append({hovered, 0.5});
         }
     }
@@ -255,22 +364,70 @@ bool PlacesPanel::ngDeviceRowHidden(int group) const
     return mode == QLatin1String("hide") && group == KFilePlacesModel::DevicesType && !allPlacesShown();
 }
 
-void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
+bool PlacesPanel::ngRowShown(const KFilePlacesModel *placesModel, int row) const
 {
-    for (int row = 0; row < placesModel->rowCount(); ++row) {
-        const QModelIndex index = placesModel->index(row, 0);
-        const auto group = placesModel->groupType(index);
-        if (group != KFilePlacesModel::DevicesType && group != KFilePlacesModel::RemovableDevicesType) {
-            continue;
+    const QModelIndex index = placesModel->index(row, 0);
+    const auto group = placesModel->groupType(index);
+    if (!allPlacesShown() && (placesModel->isHidden(index) || placesModel->isGroupHidden(group))) {
+        return false;
+    }
+    return !ngDeviceRowHidden(group);
+}
+
+bool PlacesPanel::ngFirstOfGroup(const KFilePlacesModel *placesModel, int row) const
+{
+    const auto group = placesModel->groupType(placesModel->index(row, 0));
+    for (int before = row - 1; before >= 0; --before) {
+        if (placesModel->groupType(placesModel->index(before, 0)) != group) {
+            break;
         }
-        if (ngDeviceRowHidden(group)) {
-            if (!isRowHidden(row)) {
-                setRowHidden(row, true);
-            }
-        } else if (isRowHidden(row) && (allPlacesShown() || (!placesModel->isHidden(index) && !placesModel->isGroupHidden(group)))) {
-            setRowHidden(row, false);
+        if (ngRowShown(placesModel, before)) {
+            return false;
         }
     }
+    return true;
+}
+
+bool PlacesPanel::ngRowHiddenByNg(const KFilePlacesModel *placesModel, int row) const
+{
+    const QModelIndex index = placesModel->index(row, 0);
+    const auto group = placesModel->groupType(index);
+    if (ngDeviceRowHidden(group)) {
+        return true;
+    }
+    if (!ngSectionCollapsed(ngGroupKey(group)) || (selectionModel() && selectionModel()->isSelected(index))) {
+        return false; // an open section; or the entry of the open folder, which stays
+    }
+    return !ngFirstOfGroup(placesModel, row); // the first row stays: it carries the title
+}
+
+bool PlacesPanel::ngHeaderOnly(const QModelIndex &index) const
+{
+    auto *placesModel = qobject_cast<KFilePlacesModel *>(model());
+    if (!placesModel || !index.isValid() || !ngSectionCollapsed(ngGroupKey(placesModel->groupType(index)))) {
+        return false;
+    }
+    if (selectionModel() && selectionModel()->isSelected(index)) {
+        return false;
+    }
+    return ngRowShown(placesModel, index.row()) && ngFirstOfGroup(placesModel, index.row());
+}
+
+void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
+{
+    // every row: the disk rows, and the rows of folded sections. What KDE hides (hidden places, hidden sections) is
+    // left as it is
+    for (int row = 0; row < placesModel->rowCount(); ++row) {
+        const QModelIndex index = placesModel->index(row, 0);
+        if (!allPlacesShown() && (placesModel->isHidden(index) || placesModel->isGroupHidden(placesModel->groupType(index)))) {
+            continue;
+        }
+        const bool hide = ngRowHiddenByNg(placesModel, row);
+        if (hide != isRowHidden(row)) {
+            setRowHidden(row, hide);
+        }
+    }
+    scheduleDelayedItemsLayout(); // a title row of a folded section changed height
     if (!m_ngLayouting) {
         m_ngLayouting = true;
         ngLayoutBottom(); // the disk boxes may be more or fewer now
@@ -290,7 +447,7 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
     if (auto *devicesModel = qobject_cast<KFilePlacesModel *>(model())) {
         bool hidden = false;
         for (int row = 0; row < devicesModel->rowCount(); ++row) {
-            if (!isRowHidden(row) && ngDeviceRowHidden(devicesModel->groupType(devicesModel->index(row, 0)))) {
+            if (!isRowHidden(row) && ngRowHiddenByNg(devicesModel, row)) {
                 setRowHidden(row, true);
                 hidden = true;
             }
@@ -319,6 +476,9 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
     struct Title {
         QRect rect;
         QString text;
+        QString key;
+        bool headerOnly = false;
+        int count = 0;
     };
     QList<Title> titles;
     int rowHeight = -1;
@@ -331,12 +491,19 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
         const int group = int(placesModel->groupType(index));
         const QRect rect = visualRect(index);
         if (group != previousGroup) {
-            titles.append({rect, index.data(KFilePlacesModel::GroupRole).toString()});
+            int count = 0;
+            for (int other = 0; other < placesModel->rowCount(); ++other) {
+                if (int(placesModel->groupType(placesModel->index(other, 0))) == group && ngRowShown(placesModel, other)) {
+                    ++count;
+                }
+            }
+            titles.append({rect, index.data(KFilePlacesModel::GroupRole).toString(), ngGroupKey(group), ngHeaderOnly(index), count});
         } else if (rowHeight < 0) {
             rowHeight = rect.height();
         }
         previousGroup = group;
     }
+    m_ngTitleHits.clear();
     if (titles.isEmpty()) {
         return;
     }
@@ -351,17 +518,26 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
         QRect header;
         QRect rect;
         QString text;
+        QString key;
+        bool folded = false;
+        int count = 0;
     };
     QList<Pill> pills;
     QRegion headers;
     for (const Title &title : std::as_const(titles)) {
-        const int headerHeight = rowHeight > 0 ? title.rect.height() - rowHeight : metrics.height() + 10;
+        // a folded section: its first row is only the title
+        const int headerHeight = title.headerOnly ? title.rect.height() : rowHeight > 0 ? title.rect.height() - rowHeight : metrics.height() + 10;
         if (headerHeight < metrics.height() || title.text.isEmpty()) {
             continue;
         }
+        const bool folded = ngSectionCollapsed(title.key);
         const QRect header(title.rect.left(), title.rect.top(), title.rect.width(), headerHeight);
         const int pillHeight = qMin(headerHeight - 2, metrics.height() + 8);
-        pills.append({header, QRect(header.left() + 2, header.bottom() - pillHeight, metrics.horizontalAdvance(title.text) + 22, pillHeight), title.text});
+        // the arrow on the left, and when folded how many entries are inside
+        const int extra = 14 + (folded ? metrics.horizontalAdvance(QStringLiteral(" %1").arg(title.count)) + 4 : 0);
+        const QRect rect(header.left() + 2, header.bottom() - pillHeight, metrics.horizontalAdvance(title.text) + 22 + extra, pillHeight);
+        pills.append({header, rect, title.text, title.key, folded, title.count});
+        m_ngTitleHits.append({rect, title.key});
         headers += header;
     }
     if (pills.isEmpty()) {
@@ -388,15 +564,72 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setFont(titleFont);
     const bool dark = ngIsDark(palette());
-    for (const Pill &pill : std::as_const(pills)) {
-        // a light glass pill: a faint veil with a hairline edge, and the title in the normal text colour
-        const QRectF rect = QRectF(pill.rect).adjusted(0.5, 0.5, -0.5, -0.5);
-        painter.setPen(QPen(dark ? QColor(255, 255, 255, 46) : QColor(0, 0, 0, 30), 1));
-        painter.setBrush(dark ? QColor(255, 255, 255, 30) : QColor(255, 255, 255, 150));
-        painter.drawRoundedRect(rect, rect.height() / 2.0, rect.height() / 2.0);
-        painter.setPen(palette().color(QPalette::WindowText));
-        painter.drawText(pill.rect, Qt::AlignCenter, pill.text);
+    if (!viewport()->underMouse()) {
+        m_ngTitleHover.clear();
     }
+    QColor dim = palette().color(QPalette::WindowText);
+    dim.setAlphaF(0.6);
+    for (const Pill &pill : std::as_const(pills)) {
+        // a light glass pill: a faint veil with a hairline edge, and the title in the normal text colour; it is a
+        // button (a click folds the section), lit under the pointer
+        const bool hovered = pill.key == m_ngTitleHover;
+        const QRectF rect = QRectF(pill.rect).adjusted(0.5, 0.5, -0.5, -0.5);
+        painter.setPen(QPen(hovered ? QColor(95, 168, 216, 150) : dark ? QColor(255, 255, 255, 46) : QColor(0, 0, 0, 30), 1));
+        painter.setBrush(hovered ? QColor(95, 168, 216, 50) : dark ? QColor(255, 255, 255, 30) : QColor(255, 255, 255, 150));
+        painter.drawRoundedRect(rect, rect.height() / 2.0, rect.height() / 2.0);
+        ngDrawChevron(&painter, QRectF(pill.rect.left() + 6, pill.rect.top(), 12, pill.rect.height()), pill.folded, dim);
+        const QRect textRect = pill.rect.adjusted(19, 0, -9, 0);
+        painter.setPen(palette().color(QPalette::WindowText));
+        painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, pill.text);
+        if (pill.folded) {
+            painter.setPen(dim);
+            painter.drawText(textRect, Qt::AlignRight | Qt::AlignVCenter, QString::number(pill.count));
+        }
+    }
+}
+
+QString PlacesPanel::ngTitleAt(const QPoint &pos) const
+{
+    for (const auto &[rect, key] : m_ngTitleHits) {
+        if (rect.contains(pos)) {
+            return key;
+        }
+    }
+    return QString();
+}
+
+void PlacesPanel::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton && !ngTitleAt(event->pos()).isEmpty()) {
+        event->accept(); // a section title: no selection, no drag
+        return;
+    }
+    KFilePlacesView::mousePressEvent(event);
+}
+
+void PlacesPanel::mouseReleaseEvent(QMouseEvent *event)
+{
+    const QString key = ngTitleAt(event->pos());
+    if (event->button() == Qt::LeftButton && !key.isEmpty()) {
+        event->accept();
+        ngToggleSection(key); // the panel follows NgSettings::changed
+        return;
+    }
+    KFilePlacesView::mouseReleaseEvent(event);
+}
+
+void PlacesPanel::mouseMoveEvent(QMouseEvent *event)
+{
+    const QString key = ngTitleAt(event->pos());
+    if (key != m_ngTitleHover) {
+        m_ngTitleHover = key;
+        viewport()->setCursor(key.isEmpty() ? Qt::ArrowCursor : Qt::PointingHandCursor);
+        setToolTip(key.isEmpty() ? QString()
+                       : ngSectionCollapsed(key) ? ngTr("Click to show this section", "Clic per mostrare la sezione")
+                                                 : ngTr("Click to fold this section", "Clic per richiudere la sezione"));
+        viewport()->update();
+    }
+    KFilePlacesView::mouseMoveEvent(event);
 }
 
 void PlacesPanel::setUrl(const QUrl &url)

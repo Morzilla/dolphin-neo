@@ -3781,24 +3781,60 @@ protected:
     {
         return fontMetrics().height() + 4;
     }
+    // a folded section keeps its title only (a click on the title folds and unfolds it)
+    bool pinsFolded() const
+    {
+        return ngSectionCollapsed(QStringLiteral("pinned"));
+    }
+    bool filtersFolded() const
+    {
+        return ngSectionCollapsed(QStringLiteral("filters"));
+    }
     int pinsHeight() const
     {
-        return m_pins.isEmpty() ? 0 : titleHeight() + 6 + m_pins.count() * rowHeight() + (m_entries.isEmpty() ? 6 : 14);
+        if (m_pins.isEmpty()) {
+            return 0;
+        }
+        return titleHeight() + (pinsFolded() ? 0 : 6 + m_pins.count() * rowHeight()) + (m_entries.isEmpty() ? 6 : 14);
     }
     int filtersHeight() const
     {
-        return m_entries.isEmpty() ? 0 : titleHeight() + 6 + m_entries.count() * rowHeight() + 6;
+        return m_entries.isEmpty() ? 0 : titleHeight() + (filtersFolded() ? 0 : 6 + m_entries.count() * rowHeight()) + 6;
+    }
+    // the title pills: the label, the arrow, and when folded how many entries are inside
+    QRectF titleRect(qreal y, const QString &label, int count, bool folded) const
+    {
+        QFont titleFont = font();
+        titleFont.setPointSizeF(titleFont.pointSizeF() * 0.86);
+        titleFont.setBold(true);
+        const QFontMetrics titleMetrics(titleFont);
+        const int extra = folded ? titleMetrics.horizontalAdvance(QStringLiteral(" %1").arg(count)) + 4 : 0;
+        return QRectF(0, y, titleMetrics.horizontalAdvance(label) + 20 + 14 + extra, titleHeight());
+    }
+    QRectF pinsTitle() const
+    {
+        return m_pins.isEmpty() ? QRectF() : titleRect(0, ngTr("Pinned", "Fissati"), m_pins.count(), pinsFolded());
+    }
+    QRectF filtersTitle() const
+    {
+        return m_entries.isEmpty() ? QRectF() : titleRect(pinsHeight(), ngTr("Filters", "Filtri"), m_entries.count(), filtersFolded());
     }
     // hit test: a pinned row (0...), a filter row (1000...), or -1
     int rowAt(const QPoint &pos) const
     {
-        if (!m_pins.isEmpty()) {
+        if (pinsTitle().contains(pos)) {
+            return -2;
+        }
+        if (filtersTitle().contains(pos)) {
+            return -3;
+        }
+        if (!m_pins.isEmpty() && !pinsFolded()) {
             const int top = titleHeight() + 6;
             if (pos.y() >= top && pos.y() < top + m_pins.count() * rowHeight()) {
                 return (pos.y() - top) / rowHeight();
             }
         }
-        if (!m_entries.isEmpty()) {
+        if (!m_entries.isEmpty() && !filtersFolded()) {
             const int top = pinsHeight() + titleHeight() + 6;
             if (pos.y() >= top) {
                 const int row = (pos.y() - top) / rowHeight();
@@ -3820,18 +3856,27 @@ protected:
         dim.setAlphaF(0.6);
 
         // a section title: a small pill like the section titles of the places
-        auto title = [&](qreal y, const QString &label) {
+        auto title = [&](qreal y, const QString &label, int count, bool folded, bool hovered) {
             QFont titleFont = font();
             titleFont.setPointSizeF(titleFont.pointSizeF() * 0.86);
             titleFont.setBold(true);
-            const QFontMetrics titleMetrics(titleFont);
-            const QRectF pill(0, y, titleMetrics.horizontalAdvance(label) + 20, titleHeight());
-            painter.setPen(QPen(edge, 1));
-            painter.setBrush(veil);
+            const QRectF pill = titleRect(y, label, count, folded);
+            painter.setPen(QPen(hovered ? QColor(95, 168, 216, 150) : edge, 1));
+            QColor ground = veil;
+            if (hovered) {
+                ground.setAlpha(qMin(255, veil.alpha() * 2));
+            }
+            painter.setBrush(ground);
             painter.drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), pill.height() / 2.0, pill.height() / 2.0);
+            ngDrawChevron(&painter, QRectF(pill.left() + 6, pill.top(), 12, pill.height()), folded, dim);
             painter.setFont(titleFont);
             painter.setPen(text);
-            painter.drawText(pill, Qt::AlignCenter, label);
+            const QRectF textRect = pill.adjusted(18, 0, -8, 0);
+            painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, label);
+            if (folded) {
+                painter.setPen(dim);
+                painter.drawText(textRect, Qt::AlignRight | Qt::AlignVCenter, QString::number(count));
+            }
             painter.setFont(font());
         };
         auto rowGround = [&](const QRectF &row, bool active, bool hovered) {
@@ -3845,9 +3890,9 @@ protected:
         };
 
         if (!m_pins.isEmpty()) {
-            title(0, ngTr("Pinned", "Fissati"));
+            title(0, ngTr("Pinned", "Fissati"), m_pins.count(), pinsFolded(), m_hover == -2);
             const int top = titleHeight() + 6;
-            for (int i = 0; i < m_pins.count(); ++i) {
+            for (int i = 0; i < (pinsFolded() ? 0 : m_pins.count()); ++i) {
                 const QRectF row(0, top + i * rowHeight(), width(), rowHeight());
                 const Pin &pin = m_pins.at(i);
                 rowGround(row, false, i == m_hover);
@@ -3861,9 +3906,9 @@ protected:
 
         if (!m_entries.isEmpty()) {
             const int base = pinsHeight();
-            title(base, ngTr("Filters", "Filtri"));
+            title(base, ngTr("Filters", "Filtri"), m_entries.count(), filtersFolded(), m_hover == -3);
             const int top = base + titleHeight() + 6;
-            for (int i = 0; i < m_entries.count(); ++i) {
+            for (int i = 0; i < (filtersFolded() ? 0 : m_entries.count()); ++i) {
                 const QRectF row(0, top + i * rowHeight(), width(), rowHeight());
                 const auto &entry = m_entries.at(i);
                 rowGround(row, entry.active, 1000 + i == m_hover);
@@ -3888,6 +3933,9 @@ protected:
             update();
             if (row >= 0 && row < 1000) {
                 setToolTip(m_pins.at(row).path);
+            } else if (row == -2 || row == -3) {
+                const bool folded = row == -2 ? pinsFolded() : filtersFolded();
+                setToolTip(folded ? ngTr("Click to show this section", "Clic per mostrare la sezione") : ngTr("Click to fold this section", "Clic per richiudere la sezione"));
             } else {
                 setToolTip(QString());
             }
@@ -3901,6 +3949,10 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override
     {
         const int row = rowAt(event->pos());
+        if ((row == -2 || row == -3) && event->button() == Qt::LeftButton) {
+            ngToggleSection(row == -2 ? QStringLiteral("pinned") : QStringLiteral("filters")); // refresh() follows
+            return;
+        }
         if (row < 0) {
             return;
         }

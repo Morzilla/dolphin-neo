@@ -191,6 +191,45 @@ int ngSettingInt(const char *name, int fallback)
     return ok ? value : fallback;
 }
 
+bool ngSectionCollapsed(const QString &key)
+{
+    return ngSetting("SIDEBAR_COLLAPSED").split(QLatin1Char(','), Qt::SkipEmptyParts).contains(key);
+}
+
+void ngToggleSection(const QString &key)
+{
+    QStringList keys = ngSetting("SIDEBAR_COLLAPSED").split(QLatin1Char(','), Qt::SkipEmptyParts);
+    if (keys.contains(key)) {
+        keys.removeAll(key);
+    } else {
+        keys.append(key);
+    }
+    setNgSetting("SIDEBAR_COLLAPSED", keys.join(QLatin1Char(',')));
+    ngSettingsInvalidate();
+}
+
+void ngDrawChevron(QPainter *painter, const QRectF &box, bool collapsed, const QColor &ink)
+{
+    const qreal r = qMin(box.width(), box.height()) * 0.28;
+    const QPointF c = box.center();
+    QPainterPath path;
+    if (collapsed) { // pointing right
+        path.moveTo(c.x() - r * 0.5, c.y() - r);
+        path.lineTo(c.x() + r * 0.5, c.y());
+        path.lineTo(c.x() - r * 0.5, c.y() + r);
+    } else { // pointing down
+        path.moveTo(c.x() - r, c.y() - r * 0.5);
+        path.lineTo(c.x(), c.y() + r * 0.5);
+        path.lineTo(c.x() + r, c.y() - r * 0.5);
+    }
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(QPen(ink, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPath(path);
+    painter->restore();
+}
+
 void setNgSetting(const char *name, const QString &value)
 {
     KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG"));

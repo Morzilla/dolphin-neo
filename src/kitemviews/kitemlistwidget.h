@@ -54,6 +54,12 @@ DOLPHIN_EXPORT QString ngTr(const char *english, const char *italian);
 /** dolphin-ng: the pushpin in the NeoLine style (24 grid, 1.7 round stroke), tilted, fitted in `box`; `filled`
  *  for a pinned item. Used by the quick action and by the mark on pinned items. */
 DOLPHIN_EXPORT void ngDrawPin(QPainter *painter, const QRectF &box, const QColor &ink, bool filled, qreal stroke = 1.7);
+/** dolphin-ng: sidebar sections folded by a click on their title. `key` names a section ("places", "recent", "pinned",
+ *  "filters"...); the folded ones are kept in SIDEBAR_COLLAPSED, comma separated (Dialog NG reads it too). */
+DOLPHIN_EXPORT bool ngSectionCollapsed(const QString &key);
+DOLPHIN_EXPORT void ngToggleSection(const QString &key);
+/** dolphin-ng: the small arrow of a section title, pointing down when open and right when folded, centred in `box`. */
+DOLPHIN_EXPORT void ngDrawChevron(QPainter *painter, const QRectF &box, bool collapsed, const QColor &ink);
 
 /**
  * dolphin-ng: work in progress on files, shown on their cards and rows. Copies, moves, extractions,
