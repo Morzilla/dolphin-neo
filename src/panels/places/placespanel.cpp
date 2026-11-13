@@ -242,6 +242,9 @@ void PlacesPanel::ngApplyPalette()
 
 bool PlacesPanel::ngDeviceRowHidden(int group) const
 {
+    if (group != KFilePlacesModel::DevicesType && group != KFilePlacesModel::RemovableDevicesType) {
+        return false; // only the rows of disks and removable devices are ever hidden here
+    }
     if (ngSetting("SIDEBAR").toLower() == QLatin1String("plain")) {
         return false;
     }
