@@ -161,8 +161,11 @@ or, from a clone, `ng/install.sh`. It adds a "Dolphin NG" entry to the applicati
 command. Options: `--no-deps`, `--prefix DIR`, `--uninstall` (and `--no-theme` / `--apply-theme` for the optional
 [Motto-Neo theme](ng/theme/README.md)). Running it again updates.
 
-It knows dnf (Fedora), apt (Debian, Ubuntu), pacman (Arch) and zypper (openSUSE); only Fedora is used every
-day. Dolphin 26.08.1 needs KDE Frameworks 6.23 and Qt 6.4 or newer. To build by hand: install Dolphin's build
+It knows dnf (Fedora), apt (Debian, Ubuntu), pacman (Arch) and zypper (openSUSE), and installs the build
+dependencies by name, so no source repositories need to be enabled. Tested from a fresh install, as a normal user
+with sudo, in November 2026: Fedora 44, Arch, openSUSE Tumbleweed, Debian sid and Ubuntu 26.10; only Fedora is used
+every day. Dolphin 26.08.1 needs KDE Frameworks 6.23 and Qt 6.4 or newer, so older releases (Debian stable,
+Ubuntu LTS) cannot build it yet. To build by hand: install Dolphin's build
 dependencies, then `ng/build.sh` and `ng/dolphin-ng --new-window`.
 
 ## Settings

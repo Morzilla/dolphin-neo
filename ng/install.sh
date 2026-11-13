@@ -116,10 +116,23 @@ if [ "$DEPS" = 1 ]; then
     elif command -v apt-get >/dev/null; then
         sudo apt-get update
         safe_pkgs apt-get install git cmake g++ extra-cmake-modules poppler-utils qt6-multimedia-dev imagemagick ffmpeg || true
-        safe_pkgs apt-get build-dep dolphin || {
-            echo "apt could not install Dolphin's build dependencies: enable the source repositories (deb-src) and run this again." >&2
+        # Dolphin's build dependencies by name (from Debian's dolphin package), so the source repositories (deb-src),
+        # off by default, are not needed; apt build-dep only as a fallback
+        safe_pkgs apt-get install gettext qt6-base-dev qt6-base-private-dev qt6-multimedia-dev libbaloowidgets-dev \
+            libkf6baloo-dev libkf6bookmarks-dev libkf6codecs-dev libkf6colorscheme-dev libkf6completion-dev \
+            libkf6config-dev libkf6coreaddons-dev libkf6crash-dev libkf6dbusaddons-dev libkf6filemetadata-dev \
+            libkf6guiaddons-dev libkf6i18n-dev libkf6iconthemes-dev libkf6kcmutils-dev libkf6kio-dev libkf6newstuff-dev \
+            libkf6notifications-dev libkf6parts-dev libkf6solid-dev libkf6textwidgets-dev libkf6widgetsaddons-dev \
+            libkf6windowsystem-dev \
+        || safe_pkgs apt-get build-dep dolphin || {
+            echo "apt could not install Dolphin's build dependencies (see above). Your distribution may be too old:" >&2
+            echo "Dolphin 26.08 needs KDE Frameworks 6.23 or newer." >&2
             exit 1
         }
+        # optional parts of Dolphin: built without them if missing
+        for optional in libkf6doctools-dev libkf6userfeedback-dev libpackagekitqt6-dev; do
+            safe_pkgs apt-get install "$optional" || true
+        done
         [ "$THEME" = 1 ] && safe_pkgs apt-get install qt6-style-kvantum || true
     elif command -v pacman >/dev/null; then
         sudo pacman -S --needed --noconfirm git cmake extra-cmake-modules base-devel poppler qt6-multimedia qt6-multimedia-ffmpeg imagemagick ffmpeg \
@@ -127,8 +140,22 @@ if [ "$DEPS" = 1 ]; then
             kwindowsystem kdoctools baloo baloo-widgets kfilemetadata kuserfeedback phonon-qt6 plasma-activities
         [ "$THEME" = 1 ] && sudo pacman -S --needed --noconfirm kvantum || true
     elif command -v zypper >/dev/null; then
-        sudo zypper --non-interactive install git cmake gcc-c++ extra-cmake-modules poppler-tools qt6-multimedia-devel ImageMagick ffmpeg
-        sudo zypper --non-interactive source-install --build-deps-only dolphin
+        sudo zypper --non-interactive install git cmake gcc-c++ extra-cmake-modules poppler-tools qt6-multimedia-devel ImageMagick ffmpeg || true
+        # what Dolphin's CMakeLists asks for, as cmake() capabilities: no source repositories needed
+        sudo zypper --non-interactive install 'cmake(Qt6Core)' 'cmake(Qt6Concurrent)' 'cmake(Qt6Widgets)' 'cmake(Qt6Gui)' \
+            'cmake(Qt6DBus)' 'cmake(Qt6GuiPrivate)' 'cmake(Qt6Multimedia)' 'cmake(Qt6MultimediaWidgets)' \
+            'cmake(KF6KCMUtils)' 'cmake(KF6NewStuff)' 'cmake(KF6CoreAddons)' 'cmake(KF6I18n)' 'cmake(KF6DBusAddons)' \
+            'cmake(KF6Bookmarks)' 'cmake(KF6Config)' 'cmake(KF6KIO)' 'cmake(KF6Parts)' 'cmake(KF6Solid)' \
+            'cmake(KF6IconThemes)' 'cmake(KF6Completion)' 'cmake(KF6TextWidgets)' 'cmake(KF6Notifications)' \
+            'cmake(KF6Crash)' 'cmake(KF6WindowSystem)' 'cmake(KF6WidgetsAddons)' 'cmake(KF6Codecs)' 'cmake(KF6GuiAddons)' \
+            'cmake(KF6ColorScheme)' 'cmake(KF6FileMetaData)' 'cmake(KF6Baloo)' 'cmake(KF6BalooWidgets)' || {
+            echo "zypper could not install Dolphin's build dependencies (see above)." >&2
+            exit 1
+        }
+        # optional parts of Dolphin: built without them if missing
+        for optional in 'cmake(KF6DocTools)' 'cmake(KF6UserFeedback)' 'cmake(PackageKitQt6)'; do
+            sudo zypper --non-interactive install "$optional" || true
+        done
         [ "$THEME" = 1 ] && sudo zypper --non-interactive install kvantum-qt6 || true
     else
         echo "I do not know this distribution's package manager. Install Dolphin's build dependencies yourself, then run this again with --no-deps." >&2
