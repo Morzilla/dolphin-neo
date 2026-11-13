@@ -8,8 +8,9 @@ distribution's Dolphin, and replaces nothing.
 
 ![Dolphin NG: cards in groups, pinned items first, two selected, a resize under way, the glass sidebar with filters and disks](ng/screenshots/readme/hero.png)
 
-**Try it.** The graphical installer sets up the whole NG desktop and lets you pick the parts (Dolphin NG, the
-Breeze NG style, the NeoLine icons, Dialog NG) and the look to start from:
+**Try it with the graphical installer: [how it works and how to run it](https://github.com/Morzilla/breeze-ng/blob/ng/NG.md#everything-at-once).**
+It sets up Dolphin NG and lets you pick the other parts of the NG desktop (the Breeze NG style, the NeoLine icons,
+Dialog NG) and the look to start from:
 
 ```sh
 bash <(curl -fsSL https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/install-gui.sh)
@@ -139,6 +140,16 @@ filters with their counts, groups, the items pinned here, and the glass sidebar.
 
 ## Install
 
+The easiest way is the **graphical installer** of the NG desktop: pick the parts (Dolphin NG alone, or with the
+Breeze NG style, the NeoLine icons and Dialog NG), pick a look, and watch it build. What it does, step by step:
+[Breeze NG → Everything at once](https://github.com/Morzilla/breeze-ng/blob/ng/NG.md#everything-at-once).
+
+```sh
+bash <(curl -fsSL https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/install-gui.sh)
+```
+
+### Dolphin NG alone, from the terminal
+
 The script downloads the source, installs the build dependencies, builds, and installs into
 `~/.local/dolphin-ng`, next to your distribution's Dolphin:
 
@@ -153,9 +164,6 @@ command. Options: `--no-deps`, `--prefix DIR`, `--uninstall` (and `--no-theme` /
 It knows dnf (Fedora), apt (Debian, Ubuntu), pacman (Arch) and zypper (openSUSE); only Fedora is used every
 day. Dolphin 26.08.1 needs KDE Frameworks 6.23 and Qt 6.4 or newer. To build by hand: install Dolphin's build
 dependencies, then `ng/build.sh` and `ng/dolphin-ng --new-window`.
-
-The [Breeze NG](https://github.com/Morzilla/breeze-ng) installer sets up Dolphin NG together with the rest of the
-NG desktop (widget style, icons, Dialog NG), with a graphical interface.
 
 ## Settings
 
