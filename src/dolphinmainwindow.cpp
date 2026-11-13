@@ -780,12 +780,16 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
                 QTimer::singleShot(300, this, [this, button, menu, out] {
                     menu->grab().save(out);
                     const QRect b(button->mapTo(this, QPoint(0, 0)), button->size());
+                    // the button too, as it looks with its menu open (it joins the menu), with a little of the bar around
+                    const QRect around = b.adjusted(-8, -8, 8, 8);
+                    grab(around).save(out + QStringLiteral(".button.png"));
                     const QRect m(mapFromGlobal(menu->geometry().topLeft()), menu->size());
                     QFile f(out + QStringLiteral(".txt"));
                     if (f.open(QIODevice::WriteOnly)) {
-                        f.write(QStringLiteral("button %1 %2 %3 %4\nmenu %5 %6 %7 %8\n")
+                        f.write(QStringLiteral("button %1 %2 %3 %4\nmenu %5 %6 %7 %8\nbuttonshot %9 %10 %11 %12\n")
                                     .arg(b.x()).arg(b.y()).arg(b.width()).arg(b.height())
-                                    .arg(m.x()).arg(m.y()).arg(m.width()).arg(m.height()).toUtf8());
+                                    .arg(m.x()).arg(m.y()).arg(m.width()).arg(m.height())
+                                    .arg(around.x()).arg(around.y()).arg(around.width()).arg(around.height()).toUtf8());
                     }
                     menu->close();
                 });
