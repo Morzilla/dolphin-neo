@@ -8,11 +8,21 @@ distribution's Dolphin, and replaces nothing.
 
 ![Dolphin NG: cards in groups, pinned items first, two selected, a resize under way, the glass sidebar with filters and disks](ng/screenshots/readme/hero.png)
 
+**Try it.** The graphical installer sets up the whole NG desktop and lets you pick the parts (Dolphin NG, the
+Breeze NG style, the NeoLine icons, Dialog NG) and the look to start from:
+
+```sh
+bash <(curl -fsSL https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/install-gui.sh)
+```
+
+Dolphin NG alone, from the terminal:
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Morzilla/dolphin-ng/ng/ng/install.sh | bash
 ```
 
-A longer tour, with every setting: **[FEATURES.md](FEATURES.md)**.
+Everything is built from source into your home folder, next to the stock applications; nothing is replaced, and
+it can be removed the same way. A longer tour, with every setting: **[FEATURES.md](FEATURES.md)**.
 
 ## At a glance
 
