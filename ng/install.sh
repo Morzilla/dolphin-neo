@@ -52,7 +52,15 @@ if [ -f "$(dirname "${BASH_SOURCE[0]:-/nonexistent}")/../NG.md" ]; then
     ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 else
     ROOT="$HOME/.local/src/dolphin-ng"
-    command -v git >/dev/null || { echo "git is needed to download the source; install it and run this again." >&2; exit 1; }
+    if ! command -v git >/dev/null; then # many desktops do not ship git: install it with the package manager
+        say "installing git to download the source (sudo)"
+        if command -v dnf >/dev/null; then sudo dnf install -y git
+        elif command -v apt-get >/dev/null; then sudo apt-get update && sudo apt-get install -y git
+        elif command -v pacman >/dev/null; then sudo pacman -S --needed --noconfirm git
+        elif command -v zypper >/dev/null; then sudo zypper --non-interactive install git
+        fi
+        command -v git >/dev/null || { echo "git is needed to download the source; install it and run this again." >&2; exit 1; }
+    fi
     if [ -d "$ROOT/.git" ]; then
         say "updating the source in $ROOT"
         git -C "$ROOT" pull --ff-only
