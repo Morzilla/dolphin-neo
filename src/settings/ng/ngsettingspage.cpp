@@ -1222,8 +1222,12 @@ NgSettingsPage::NgSettingsPage(QWidget *parent)
     m_ago = toggle(ngTr("Days elapsed, under the date", "Giorni trascorsi, sotto la data"));
     m_rowDates = toggle(ngTr("Created and modified, with the days elapsed", "Creato e modificato, con i giorni trascorsi"));
     m_folderContentDate = toggle(ngTr("Folders sorted by date: by the newest thing inside them", "Cartelle ordinate per data: secondo l'ultima modifica del contenuto"));
-    m_folderContentDate->setToolTip(ngTr("Sorted by date modified, a folder counts as modified when something inside it was (its own date changes only when files are added or removed).",
-                                         "Ordinando per data di modifica, una cartella vale come modificata quando lo è qualcosa al suo interno (la sua data cambia solo quando si aggiungono o tolgono file)."));
+    m_folderContentDate->setToolTip(ngTr("Sorted by date modified, a folder counts as modified when something inside it was (its own date changes only when files are added or removed).\n\n"
+                                         "It reuses the walk that measures folder sizes, so it goes only as deep as that (Dolphin's depth limit), on local folders only. "
+                                         "Changes made by Dolphin or other KDE applications are taken into account at once; changes made by other programs when the folder is shown again, a few seconds later.",
+                                         "Ordinando per data di modifica, una cartella vale come modificata quando lo è qualcosa al suo interno (la sua data cambia solo quando si aggiungono o tolgono file).\n\n"
+                                         "Usa lo stesso giro che misura le dimensioni delle cartelle, quindi scende solo fin lì (il limite di profondità di Dolphin), e solo nelle cartelle locali. "
+                                         "Le modifiche fatte da Dolphin o da altre applicazioni KDE contano subito; quelle fatte da altri programmi quando la cartella viene mostrata di nuovo, qualche secondo dopo."));
     m_folderSizes = toggle(ngTr("Folders: space used by the contents", "Cartelle: spazio occupato dal contenuto"));
     m_folderSizes->setToolTip(ngTr("Measures the contents of folders (Dolphin's setting “Folder size: size of contents”, with its depth limit). Otherwise only the number of items.", "Misura il contenuto delle cartelle (impostazione di Dolphin «Dimensione delle cartelle: dimensione del contenuto», con il suo limite di profondità). Altrimenti solo il numero di elementi."));
     {
