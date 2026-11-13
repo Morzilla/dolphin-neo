@@ -96,6 +96,7 @@
 #include <QShowEvent>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QPainterPath>
 #include <QToolButton>
 #include <QtConcurrentRun>
 #include <dolphindebug.h>
@@ -3278,6 +3279,43 @@ QSize DolphinMainWindow::sizeHint() const
 // and whatever the user put there) go to the start of the sort bar, next to the sorting and the filters, and the
 // space above the panels stays empty. The view mode button is dropped: the sort bar has the cards button, the
 // menu has the rest. Without the sort bar (classic list) they go back where they were.
+// dolphin-ng: the sidebar button's icon, drawn here in the NG outline style: a window with the sidebar column on
+// its left, filled while the sidebar is shown and empty while it is hidden
+static QIcon ngSidebarIcon(bool shown, const QColor &ink)
+{
+    QIcon icon;
+    for (const int size : {16, 22, 24, 32, 48}) {
+        for (const qreal dpr : {1.0, 2.0}) {
+            QPixmap pixmap(QSize(size, size) * dpr);
+            pixmap.setDevicePixelRatio(dpr);
+            pixmap.fill(Qt::transparent);
+            QPainter painter(&pixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+            const qreal k = size / 24.0;
+            painter.scale(k, k);
+            const QRectF frame(3, 5, 18, 14);
+            QPainterPath outline;
+            outline.addRoundedRect(frame, 3.2, 3.2);
+            if (shown) {
+                QColor fill = ink;
+                fill.setAlphaF(0.55);
+                painter.save();
+                painter.setClipPath(outline);
+                painter.fillRect(QRectF(frame.left(), frame.top(), 6.5, frame.height()), fill);
+                painter.restore();
+            }
+            QPen pen(ink, 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+            painter.setPen(pen);
+            painter.setBrush(Qt::NoBrush);
+            painter.drawPath(outline);
+            painter.drawLine(QPointF(frame.left() + 6.5, frame.top()), QPointF(frame.left() + 6.5, frame.bottom()));
+            painter.end();
+            icon.addPixmap(pixmap);
+        }
+    }
+    return icon;
+}
+
 // dolphin-ng: a button first in the toolbar, above the panel, that shows and hides it (as F9 does)
 void DolphinMainWindow::ngPlaceSidebarToggle()
 {
@@ -3293,7 +3331,7 @@ void DolphinMainWindow::ngPlaceSidebarToggle()
         m_ngSidebarToggle->setPriority(QAction::LowPriority); // the icon alone, the name in the tooltip
         connect(m_ngSidebarToggle, &QAction::triggered, places, &QAction::trigger);
         auto update = [this, dock] {
-            m_ngSidebarToggle->setIcon(QIcon::fromTheme(dock->isVisible() ? QStringLiteral("sidebar-collapse-left") : QStringLiteral("sidebar-expand-left")));
+            m_ngSidebarToggle->setIcon(ngSidebarIcon(dock->isVisible(), palette().color(QPalette::WindowText)));
         };
         connect(dock, &QDockWidget::visibilityChanged, this, update);
         update();
