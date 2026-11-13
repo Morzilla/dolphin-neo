@@ -3682,7 +3682,7 @@ void KStandardItemListWidget::paintNgActionPill(QPainter *painter, const QColor 
     // ---- the quick actions: icons in one pill, the main one with its label on a tint of the type
     if (!m_ngCardActions.isEmpty()) {
         // the pill of a Tessera comes in and goes out with the hover animation of the card
-        const qreal reveal = m_ngCardHoverPill ? qBound(0.0, m_ngReveal, 1.0) : 1.0;
+        const qreal reveal = m_ngCardHoverPill ? (ngDemoHovered() ? 1.0 : qBound(0.0, m_ngReveal, 1.0)) : 1.0;
         const bool pillShown = !m_ngCardActionsPill.isEmpty() && reveal > 0.01;
         painter->setOpacity(reveal);
         const QRectF pill = m_ngCardActionsPill.adjusted(0.5, 0.5, -0.5, -0.5);
@@ -5449,9 +5449,9 @@ void KStandardItemListWidget::paintNgCard(QPainter *painter, QWidget *widget)
     paintNgActionPill(painter, text, dark);
 
     // ---- the preview eye, on a dark disc so that it reads over a picture too
-    if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? m_ngReveal > 0.01 : (isHovered() || ngDemoHovered())) && !NgActivity::self()->contains(data().value("url").toUrl())
+    if (!m_ngCardEye.isEmpty() && (m_ngCardEyeInPill ? (m_ngReveal > 0.01 || ngDemoHovered()) : (isHovered() || ngDemoHovered())) && !NgActivity::self()->contains(data().value("url").toUrl())
         && !NgModifiers::selecting()) {
-        painter->setOpacity(m_ngCardEyeInPill ? qBound(0.0, m_ngReveal, 1.0) : 1.0);
+        painter->setOpacity(m_ngCardEyeInPill ? (ngDemoHovered() ? 1.0 : qBound(0.0, m_ngReveal, 1.0)) : 1.0);
         if (!m_ngCardEyeInPill) {
             painter->setPen(Qt::NoPen);
             painter->setBrush(QColor(0, 0, 0, 130));

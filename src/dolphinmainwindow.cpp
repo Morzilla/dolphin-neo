@@ -727,7 +727,7 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
             }
         });
     }
-    // for demos: DOLPHIN_NG_DEMO_MENU="Button text|Item text|/path/menu.png" opens the menu of the bar button whose text
+    // for demos: DOLPHIN_NG_DEMO_MENU="Button text|Item text|/path/menu.png[|trigger]" opens the menu of the bar button whose text
     // starts with "Button text", lights "Item text" as if the pointer were on it, saves a picture of the menu, and
     // writes next to it (".txt") where the button and the menu are in the window. No input is sent
     static bool ngDemoMenuDone = false;
@@ -759,7 +759,8 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
                 return;
             }
             const QString item = parts[1], out = parts[2];
-            QTimer::singleShot(700, this, [this, button, item, out] {
+            const bool trigger = parts.size() > 3 && parts[3] == QLatin1String("trigger");
+            QTimer::singleShot(700, this, [this, button, item, out, trigger] {
                 auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
                 if (!menu) {
                     menu = button->menu(); // the popup may not be "active" when the window is not focused
@@ -777,7 +778,7 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
                         menu->setActiveAction(a);
                     }
                 }
-                QTimer::singleShot(300, this, [this, button, menu, out] {
+                QTimer::singleShot(300, this, [this, button, menu, out, trigger] {
                     menu->grab().save(out);
                     const QRect b(button->mapTo(this, QPoint(0, 0)), button->size());
                     // the button too, as it looks with its menu open (it joins the menu), with a little of the bar around
@@ -791,7 +792,11 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
                                     .arg(m.x()).arg(m.y()).arg(m.width()).arg(m.height())
                                     .arg(around.x()).arg(around.y()).arg(around.width()).arg(around.height()).toUtf8());
                     }
+                    QAction *chosen = trigger ? menu->activeAction() : nullptr;
                     menu->close();
+                    if (chosen) { // "|trigger": then choose the lit item, as a click would
+                        QTimer::singleShot(0, chosen, &QAction::trigger);
+                    }
                 });
             });
             button->showMenu();
