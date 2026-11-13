@@ -2640,6 +2640,16 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             }
         }
 
+        // in Recent Files the first date is when the file was last used (what the view is sorted by)
+        bool usedFirst = false;
+        if (wantDates && ngSortedByUse()) {
+            const QDateTime used = ngDateTimeOf(values.value("accesstime"));
+            if (used.isValid()) {
+                created = used;
+                usedFirst = true;
+            }
+        }
+
         // ---- time column: "C  12/10/26 · 29 giorni fa" over "M  09/11/26 · ieri"; dropped on a narrow view (then chips)
         m_ngTime.clear();
         const bool roomForTime = size().width() >= fontHeight * 42;
@@ -2654,7 +2664,8 @@ void KStandardItemListWidget::updateDetailsLayoutTextCache()
             QFont small = m_customizedFont;
             small.setPointSizeF(small.pointSizeF() * 0.9);
             const QFontMetricsF smallMetrics(small);
-            const QString createdLabel = m_ngObjectRow ? ngTr("Created", "Creato") : QStringLiteral("C");
+            const QString createdLabel = usedFirst ? (m_ngObjectRow ? ngTr("Used", "Usato") : QStringLiteral("U"))
+                                                   : (m_ngObjectRow ? ngTr("Created", "Creato") : QStringLiteral("C"));
             const QString modifiedLabel = m_ngObjectRow ? ngTr("Modified", "Modificato") : QStringLiteral("M");
             const qreal letterWidth = m_ngObjectRow ? qMax(smallMetrics.horizontalAdvance(createdLabel), smallMetrics.horizontalAdvance(modifiedLabel)) + 10
                                                     : monoMetrics.horizontalAdvance(QStringLiteral("M")) + 8;
@@ -3840,6 +3851,15 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
     const QString owner = values.value("owner").toString();
     QDateTime modified = ngDateTimeOf(values.value("modificationtime"));
     QDateTime created = ngDateTimeOf(values.value("creationtime"));
+    // in Recent Files the first date is when the file was last used (what the view is sorted by)
+    QString createdCaption = ngTr("Created", "Creato");
+    if (ngSortedByUse()) {
+        const QDateTime used = ngDateTimeOf(values.value("accesstime"));
+        if (used.isValid()) {
+            created = used;
+            createdCaption = ngTr("Used", "Usato");
+        }
+    }
     QList<NgQuickAction> quickActions;
     QString kindWords; // dolphin-ng: "PDF document", "Folder"... (Scheda and Dossier)
     const NgFileFacts *facts = nullptr; // Dossier: what is inside the file, where it came from
@@ -4086,7 +4106,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         };
         QList<Line> lines;
         if (created.isValid()) {
-            lines.append({ngTr("Created", "Creato"), dateLine(created), false});
+            lines.append({createdCaption, dateLine(created), false});
         }
         if (modified.isValid()) {
             lines.append({ngTr("Modified", "Modificato"), dateLine(modified), false});
@@ -4133,7 +4153,7 @@ void KStandardItemListWidget::updateCardsLayoutTextCache()
         const qreal right = card.right() - pad;
         QList<std::pair<QString, QString>> lines;
         if (created.isValid()) {
-            lines.append({ngTr("Created", "Creato"), dateLine(created)});
+            lines.append({createdCaption, dateLine(created)});
         }
         if (modified.isValid()) {
             lines.append({ngTr("Modified", "Modificato"), dateLine(modified)});
@@ -4546,6 +4566,17 @@ void KStandardItemListWidget::paintNgPreviewObject(QPainter *painter, const QRec
 }
 
 // for screenshots: DOLPHIN_NG_DEMO_HOVER names the item drawn as if the pointer were on it (no input is sent)
+// dolphin-ng: Recent Files is sorted by when each file was last used; then that is the first date shown, not the creation
+bool KStandardItemListWidget::ngSortedByUse() const
+{
+    if (auto *fileView = qobject_cast<KFileItemListView *>(parentWidget())) {
+        if (auto *fileModel = qobject_cast<KFileItemModel *>(fileView->model())) {
+            return fileModel->sortRole() == "accesstime";
+        }
+    }
+    return false;
+}
+
 bool KStandardItemListWidget::ngDemoHovered() const
 {
     static const QString name = qEnvironmentVariable("DOLPHIN_NG_DEMO_HOVER");

@@ -2398,7 +2398,12 @@ QHash<QByteArray, QVariant> KFileItemModel::retrieveData(const KFileItem &item, 
     }
 
     if (m_requestRole[SizeRole] && !isDir) {
-        data.insert(sharedValue("size"), item.size());
+        KIO::filesize_t size = item.size();
+        // dolphin-ng: entries of virtual folders (Recent Files) may come without their size: read it from the file
+        if (size == 0 && !item.isDir() && !item.isLocalFile() && !item.localPath().isEmpty()) {
+            size = QFileInfo(item.localPath()).size();
+        }
+        data.insert(sharedValue("size"), size);
     }
 
     if (m_requestRole[ModificationTimeRole]) {
