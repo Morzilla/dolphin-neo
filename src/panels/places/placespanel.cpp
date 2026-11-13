@@ -204,7 +204,9 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     // Set the model here so that it's loaded in time for the sizeHint to properly apply (setting it upon showEvent is too late)
     auto *placesModel = DolphinPlacesModelSingleton::instance().placesModel();
     setModel(placesModel);
-    setItemDelegate(new NgCollapseDelegate(itemDelegate(), this)); // dolphin-ng: folded sections
+    // dolphin-ng: folded sections. The delegate goes on each row, not on the view: KFilePlacesView's own code takes the
+    // view's delegate and expects its own class (a click on the list crashed when it was replaced)
+    m_ngRowDelegate = new NgCollapseDelegate(itemDelegate(), this);
 
     // dolphin-ng: disks and partitions (NG settings > Sidebar, or DOLPHIN_NG_DEVICES): by default boxes with their
     // usage at the foot of the card (the dock draws them; their rows here are hidden), "list" keeps KIO's own
@@ -418,6 +420,9 @@ void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
     // every row: the disk rows, and the rows of folded sections. What KDE hides (hidden places, hidden sections) is
     // left as it is
     for (int row = 0; row < placesModel->rowCount(); ++row) {
+        if (m_ngRowDelegate && itemDelegateForRow(row) != m_ngRowDelegate) {
+            setItemDelegateForRow(row, m_ngRowDelegate); // rows come and go: every one has it
+        }
         const QModelIndex index = placesModel->index(row, 0);
         if (!allPlacesShown() && (placesModel->isHidden(index) || placesModel->isGroupHidden(placesModel->groupType(index)))) {
             continue;

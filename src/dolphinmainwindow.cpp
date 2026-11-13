@@ -818,6 +818,21 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
             m_activeViewContainer->view()->selectItems(QRegularExpression(QStringLiteral("^(%1)$").arg(names.join(QLatin1Char('|')))), true);
         });
     }
+    // for tests: DOLPHIN_NG_TEST_TOGGLE="recent,filters" folds and unfolds those sidebar sections, one every 2 s, as a click on
+    // their title does (no input sent)
+    static bool ngTestToggleDone = false;
+    if (const QString keys = qEnvironmentVariable("DOLPHIN_NG_TEST_TOGGLE"); !keys.isEmpty() && !ngTestToggleDone) {
+        ngTestToggleDone = true;
+        int delay = 3000;
+        for (const QString &key : keys.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            for (int twice = 0; twice < 2; ++twice) {
+                QTimer::singleShot(delay, this, [key] {
+                    ngToggleSection(key);
+                });
+                delay += 2000;
+            }
+        }
+    }
     // for tests: DOLPHIN_NG_TEST_DOCK_WIDTH narrows the places panel step by step down to that width (no input sent)
     if (const int target = qEnvironmentVariableIntValue("DOLPHIN_NG_TEST_DOCK_WIDTH"); target > 0) {
         if (auto *dock = findChild<QDockWidget *>(QStringLiteral("placesDock"))) {

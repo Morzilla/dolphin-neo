@@ -115,6 +115,7 @@ private:
     bool ngRowHiddenByNg(const KFilePlacesModel *placesModel, int row) const; // a disk row, or a row of a folded section
     QString ngTitleAt(const QPoint &pos) const; // the section whose title pill is there
     QList<std::pair<QRect, QString>> m_ngTitleHits; // the title pills as painted, and their sections
+    QAbstractItemDelegate *m_ngRowDelegate = nullptr; // folded sections: set on each row (KDE's stays the view's own)
     QString m_ngTitleHover;
     QPalette m_ngPalette;
     void connectDeviceSignals(const QModelIndex &idx);
