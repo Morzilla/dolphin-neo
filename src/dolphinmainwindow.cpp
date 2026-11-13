@@ -716,6 +716,21 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
     m_ngBlurSet = false;
     ngUpdateBlurRegion(); // dolphin-ng: ask the compositor to blur behind the glass
 
+    // for tests: DOLPHIN_NG_TEST_DOCK_WIDTH narrows the places panel step by step down to that width (no input sent)
+    if (const int target = qEnvironmentVariableIntValue("DOLPHIN_NG_TEST_DOCK_WIDTH"); target > 0) {
+        if (auto *dock = findChild<QDockWidget *>(QStringLiteral("placesDock"))) {
+            auto *timer = new QTimer(this);
+            connect(timer, &QTimer::timeout, this, [this, dock, timer, target] {
+                const int width = dock->width() - 10;
+                resizeDocks({dock}, {qMax(target, width)}, Qt::Horizontal);
+                if (width <= target) {
+                    timer->stop();
+                }
+            });
+            timer->start(150);
+        }
+    }
+
     if (!event->spontaneous() && m_activeViewContainer) {
         m_activeViewContainer->view()->setFocus();
     }

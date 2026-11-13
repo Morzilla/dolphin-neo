@@ -91,6 +91,7 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QStyle>
+#include <QScopeGuard>
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
@@ -559,7 +560,15 @@ protected:
     void resizeEvent(QResizeEvent *event) override
     {
         QWidget::resizeEvent(event);
-        fitSorting();
+        // not from inside the resize: the changes it makes resize this bar again (narrowing the window to the
+        // panel's limit made them call each other until the stack ran out). Several resizes ask once
+        if (!m_fitPending) {
+            m_fitPending = true;
+            QTimer::singleShot(0, this, [this] {
+                m_fitPending = false;
+                fitSorting();
+            });
+        }
     }
 
     void changeEvent(QEvent *event) override
@@ -710,9 +719,15 @@ public:
     // The sorting as a pill when everything fits on one line, else as one button with a menu
     void fitSorting()
     {
-        if (!m_sortPill || !m_sortCompact) {
+        if (!m_sortPill || !m_sortCompact || m_fitting) {
             return;
         }
+        // showing or hiding the buttons below resizes this bar, which asked for this again from inside: once at a
+        // time (the bar's resizeEvent only schedules it, see there)
+        m_fitting = true;
+        const auto done = qScopeGuard([this] {
+            m_fitting = false;
+        });
         const QMargins margins = layout()->contentsMargins();
         int room = width() - margins.left() - margins.right() - 210 - layout()->spacing();
         if (m_leading->isVisible()) {
@@ -729,7 +744,9 @@ public:
             }
             needed += qMax(widget->sizeHint().width(), widget->minimumWidth()) + spacing;
         }
-        const bool compact = needed > room;
+        // a margin both ways, so that a width on the edge does not flip between the two forms
+        const bool wasCompact = m_sortCompact->isVisible();
+        const bool compact = wasCompact ? needed + 30 > room : needed > room;
         // when narrow, the groups also sit closer and the search box is shorter
         for (const QPointer<QWidget> &gap : std::as_const(m_gaps)) {
             if (gap) {
@@ -1166,6 +1183,8 @@ private:
     QHBoxLayout *m_leadingLayout = nullptr;
     NgFlowLayout *m_flow;
     QPointer<QWidget> m_sortPill, m_sortCaption, m_sortCompact; // the sorting as a pill, or as one button when narrow
+    bool m_fitting = false; // fitSorting() is running
+    bool m_fitPending = false; // fitSorting() is scheduled
     QPointer<QToolButton> m_groups; // the groups button (icon only when even the compact bar is too wide)
     int m_groupsTextWidth = 0;
     QList<QPointer<QWidget>> m_gaps; // the spaces between the groups of the bar (narrower when the bar is)
