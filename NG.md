@@ -6,7 +6,7 @@ click away, and work in progress shown on the files themselves. It is based on D
 things are shown and clicked; file operations are Dolphin's own. It installs into your home folder, next to your
 distribution's Dolphin, and replaces nothing.
 
-![Dolphin NG: folders as cards, the glass sidebar](ng/screenshots/features/home-cards.png)
+![Dolphin NG: cards in groups, pinned items first, two selected, a resize under way, the glass sidebar with filters and disks](ng/screenshots/readme/hero.png)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Morzilla/dolphin-ng/ng/ng/install.sh | bash

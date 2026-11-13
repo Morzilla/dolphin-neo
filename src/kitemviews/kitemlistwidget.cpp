@@ -2226,11 +2226,13 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal 
             }
         }
     }
+    // neighbours: the next card on the row or in the column. The gap between them grows when the cards fill the row,
+    // so it is measured against the card (half of it, 40 px at least), not in pixels alone
     auto beside = [](const QRectF &a, const QRectF &b) { // b just right of a on the same row
-        return qAbs(a.top() - b.top()) < 1 && b.left() >= a.right() - 1 && b.left() - a.right() < 40;
+        return qAbs(a.top() - b.top()) < 1 && b.left() >= a.right() - 1 && b.left() - a.right() < qMax(40.0, qMin(a.width(), b.width()) * 0.5);
     };
     auto under = [](const QRectF &a, const QRectF &b) { // b just below a in the same column
-        return qAbs(a.left() - b.left()) < 1 && b.top() >= a.bottom() - 1 && b.top() - a.bottom() < 40;
+        return qAbs(a.left() - b.left()) < 1 && b.top() >= a.bottom() - 1 && b.top() - a.bottom() < qMax(40.0, qMin(a.height(), b.height()) * 0.5);
     };
     // Two neighbours share an outline only when both stay selected, or when one leaves (or joins) a card that is
     // already fully selected. A card going out next to one coming in (a click that moves the selection) is not
