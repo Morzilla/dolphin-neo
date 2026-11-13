@@ -1,6 +1,6 @@
 # Dolphin NG
 
-A fork of [Dolphin](https://apps.kde.org/dolphin/), KDE's file manager, that rethinks how files are shown: cards
+A fork of [Dolphin](https://apps.kde.org/dolphin/), KDE's file manager, that rethinks how users interact with their files: cards
 and drawn rows that tell what a file is at a glance, quick filters, groups that follow the sorting, actions one
 click away, and work in progress shown on the files themselves. It is based on Dolphin 26.08.1 and changes how
 things are shown and clicked; file operations are Dolphin's own. It installs into your home folder, next to your
