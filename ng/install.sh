@@ -59,7 +59,7 @@ else
     else
         say "downloading the source into $ROOT"
         mkdir -p "$(dirname "$ROOT")"
-        git clone --depth 1 --branch neo "$REPO_URL" "$ROOT"
+        git clone --depth 1 --branch ng "$REPO_URL" "$ROOT"
     fi
 fi
 
