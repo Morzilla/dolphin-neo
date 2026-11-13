@@ -157,7 +157,7 @@ The script downloads the source, installs the build dependencies, builds, and in
 curl -fsSL https://raw.githubusercontent.com/Morzilla/dolphin-ng/ng/ng/install.sh | bash
 ```
 
-or, from a clone, `ng/install.sh`. It adds a "Dolphin NG" entry to the application menu and a `dolphin-ng`
+or, once the sources are downloaded (it keeps them in `~/.local/src/dolphin-ng`), `~/.local/src/dolphin-ng/ng/install.sh`. It adds a "Dolphin NG" entry to the application menu and a `dolphin-ng`
 command. Options: `--no-deps`, `--prefix DIR`, `--uninstall` (and `--no-theme` / `--apply-theme` for the optional
 [Motto-Neo theme](ng/theme/README.md)). Running it again updates.
 
@@ -166,7 +166,7 @@ dependencies by name, so no source repositories need to be enabled. Tested from 
 with sudo, in November 2026: Fedora 44, Arch, openSUSE Tumbleweed, Debian sid and Ubuntu 26.10; only Fedora is used
 every day. Dolphin 26.08.1 needs KDE Frameworks 6.23 and Qt 6.4 or newer, so older releases (Debian stable,
 Ubuntu LTS) cannot build it yet. To build by hand: install Dolphin's build
-dependencies, then `ng/build.sh` and `ng/dolphin-ng --new-window`.
+dependencies, then `~/.local/src/dolphin-ng/ng/build.sh` and `~/.local/src/dolphin-ng/ng/dolphin-ng --new-window`.
 
 ## Settings
 
@@ -199,5 +199,5 @@ Issues and pull requests are welcome: bugs, ideas, mockups, translations, testin
 
 ## Licence
 
-Like Dolphin: GPL-2.0-or-later, the whole fork, including the scripts in `ng/` (`LICENSE` holds the text). See also
-`COPYING` and `LICENSES/`. The theme in `ng/theme/` derives from L4ki's Motto themes and is GPL-3.0; see its README.
+Like Dolphin: GPL-2.0-or-later, the whole fork, including the scripts in [`ng/`](ng/) ([`LICENSE`](LICENSE) holds the text). See also
+[`COPYING`](COPYING) and [`LICENSES/`](LICENSES/). The theme in [`ng/theme/`](ng/theme/) derives from L4ki's Motto themes and is GPL-3.0; see its README.
