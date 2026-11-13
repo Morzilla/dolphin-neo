@@ -105,6 +105,13 @@ PlacesPanel::PlacesPanel(QWidget *parent)
     // NG settings).
     // KFilePlacesView decides row visibility itself on model changes, so hide the rows again right after it
     auto applyDevices = [this, placesModel] {
+        // the rows at once (KFilePlacesView's own update for this change has run already: it was connected first),
+        // and once more after the event loop, for the updates KFilePlacesView delays
+        for (int row = 0; row < placesModel->rowCount(); ++row) {
+            if (!isRowHidden(row) && ngDeviceRowHidden(placesModel->groupType(placesModel->index(row, 0)))) {
+                setRowHidden(row, true);
+            }
+        }
         QTimer::singleShot(0, this, [this, placesModel] {
             ngApplyDevices(placesModel);
         });
@@ -273,19 +280,26 @@ void PlacesPanel::ngApplyDevices(KFilePlacesModel *placesModel)
 void PlacesPanel::paintEvent(QPaintEvent *event)
 {
     const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
-    // KFilePlacesView shows rows again on its own (delayed updates when devices are found, when the URL changes...):
-    // whenever a device row that should be hidden is about to be painted, hide it again
-    if (!m_ngDevicesPending) {
-        if (auto *devicesModel = qobject_cast<KFilePlacesModel *>(model())) {
-            for (int row = 0; row < devicesModel->rowCount(); ++row) {
-                if (!isRowHidden(row) && ngDeviceRowHidden(devicesModel->groupType(devicesModel->index(row, 0)))) {
-                    m_ngDevicesPending = true;
-                    QTimer::singleShot(0, this, [this, devicesModel] {
-                        ngApplyDevices(devicesModel);
-                        m_ngDevicesPending = false;
-                    });
-                    break;
-                }
+    // KFilePlacesView shows rows again on its own (delayed updates when devices are found, when the URL changes, when a
+    // section of the card comes or goes...): a device row that should be hidden is hidden here, before this frame is
+    // painted, and the rows are laid out again at once, so it never shows, not even for a frame. What changes geometry
+    // (the disk boxes, the sections) is left for after the paint: changing it while painting is not safe
+    if (auto *devicesModel = qobject_cast<KFilePlacesModel *>(model())) {
+        bool hidden = false;
+        for (int row = 0; row < devicesModel->rowCount(); ++row) {
+            if (!isRowHidden(row) && ngDeviceRowHidden(devicesModel->groupType(devicesModel->index(row, 0)))) {
+                setRowHidden(row, true);
+                hidden = true;
+            }
+        }
+        if (hidden) {
+            executeDelayedItemsLayout();
+            if (!m_ngDevicesPending) {
+                m_ngDevicesPending = true;
+                QTimer::singleShot(0, this, [this, devicesModel] {
+                    ngApplyDevices(devicesModel);
+                    m_ngDevicesPending = false;
+                });
             }
         }
     }
