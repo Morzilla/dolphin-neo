@@ -44,6 +44,7 @@
 #include <Solid/StorageAccess>
 #include <QAbstractItemDelegate>
 #include <QMouseEvent>
+#include <QVariantAnimation>
 
 namespace
 {
@@ -86,15 +87,43 @@ public:
     }
     void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
     {
-        if (!m_panel->ngHeaderOnly(index)) {
-            m_inner->paint(painter, option, index);
+        if (m_panel->ngHeaderOnly(index)) {
+            return; // the panel paints the title pill
         }
+        bool first = false;
+        const qreal factor = m_panel->ngRowFactor(index, &first);
+        if (factor >= 1.0) {
+            m_inner->paint(painter, option, index);
+            return;
+        }
+        // sliding: the row at its full height, moved up so that its bottom part shows, and fading
+        const int full = m_inner->sizeHint(option, index).height();
+        QStyleOptionViewItem moved(option);
+        if (first) {
+            // the entry under the title slides up behind it like the others (the panel paints the title over it)
+            const int shift = qRound(plainHeight(option, index) * (1.0 - factor));
+            moved.rect = QRect(option.rect.left(), option.rect.top() - shift, option.rect.width(), full);
+        } else {
+            moved.rect = QRect(option.rect.left(), option.rect.bottom() + 1 - full, option.rect.width(), full);
+        }
+        painter->save();
+        painter->setClipRect(option.rect, Qt::IntersectClip);
+        painter->setOpacity(painter->opacity() * factor);
+        m_inner->paint(painter, moved, index);
+        painter->restore();
     }
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
     {
         QSize size = m_inner->sizeHint(option, index);
         if (m_panel->ngHeaderOnly(index)) {
             size.setHeight(qMax(option.fontMetrics.height() + 6, size.height() - plainHeight(option, index)));
+            return size;
+        }
+        bool first = false;
+        const qreal factor = m_panel->ngRowFactor(index, &first);
+        if (factor < 1.0) {
+            const int plain = plainHeight(option, index);
+            size.setHeight(first ? size.height() - qRound(plain * (1.0 - factor)) : qRound(size.height() * factor));
         }
         return size;
     }
@@ -281,20 +310,9 @@ void PlacesPanel::ngPaintPills()
     }
     const bool dark = ngIsDark(palette());
     const QPoint offset = viewport()->mapTo(dock, QPoint(0, 0));
-    // the first row of a group is taller: its rect holds the group title too. The plain row height is the
-    // smallest one around; the pill keeps to the bottom part of a tall rect.
-    int rowHeight = -1;
-    if (const QAbstractItemModel *placesModel = model()) {
-        for (int row = 0; row < placesModel->rowCount(); ++row) {
-            if (isRowHidden(row)) {
-                continue;
-            }
-            const int h = visualRect(placesModel->index(row, 0)).height();
-            if (h > 0 && (rowHeight < 0 || h < rowHeight)) {
-                rowHeight = h;
-            }
-        }
-    }
+    // the first row of a group is taller: its rect holds the group title too; the pill keeps to the bottom part,
+    // a plain row's height
+    const int rowHeight = ngPlainRowHeight();
     QPainter painter(viewport());
     for (const auto &[index, strength] : std::as_const(rows)) {
         QRect rect = visualRect(index);
@@ -484,6 +502,7 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
         QString key;
         bool headerOnly = false;
         int count = 0;
+        qreal factor = 1.0; // while its section slides: how much of the entry under the title shows
     };
     QList<Title> titles;
     int rowHeight = -1;
@@ -502,11 +521,19 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
                     ++count;
                 }
             }
-            titles.append({rect, index.data(KFilePlacesModel::GroupRole).toString(), ngGroupKey(group), ngHeaderOnly(index), count});
+            bool first = false;
+            const qreal factor = ngRowFactor(index, &first);
+            titles.append({rect, index.data(KFilePlacesModel::GroupRole).toString(), ngGroupKey(group), ngHeaderOnly(index), count, factor});
         } else if (rowHeight < 0) {
-            rowHeight = rect.height();
+            bool first = false;
+            if (ngRowFactor(index, &first) >= 1.0) { // a row sliding is lower than a plain row: not a measure
+                rowHeight = rect.height();
+            }
         }
         previousGroup = group;
+    }
+    if (rowHeight < 0) {
+        rowHeight = ngPlainRowHeight(); // every section folded: only titles and the open folder's entry are shown
     }
     m_ngTitleHits.clear();
     if (titles.isEmpty()) {
@@ -531,7 +558,10 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
     QRegion headers;
     for (const Title &title : std::as_const(titles)) {
         // a folded section: its first row is only the title
-        const int headerHeight = title.headerOnly ? title.rect.height() : rowHeight > 0 ? title.rect.height() - rowHeight : metrics.height() + 10;
+        // (while its section slides, the entry under the title is that much lower)
+        const int headerHeight = title.headerOnly ? title.rect.height()
+            : rowHeight > 0                       ? title.rect.height() - qRound(rowHeight * title.factor)
+                                                  : metrics.height() + 10;
         if (headerHeight < metrics.height() || title.text.isEmpty()) {
             continue;
         }
@@ -593,6 +623,82 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
     }
 }
 
+qreal PlacesPanel::ngRowFactor(const QModelIndex &index, bool *first) const
+{
+    auto *placesModel = qobject_cast<KFilePlacesModel *>(model());
+    if (m_ngAnimKey.isEmpty() || !placesModel || !index.isValid() || ngGroupKey(placesModel->groupType(index)) != m_ngAnimKey) {
+        return 1.0;
+    }
+    if (selectionModel() && selectionModel()->isSelected(index)) {
+        return 1.0; // the entry of the open folder stays
+    }
+    *first = ngFirstOfGroup(placesModel, index.row());
+    return m_ngAnimFactor;
+}
+
+int PlacesPanel::ngPlainRowHeight() const
+{
+    const QAbstractItemModel *placesModel = model();
+    if (!placesModel) {
+        return -1;
+    }
+    // a shown entry that follows another one of its section, not sliding: its height
+    for (int row = 1; row < placesModel->rowCount(); ++row) {
+        const QModelIndex here = placesModel->index(row, 0);
+        bool first = false;
+        if (isRowHidden(row) || isRowHidden(row - 1) || ngHeaderOnly(here) || ngRowFactor(here, &first) < 1.0
+            || here.data(KFilePlacesModel::GroupRole) != placesModel->index(row - 1, 0).data(KFilePlacesModel::GroupRole)) {
+            continue;
+        }
+        return visualRect(here).height();
+    }
+    // none (every section folded): KDE's delegate gives a hidden row no title, so its size is the plain one
+    QStyleOptionViewItem option;
+    initViewItemOption(&option);
+    for (int row = 0; row < placesModel->rowCount(); ++row) {
+        if (isRowHidden(row)) {
+            return itemDelegate()->sizeHint(option, placesModel->index(row, 0)).height();
+        }
+    }
+    return -1;
+}
+
+void PlacesPanel::ngAnimateSection(const QString &key)
+{
+    if (m_ngAnim && m_ngAnim->state() == QAbstractAnimation::Running) {
+        m_ngAnim->setCurrentTime(m_ngAnim->duration()); // the slide under way ends at once
+    }
+    const bool folding = !ngSectionCollapsed(key);
+    m_ngAnimKey = key;
+    m_ngAnimFactor = folding ? 1.0 : 0.0;
+    if (!folding) {
+        ngToggleSection(key); // the rows come back, at no height, then grow
+    }
+    if (!m_ngAnim) {
+        m_ngAnim = new QVariantAnimation(this);
+        m_ngAnim->setDuration(180);
+        m_ngAnim->setEasingCurve(QEasingCurve::OutCubic);
+    }
+    m_ngAnim->disconnect(this, nullptr); // the connections of the previous slide
+    connect(m_ngAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+        m_ngAnimFactor = value.toReal();
+        scheduleDelayedItemsLayout();
+        viewport()->update();
+    });
+    connect(m_ngAnim, &QAbstractAnimation::finished, this, [this, key, folding] {
+        m_ngAnimKey.clear();
+        m_ngAnimFactor = 1.0;
+        if (folding) {
+            ngToggleSection(key); // now folded: the rows are hidden, the first one keeps the title
+        }
+        scheduleDelayedItemsLayout();
+        viewport()->update();
+    });
+    m_ngAnim->setStartValue(folding ? 1.0 : 0.0);
+    m_ngAnim->setEndValue(folding ? 0.0 : 1.0);
+    m_ngAnim->start();
+}
+
 QString PlacesPanel::ngTitleAt(const QPoint &pos) const
 {
     for (const auto &[rect, key] : m_ngTitleHits) {
@@ -617,7 +723,7 @@ void PlacesPanel::mouseReleaseEvent(QMouseEvent *event)
     const QString key = ngTitleAt(event->pos());
     if (event->button() == Qt::LeftButton && !key.isEmpty()) {
         event->accept();
-        ngToggleSection(key); // the panel follows NgSettings::changed
+        ngAnimateSection(key); // the panel follows NgSettings::changed
         return;
     }
     KFilePlacesView::mouseReleaseEvent(event);

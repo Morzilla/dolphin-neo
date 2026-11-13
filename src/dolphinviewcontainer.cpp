@@ -93,6 +93,7 @@
 #include <QStyle>
 #include <QScopeGuard>
 #include <QTimer>
+#include <QVariantAnimation>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -3790,16 +3791,62 @@ protected:
     {
         return ngSectionCollapsed(QStringLiteral("filters"));
     }
+    // how much of a section's rows shows: 1 open, 0 folded, in between while it slides
+    qreal pinsOpen() const
+    {
+        return m_slideKey == QLatin1String("pinned") ? m_slide : pinsFolded() ? 0.0 : 1.0;
+    }
+    qreal filtersOpen() const
+    {
+        return m_slideKey == QLatin1String("filters") ? m_slide : filtersFolded() ? 0.0 : 1.0;
+    }
     int pinsHeight() const
     {
         if (m_pins.isEmpty()) {
             return 0;
         }
-        return titleHeight() + (pinsFolded() ? 0 : 6 + m_pins.count() * rowHeight()) + (m_entries.isEmpty() ? 6 : 14);
+        return titleHeight() + qRound((6 + m_pins.count() * rowHeight()) * pinsOpen()) + (m_entries.isEmpty() ? 6 : 14);
     }
     int filtersHeight() const
     {
-        return m_entries.isEmpty() ? 0 : titleHeight() + (filtersFolded() ? 0 : 6 + m_entries.count() * rowHeight()) + 6;
+        return m_entries.isEmpty() ? 0 : titleHeight() + qRound((6 + m_entries.count() * rowHeight()) * filtersOpen()) + 6;
+    }
+    // fold or open a section, sliding: folding slides first and folds at the end; opening opens first and slides
+    void slide(const QString &key)
+    {
+        if (m_slideAnim && m_slideAnim->state() == QAbstractAnimation::Running) {
+            m_slideAnim->setCurrentTime(m_slideAnim->duration());
+        }
+        const bool folding = !ngSectionCollapsed(key);
+        m_slideKey = key;
+        m_slide = folding ? 1.0 : 0.0;
+        if (!folding) {
+            ngToggleSection(key);
+        }
+        if (!m_slideAnim) {
+            m_slideAnim = new QVariantAnimation(this);
+            m_slideAnim->setDuration(180);
+            m_slideAnim->setEasingCurve(QEasingCurve::OutCubic);
+        }
+        m_slideAnim->disconnect(this, nullptr);
+        connect(m_slideAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+            m_slide = value.toReal();
+            setFixedHeight(qMax(1, pinsHeight() + filtersHeight()));
+            update();
+        });
+        connect(m_slideAnim, &QAbstractAnimation::finished, this, [this, key, folding] {
+            m_slideKey.clear();
+            m_slide = 1.0;
+            if (folding) {
+                ngToggleSection(key); // refresh() follows
+            } else {
+                setFixedHeight(qMax(1, pinsHeight() + filtersHeight()));
+                update();
+            }
+        });
+        m_slideAnim->setStartValue(folding ? 1.0 : 0.0);
+        m_slideAnim->setEndValue(folding ? 0.0 : 1.0);
+        m_slideAnim->start();
     }
     // the title pills: the label, the arrow, and when folded how many entries are inside
     QRectF titleRect(qreal y, const QString &label, int count, bool folded) const
@@ -3828,13 +3875,13 @@ protected:
         if (filtersTitle().contains(pos)) {
             return -3;
         }
-        if (!m_pins.isEmpty() && !pinsFolded()) {
+        if (!m_pins.isEmpty() && pinsOpen() >= 1.0) {
             const int top = titleHeight() + 6;
             if (pos.y() >= top && pos.y() < top + m_pins.count() * rowHeight()) {
                 return (pos.y() - top) / rowHeight();
             }
         }
-        if (!m_entries.isEmpty() && !filtersFolded()) {
+        if (!m_entries.isEmpty() && filtersOpen() >= 1.0) {
             const int top = pinsHeight() + titleHeight() + 6;
             if (pos.y() >= top) {
                 const int row = (pos.y() - top) / rowHeight();
@@ -3890,9 +3937,14 @@ protected:
         };
 
         if (!m_pins.isEmpty()) {
-            title(0, ngTr("Pinned", "Fissati"), m_pins.count(), pinsFolded(), m_hover == -2);
-            const int top = titleHeight() + 6;
-            for (int i = 0; i < (pinsFolded() ? 0 : m_pins.count()); ++i) {
+            title(0, ngTr("Pinned", "Fissati"), m_pins.count(), pinsFolded() && m_slideKey != QLatin1String("pinned"), m_hover == -2);
+            const qreal open = pinsOpen();
+            const int body = 6 + m_pins.count() * rowHeight();
+            const int top = titleHeight() + 6 - qRound(body * (1.0 - open)); // the rows slide up under the title
+            painter.save();
+            painter.setClipRect(QRectF(0, titleHeight(), width(), qRound(body * open)));
+            painter.setOpacity(open);
+            for (int i = 0; i < (open > 0.0 ? m_pins.count() : 0); ++i) {
                 const QRectF row(0, top + i * rowHeight(), width(), rowHeight());
                 const Pin &pin = m_pins.at(i);
                 rowGround(row, false, i == m_hover);
@@ -3902,13 +3954,19 @@ protected:
                 const QRectF labelRect = row.adjusted(12 + side + 8, 0, -12, 0);
                 painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter, painter.fontMetrics().elidedText(pin.name, Qt::ElideMiddle, qMax(0, int(labelRect.width()))));
             }
+            painter.restore();
         }
 
         if (!m_entries.isEmpty()) {
             const int base = pinsHeight();
-            title(base, ngTr("Filters", "Filtri"), m_entries.count(), filtersFolded(), m_hover == -3);
-            const int top = base + titleHeight() + 6;
-            for (int i = 0; i < (filtersFolded() ? 0 : m_entries.count()); ++i) {
+            title(base, ngTr("Filters", "Filtri"), m_entries.count(), filtersFolded() && m_slideKey != QLatin1String("filters"), m_hover == -3);
+            const qreal open = filtersOpen();
+            const int body = 6 + m_entries.count() * rowHeight();
+            const int top = base + titleHeight() + 6 - qRound(body * (1.0 - open));
+            painter.save();
+            painter.setClipRect(QRectF(0, base + titleHeight(), width(), qRound(body * open)));
+            painter.setOpacity(open);
+            for (int i = 0; i < (open > 0.0 ? m_entries.count() : 0); ++i) {
                 const QRectF row(0, top + i * rowHeight(), width(), rowHeight());
                 const auto &entry = m_entries.at(i);
                 rowGround(row, entry.active, 1000 + i == m_hover);
@@ -3923,6 +3981,7 @@ protected:
                 painter.setPen(dim);
                 painter.drawText(row.adjusted(14, 0, -14, 0), Qt::AlignRight | Qt::AlignVCenter, count);
             }
+            painter.restore();
         }
     }
     void mouseMoveEvent(QMouseEvent *event) override
@@ -3950,7 +4009,7 @@ protected:
     {
         const int row = rowAt(event->pos());
         if ((row == -2 || row == -3) && event->button() == Qt::LeftButton) {
-            ngToggleSection(row == -2 ? QStringLiteral("pinned") : QStringLiteral("filters")); // refresh() follows
+            slide(row == -2 ? QStringLiteral("pinned") : QStringLiteral("filters"));
             return;
         }
         if (row < 0) {
@@ -3995,6 +4054,9 @@ private:
     QList<NgSortBar::FilterEntry> m_entries;
     QList<Pin> m_pins;
     int m_hover = -1;
+    QString m_slideKey; // the section sliding now
+    qreal m_slide = 1.0;
+    QVariantAnimation *m_slideAnim = nullptr;
 };
 
 QWidget *ngCreateFilterPanel(QWidget *sortBar, QWidget *parent, std::function<void(const QUrl &)> open, int part)

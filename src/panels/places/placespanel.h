@@ -31,6 +31,8 @@ class StorageAccess;
 /** dolphin-ng: the sidebar's sections in their order ("places", "pinned", "filters", "disks"; see SIDEBAR_ORDER). */
 QStringList ngSidebarOrder();
 
+class QVariantAnimation;
+
 class PlacesPanel : public KFilePlacesView
 {
 public:
@@ -87,6 +89,9 @@ Q_SIGNALS:
 public:
     // dolphin-ng: folded sections (a click on their title): their first row is only the title, the others are hidden
     bool ngHeaderOnly(const QModelIndex &index) const;
+    // while a section folds or opens: how much of a row of it shows (1 all, 0 none); `first` says the row carries the title
+    qreal ngRowFactor(const QModelIndex &index, bool *first) const;
+    int ngPlainRowHeight() const; // the height of an entry without a title above it
 
 protected:
     void paintEvent(QPaintEvent *event) override; // dolphin-ng: section titles as pills
@@ -116,6 +121,10 @@ private:
     QString ngTitleAt(const QPoint &pos) const; // the section whose title pill is there
     QList<std::pair<QRect, QString>> m_ngTitleHits; // the title pills as painted, and their sections
     QAbstractItemDelegate *m_ngRowDelegate = nullptr; // folded sections: set on each row (KDE's stays the view's own)
+    void ngAnimateSection(const QString &key); // fold or open a section, sliding
+    QString m_ngAnimKey; // the section sliding now
+    qreal m_ngAnimFactor = 1.0;
+    QVariantAnimation *m_ngAnim = nullptr;
     QString m_ngTitleHover;
     QPalette m_ngPalette;
     void connectDeviceSignals(const QModelIndex &idx);
