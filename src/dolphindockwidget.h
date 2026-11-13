@@ -30,6 +30,8 @@ public:
      */
     void setLocked(bool lock);
     bool isLocked() const;
+    /** dolphin-ng: no title bar at all, locked or not (the places: shown and hidden by the toolbar's sidebar button). */
+    void ngSetBare();
 
     /**
      * dolphin-ng: paint the glass card of this panel with \a painter, in this widget's coordinates.
@@ -82,6 +84,7 @@ private:
     void ngApplySettings();
 
     bool m_locked;
+    bool m_ngBare = false;
     QWidget *m_dockTitleBar;
     QTimer *m_glassTimer = nullptr;
     QTimer *m_lavaTimer = nullptr; // dolphin-ng: drives the animated ("lava lamp") backdrop

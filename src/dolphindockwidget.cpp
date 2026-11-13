@@ -500,11 +500,23 @@ void DolphinDockWidget::setLocked(bool lock)
             }
             setTitleBarWidget(m_dockTitleBar);
             setFeatures(QDockWidget::DockWidgetClosable);
-        } else {
+        } else if (!m_ngBare) {
             setTitleBarWidget(nullptr);
             setFeatures(DefaultDockWidgetFeatures);
         }
     }
+}
+
+void DolphinDockWidget::ngSetBare()
+{
+    // the stock title bar of an unlocked panel puts its float and close buttons over the glass card, where a close
+    // was easy to hit by mistake: none here; the toolbar's sidebar button (and F9) show and hide the panel
+    m_ngBare = true;
+    if (!m_dockTitleBar) {
+        m_dockTitleBar = new DolphinDockTitleBar(this);
+    }
+    setTitleBarWidget(m_dockTitleBar);
+    setFeatures(QDockWidget::DockWidgetClosable);
 }
 
 bool DolphinDockWidget::isLocked() const

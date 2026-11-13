@@ -787,6 +787,8 @@ private:
     DolphinTabWidget *m_tabWidget;
     QWidget *m_ngSortBar = nullptr; // dolphin-ng: the sort/filter bar above the tabs
     QList<QAction *> m_ngMovedActions; // dolphin-ng: toolbar buttons that were moved to the sort bar
+    QAction *m_ngSidebarToggle = nullptr; // dolphin-ng: shows and hides the places, first in the toolbar
+    void ngPlaceSidebarToggle();
     void ngMoveToolbarButtons();
     DolphinViewContainer *m_activeViewContainer;
 

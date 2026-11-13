@@ -716,6 +716,14 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
     m_ngBlurSet = false;
     ngUpdateBlurRegion(); // dolphin-ng: ask the compositor to blur behind the glass
 
+    // for tests: DOLPHIN_NG_TEST_HIDE_PLACES presses the sidebar button once the window is up (no input sent)
+    if (qEnvironmentVariableIsSet("DOLPHIN_NG_TEST_HIDE_PLACES")) {
+        QTimer::singleShot(1500, this, [this] {
+            if (m_ngSidebarToggle) {
+                m_ngSidebarToggle->trigger();
+            }
+        });
+    }
     // for tests: DOLPHIN_NG_TEST_DOCK_WIDTH narrows the places panel step by step down to that width (no input sent)
     if (const int target = qEnvironmentVariableIntValue("DOLPHIN_NG_TEST_DOCK_WIDTH"); target > 0) {
         if (auto *dock = findChild<QDockWidget *>(QStringLiteral("placesDock"))) {
@@ -2645,6 +2653,7 @@ void DolphinMainWindow::setupDockWidgets()
     DolphinDockWidget *placesDock = new DolphinDockWidget(i18nc("@title:window", "Places"));
     placesDock->setLocked(lock);
     placesDock->setObjectName(QStringLiteral("placesDock"));
+    placesDock->ngSetBare(); // dolphin-ng: no float/close buttons over the card
     placesDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
 
     m_placesPanel = new PlacesPanel(placesDock);
@@ -3269,8 +3278,34 @@ QSize DolphinMainWindow::sizeHint() const
 // and whatever the user put there) go to the start of the sort bar, next to the sorting and the filters, and the
 // space above the panels stays empty. The view mode button is dropped: the sort bar has the cards button, the
 // menu has the rest. Without the sort bar (classic list) they go back where they were.
+// dolphin-ng: a button first in the toolbar, above the panel, that shows and hides it (as F9 does)
+void DolphinMainWindow::ngPlaceSidebarToggle()
+{
+    KToolBar *bar = toolBar(QStringLiteral("mainToolBar"));
+    QAction *places = actionCollection()->action(QStringLiteral("show_places_panel"));
+    auto *dock = findChild<QDockWidget *>(QStringLiteral("placesDock"));
+    if (!bar || !places || !dock) {
+        return;
+    }
+    if (!m_ngSidebarToggle) {
+        m_ngSidebarToggle = new QAction(ngTr("Sidebar", "Barra laterale"), this);
+        m_ngSidebarToggle->setToolTip(ngTr("Show or hide the sidebar (F9)", "Mostra o nascondi la barra laterale (F9)"));
+        m_ngSidebarToggle->setPriority(QAction::LowPriority); // the icon alone, the name in the tooltip
+        connect(m_ngSidebarToggle, &QAction::triggered, places, &QAction::trigger);
+        auto update = [this, dock] {
+            m_ngSidebarToggle->setIcon(QIcon::fromTheme(dock->isVisible() ? QStringLiteral("sidebar-collapse-left") : QStringLiteral("sidebar-expand-left")));
+        };
+        connect(dock, &QDockWidget::visibilityChanged, this, update);
+        update();
+    }
+    if (!bar->actions().contains(m_ngSidebarToggle)) {
+        bar->insertAction(bar->actions().value(0), m_ngSidebarToggle);
+    }
+}
+
 void DolphinMainWindow::ngMoveToolbarButtons()
 {
+    ngPlaceSidebarToggle();
     KToolBar *bar = toolBar(QStringLiteral("mainToolBar"));
     QAction *navigator = actionCollection()->action(QStringLiteral("url_navigators"));
     if (!m_ngSortBar || !bar || !navigator || !bar->actions().contains(navigator)) {
@@ -3290,7 +3325,9 @@ void DolphinMainWindow::ngMoveToolbarButtons()
         if (action == navigator) {
             break;
         }
-        leading.append(action);
+        if (action != m_ngSidebarToggle) { // it stays above the panel
+            leading.append(action);
+        }
     }
     if (leading.isEmpty()) {
         return;
