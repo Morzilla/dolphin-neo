@@ -1,235 +1,182 @@
-# dolphin-ng
+# Dolphin NG
 
-An experimental fork of [Dolphin](https://apps.kde.org/dolphin/), KDE's file manager, that tries a more
-modern file list. It is based on Dolphin 26.08.1 and changes only how things are shown and clicked; file
-operations are Dolphin's own.
+A fork of [Dolphin](https://apps.kde.org/dolphin/), KDE's file manager, that rethinks how files are shown: cards
+and drawn rows that tell what a file is at a glance, quick filters, groups that follow the sorting, actions one
+click away, and work in progress shown on the files themselves. It is based on Dolphin 26.08.1 and changes how
+things are shown and clicked; file operations are Dolphin's own. It installs into your home folder, next to your
+distribution's Dolphin, and replaces nothing.
 
-This is a personal experiment, not a KDE project, and it is not meant to replace your distribution's Dolphin:
-it installs into your home directory next to it.
+![Dolphin NG: folders as cards, the glass sidebar](ng/screenshots/features/home-cards.png)
 
-**A tour of the features, with screenshots: [FEATURES.md](FEATURES.md).**
+```sh
+curl -fsSL https://raw.githubusercontent.com/Morzilla/dolphin-ng/ng/ng/install.sh | bash
+```
 
-| Cards | Rows |
-|---|---|
-| ![Folders as cards, the Tessera look](ng/screenshots/features/home-cards.png) | ![Folders as drawn rows](ng/screenshots/features/home-rows.png) |
+A longer tour, with every setting: **[FEATURES.md](FEATURES.md)**.
 
-| Selecting several files | Work in progress, on the files |
-|---|---|
-| ![Several cards selected, in one bubble](ng/screenshots/features/selection.png) | ![Copies and quick actions shown on the files](ng/screenshots/features/work-cards.png) |
+## At a glance
 
-## Cards view
+- **[Cards](#cards)**: a view mode of its own, in three looks (Tessera, Scheda, Dossier).
+- **[Drawn rows](#drawn-rows)**: the details view without icons: every row carries a drawing of its file.
+- **[A bar for sorting, filters and groups](#the-bar)**: one click to sort, filter by kind of file, group.
+- **[Groups that follow the sorting](#groups)**: by date, by size (KB, MB, GB, TB), by name, by type.
+- **[Work in progress on the files](#work-in-progress-on-the-files)**: copies and conversions show on the file they concern.
+- **[Pinned to the top](#pinned-to-the-top)**: files and folders that stay first, whatever the sorting.
+- **[Quick actions](#quick-actions)**: resize, convert, extract, transcribe… from the card, and your own commands.
+- **[A glass sidebar](#the-sidebar)**: sections in the order you choose, disks with their usage, one button to hide it.
+- **[Folder sizes that are remembered](#folder-sizes)**: no recounting every time a folder opens.
+- **[The same in every app's file dialog](#dialog-ng)**: Dialog NG, the Open/Save window in this look.
 
-A fourth view mode (Ctrl+4, or the "Cards" button in the sort bar): every item is a card with its details, in a
-grid that re-flows with the window. Three looks:
+## Cards
 
-- **Tessera** – the preview across the top. A file without a preview gets a sketch of what it holds (a page, a
-  table, lines of code, a waveform…), a folder shows its first pictures or lists its first entries. Type and size
-  are one badge on the picture; the actions are a pill that fades in on hover.
-- **Scheda** – the picture on the left, everything in three lines.
-- **Dossier** – an identity card: what the file holds (pages and words, size in pixels and when it was taken,
-  duration and quality, what a folder contains), where it came from, its tags and rating.
+A fourth view mode (Ctrl+4, or the Cards button in the bar). Every item is a card with its details, in a grid
+that follows the window. A click on the button goes to the next look:
 
-Quick actions by kind of file (resize, extract, convert, open with the next application, cut, copy), a quick view
-on hover, a preview card with zoom.
+- **Tessera**: the picture on top. A file without a preview gets a drawing of what it holds (a page, a sheet, lines
+  of code, a waveform); a folder shows its first pictures, how many items it holds and its size.
+- **Scheda**: the picture on the left, everything in three lines; the compact one.
+- **Dossier**: the file's identity card: pages and words, size in pixels, duration, where it was downloaded from,
+  its tags and rating.
 
-![Cards, the Tessera look](ng/screenshots/features/tessera.png)
+| Tessera | Scheda | Dossier |
+|---|---|---|
+| <img src="ng/screenshots/readme/cards-tessera.png" width="300" alt="Tessera cards"> | <img src="ng/screenshots/readme/cards-scheda.png" width="300" alt="Scheda cards"> | <img src="ng/screenshots/readme/cards-dossier.png" width="230" alt="A Dossier card"> |
 
-| Scheda | Dossier |
-|---|---|
-| ![Scheda](ng/screenshots/features/scheda.png) | ![Dossier](ng/screenshots/features/dossier.png) |
+Selected cards share one outline, with a check on each:
 
-## Work in progress, on the files
+<img src="ng/screenshots/readme/selection.png" width="560" alt="Three selected cards">
 
-Copies, moves, deletions and the quick actions show on the file they concern, not only in the notifications:
-a ring with the percentage over the card's preview, the row filling up with a caption at its end, a turning arc
-while a quick action (extract, convert, transcribe) is running. A first draft: the work started by Dolphin
-itself; extractions and downloads started by other applications come next.
+## Drawn rows
 
-| Cards | Rows |
-|---|---|
-| ![Work in progress on cards](ng/screenshots/activity-cards.png) | ![Work in progress on rows](ng/screenshots/activity-rows.png) |
+The details view without icons and without column headers: each row starts with the card's drawing of its file
+(the folder with its item count, the page with its type and size), the second line says the kind in words, and
+the end of the row the dates. Narrow windows drop the dates first.
 
-A file made from another one (a transcription, an extracted folder, a converted copy, a copy in the same folder)
-stands right after it while the work runs, whatever the sort order, and both sit in one tinted bubble: the source
-shows the percentage, the new file waits with "On its way…". The bubble goes 30 seconds after the work ends; when the pair wraps to the next row, both pieces stay open towards the edge.
-The × next to the caption stops the work. Quick actions run through `ng/ng-job`, which also shows them in Plasma's
-notifications (with the percentage and a stop button), so they stay visible, and keep running, when Dolphin NG is
-closed; a Dolphin NG opened later shows them on the files again. A program can report its percentage by writing a
-number to the file named in `$NG_PROGRESS_FILE`.
+<img src="ng/screenshots/readme/rows.png" width="640" alt="Drawn rows">
 
-![A transcription and a conversion, each next to the file it comes from](ng/screenshots/family-cards.png)
+## The bar
 
-| Cards | Rows |
-|---|---|
-| ![Work in progress on the files, cards](ng/screenshots/work-on-files-cards.png) | ![Work in progress on the files, rows](ng/screenshots/work-on-files-rows.png) |
+Above the files: sort (by name, size, type, date modified or created), the view and its look, the filters by kind
+of file with how many there are, and the groups. Each button says the current choice; in a narrow window the
+sorting folds into one button.
 
-**Type and size in the drawing** (Settings > Dolphin NG > Type and size: In the drawing): no badge over the
-preview. Where a card shows a drawing of the kind of file, the type and the size are part of it, in its own
-colours: printed on the side of the box, as the title of the page with the size as its last line, on the front of
-the folder. A real preview becomes the thing itself: a photo is a print with the type and size in its margin, a PDF
-a sheet with a footer, a video a frame on a strip of film.
+<img src="ng/screenshots/readme/bar.png" width="560" alt="The bar: sort, cards, filters, groups">
 
-![Type and size in the drawing of each file](ng/screenshots/cards-in-drawing.png)
+## Groups
 
-![Close-up](ng/screenshots/cards-in-drawing-closeup.png)
+Titles between the items, chosen in the Groups menu:
 
-**Transcribe**, on audio and video files, writes the spoken text next to the file (and subtitles for videos), with
-[whisper.cpp](https://github.com/ggml-org/whisper.cpp) on your computer: nothing is uploaded. Run
-`ng/ng-transcribe --setup` once (it builds whisper.cpp in `~/.local/src` and downloads the speech model, about
-550 MB); the action appears when that is done.
+- **Like the sorting (dynamic)**: the groups follow whatever the folder is sorted by: periods by date, letters by
+  name, kinds by type, and sizes by order of magnitude: under 1 KB, KB, MB, GB, TB.
+- **Folders with the files**: each folder goes to the group of its own size or date, like a file (Dolphin's
+  "folders first" is one option away).
+- **Pinned**: pinned items have a group of their own, first.
+
+<img src="ng/screenshots/readme/groups.png" width="640" alt="Sorted by size, dynamic groups: MB, KB">
+
+## Work in progress on the files
+
+Copies, moves, deletions and the quick actions show on the file they concern: a ring with the percentage over
+the card, the row filling up in the rows view. A file being made from another one (a transcription, an extracted
+folder, a converted copy) stands right after it in one tinted bubble while the work runs, "On its way…". Quick
+actions also show in Plasma's notifications and keep running when Dolphin NG is closed.
+
+<img src="ng/screenshots/readme/work.png" width="640" alt="Work in progress next to the files it comes from">
 
 ## Pinned to the top
 
-The pushpin button in the quick actions, right-click → **Pin to the Top**, or Ctrl+Alt+P on the selection keep files and folders at the top of their
-folder, before everything else, whatever the sorting; among themselves they follow the chosen order. A small pushpin in the
-colour of the file's type marks them, and their pushpin button is filled. The mark is kept with the file itself, as the extended attribute `user.ng.pinned`, so it
-follows the file when it is moved or renamed (it is not kept on file systems without extended attributes, such
-as FAT). Right-click → **Unpin from the Top** takes it away.
+The pushpin in the quick actions, right-click → Pin to the Top, or Ctrl+Alt+P keep files and folders first in
+their folder, whatever the sorting. The mark travels with the file (an extended attribute), the sidebar lists the
+pinned items, and grouped views give them a group of their own.
 
-The sidebar lists them in a **Pinned** section, above the filters: folders first, then files. A folder opens in
-the view, a file in its application; right-click offers "Show in its folder" and "Unpin from the Top". The
-section can be switched off on the NG settings page (Sidebar → Sections). The list is kept in dolphinrc
-(`PinnedPaths`) and fills itself whenever a folder shows a pinned item, so a pinned file that was moved comes
-back once its new folder is opened.
+<img src="ng/screenshots/readme/pinned.png" width="380" alt="Two pinned items in their own group">
 
-![Two pinned items at the top of their folder, and the Pinned section of the sidebar](ng/screenshots/features/pinned.png)
+## Quick actions
 
-In a grouped view they have a group of their own, **Pinned**, before the others; in the sidebar, two pinned items
-with the same name show the folder each is in.
+On hover, a card shows a small pill of actions for its kind of file: resize an image, a GIF to MP4, extract an
+archive, a PDF to images or text, transcribe audio and video (with whisper.cpp, on your computer), convert audio
+and video, open with the next application, cut, copy, pin. A settings page reorders them, switches them off, and
+adds your own: a command (with `{file}`, `{name}`, `{dir}`… and a menu of choices), a KDE service menu, or an
+application.
 
-| Tessera | Scheda |
-|---|---|
-| ![Grouped by date modified, Tessera cards: the Pinned group first](ng/screenshots/features/pinned-groups.png) | ![Grouped by date modified, Scheda cards: the Pinned group first](ng/screenshots/features/pinned-groups-scheda.png) |
+<img src="ng/screenshots/features/actions-editor.png" width="420" alt="The quick actions editor">
 
-## Settings
+## The sidebar
 
-Everything is a setting, on a graphical page: tabs, a tile with a drawing of each choice, switches, and a sketch of
-the window that follows what you pick.
+- **Glass**: the places on a card over the desktop's blur (or a blurred wallpaper, an animated gradient, or a
+  plain panel).
+- **Sections in any order**: pinned items, filters and disks are dragged into their order in the settings;
+  above the places they stay at the top, below them at the foot, and the places scroll in between.
+- **Disks**: every disk and partition as a box with its usage; an unmounted one is dashed and a click mounts it.
+  The classic Devices section is one setting away, and each disk can be hidden.
+- **One button**: the button at the top left of the toolbar hides and shows the whole sidebar (F9 too).
 
-![The NG settings page](ng/screenshots/features/settings.png)
+<img src="ng/screenshots/readme/sidebar.png" width="220" alt="The glass sidebar: places, recent, disks, filters">
 
-## Glass sidebar
+## Folder sizes
 
-The places panel is a sheet of glass. Its backdrop is a setting: a blurred copy of the wallpaper, an animated
-gradient, or the real blur of the desktop behind the window, done by the compositor (below).
+When Dolphin shows folder sizes, Dolphin NG keeps them across folders and restarts. A known size shows at once;
+it is checked again quietly in the background and only changes if it differs, and copies or deletions made by
+KDE applications update the folders above them.
 
-![The sidebar with the compositor's blur of the desktop behind it](ng/screenshots/sidebar-live-blur.png)
+## Dialog NG
 
-At the foot of the glass, the disks: the home one, then every other disk and partition as a box with its usage (an
-unmounted one is dashed, and a click mounts and opens it). Settings → NG → Sidebar can show them as the classic
-Devices section instead, and hide any one of them.
+[Dialog NG](https://github.com/Morzilla/dialog-ng) gives the Open/Save window of every KDE app (and of Firefox,
+Chrome and Flatpak apps through the portal) the same look: the same drawings and rows, a quick preview on hover,
+filters with their counts, groups, the items pinned here, and the glass sidebar.
 
-![Disks and partitions at the foot of the sidebar](ng/screenshots/features/disks.png)
-
-## The same in every app's file dialog
-
-[Dialog NG](https://github.com/Morzilla/dialog-ng) brings this look to KDE's Open/Save window, the one every KDE
-app (and Firefox, Chrome, Flatpak apps through the portal) opens: the same drawings of the kinds of file and rows,
-the quick preview, filters with their counts, groups, the items pinned here first, and the glass sidebar. Its
-quick preview is set on the NG settings page too (Previews → Open/Save window).
-
-![Dialog NG, the Open/Save window](https://raw.githubusercontent.com/Morzilla/dialog-ng/main/screenshots/dialog.png)
-
-## Part of the NG desktop
-
-- [Breeze NG](https://github.com/Morzilla/breeze-ng) – the widget style and window decoration it was designed with ([KDE Store](https://store.kde.org/p/2381557/))
-- [NeoLine](https://github.com/Morzilla/neoline-icons) – the outline icon theme in the screenshots ([KDE Store](https://store.kde.org/p/2381562/))
-- [Dialog NG](https://github.com/Morzilla/dialog-ng) – the Open/Save window of every KDE app, in the same look
-- Dolphin NG on the KDE Store: https://store.kde.org/p/2381561/
-
-One installer sets up all of them. It builds from source, asks which parts you want and which look to start from
-(Classic, Soft or Glass), and can switch the desktop to it at the end:
-
-```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/install-gui.sh)      # graphical
-bash <(curl -fsSL https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/install-desktop.sh)  # in the terminal
-```
-
-![The graphical installer: choosing the look and the icons](https://raw.githubusercontent.com/Morzilla/breeze-ng/ng/ng/screenshots/06-installer.png)
-
-The interface of Dolphin NG is in English, and in Italian on an Italian desktop.
-
-## What is different
-
-**Details view**
-- Each item takes two lines: the name, then the other visible columns joined; the date sits at the right edge.
-  There is no column header, and rows never get wider than the window.
-- No icons. By default each row is drawn like a card: at its start the card's drawing of the file, small, with
-  the type and size written in it (the folder with its item count, the page with its title, a picture as a
-  print, a video on film); the second line says the kind in words, the end of the row the creation and
-  modification dates. The quick actions come on hover, the selection is the cards' ring (rows selected next to
-  each other share one outline, with a check), and work in progress, families, the pin and cut files look as
-  on the cards. The settings keep the older type marks: a large faint abbreviation (watermark), or a line glyph
-  with the abbreviation (tile, pill, bare signs, coloured header).
-- Folders are drawn flat: a darker back with its tab, a lighter front with the item count and (when Dolphin
-  measures folders) the size written large on it. The well-known folders of the home (xdg-user-dirs: Desktop,
-  Downloads, Documents, Pictures, Music, Videos, Templates, Public) are recognised by where they are and take
-  their own colour and a NeoLine glyph on the front; other folders show their pictures or first entries.
-- With the older marks the size has its own column with a bar on a logarithmic scale (1 KiB to 10 GiB).
-- Hovering a row replaces the date with three buttons: open, preview, and the full context menu.
-- The preview is a card under the row: the first lines of text files, the first entries of folders, a thumbnail
-  for the rest. Pictures and the first page of PDFs can be zoomed with the wheel and dragged.
-- A bar above the list sorts with one click (one button per visible column, click again to reverse), filters
-  by kind of file from a menu with counts, and switches between two row styles.
-- Narrow windows drop the date first, then the size column.
-
-**Icons view**
-- Every item is a dark rounded tile; previews have rounded corners.
-
-**Sidebar**
-- Places is a floating "glass" panel. By default it shows a blurred copy of the desktop wallpaper, placed by
-  the window's position on screen; optionally a slow "lava lamp" animation in the wallpaper's colours, or the
-  compositor's real blur.
-- Section titles are small pills, the internal "Devices" section is replaced by a disk usage box.
-
-**Smaller things**
-- A "Root" toolbar action.
-- The location bar leaves edit mode when the focus moves to another part of the window.
+<img src="https://raw.githubusercontent.com/Morzilla/dialog-ng/main/screenshots/dialog.png" width="560" alt="Dialog NG, the Open/Save window">
 
 ## Install
 
-One script downloads the source, installs the build dependencies, builds, and installs into your home
-directory (`~/.local/dolphin-ng`), next to your distribution's Dolphin:
+The script downloads the source, installs the build dependencies, builds, and installs into
+`~/.local/dolphin-ng`, next to your distribution's Dolphin:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Morzilla/dolphin-ng/ng/ng/install.sh | bash
 ```
 
 or, from a clone, `ng/install.sh`. It adds a "Dolphin NG" entry to the application menu and a `dolphin-ng`
-command, and installs the files of the optional [Motto-Neo theme](ng/theme/README.md) without activating it
-(`--apply-theme` does that). `--no-deps`, `--no-theme`, `--prefix DIR` and `--uninstall` are the other options.
+command. Options: `--no-deps`, `--prefix DIR`, `--uninstall` (and `--no-theme` / `--apply-theme` for the optional
+[Motto-Neo theme](ng/theme/README.md)). Running it again updates.
 
-The script knows dnf (Fedora), apt (Debian, Ubuntu), pacman (Arch) and zypper (openSUSE). Only the Fedora path
-has been run, and only without its dependency step; reports and fixes for the others are welcome. The fork is
-based on Dolphin 26.08.1, which needs KDE Frameworks 6.23 and Qt 6.4 or newer, so distributions that ship older
-ones cannot build it.
+It knows dnf (Fedora), apt (Debian, Ubuntu), pacman (Arch) and zypper (openSUSE); only Fedora is used every
+day. Dolphin 26.08.1 needs KDE Frameworks 6.23 and Qt 6.4 or newer. To build by hand: install Dolphin's build
+dependencies, then `ng/build.sh` and `ng/dolphin-ng --new-window`.
 
-To build by hand: install Dolphin's build dependencies, then `ng/build.sh` and `ng/dolphin-ng --new-window`.
+The [Breeze NG](https://github.com/Morzilla/breeze-ng) installer sets up Dolphin NG together with the rest of the
+NG desktop (widget style, icons, Dialog NG), with a graphical interface.
 
-Settings are in Dolphin's own settings dialog, on a page called **NG** (stored in `dolphinrc`, group
-`DolphinNG`). Every setting can also be forced with a `DOLPHIN_NG_*` environment variable, documented in
-[`ng/dolphin-ng.conf.example`](ng/dolphin-ng.conf.example); the launcher reads those from
-`~/.config/dolphin-ng.conf`, and a variable that is set wins over the dialog. `ng/dolphinui.rc.example` is a
-toolbar layout with the New Folder, Up and Root buttons; the install script puts it in place if you have none.
+## Settings
+
+Everything is on a page called **NG** in Dolphin's settings (look, sidebar, rows, cards, previews), with tiles that
+draw each choice and a sketch of the window; three presets (Classic, Soft, Glass) set a whole look at once. The
+quick actions have a page of their own. Settings are stored in `dolphinrc` (group `DolphinNG`); any of them can be
+forced with a `DOLPHIN_NG_*` variable, see [`ng/dolphin-ng.conf.example`](ng/dolphin-ng.conf.example).
+
+<img src="ng/screenshots/features/settings.png" width="420" alt="The NG settings page">
 
 ## State of things
 
-- Developed on X11 with KWin, Plasma 6, a dark colour scheme and the Kvantum style. The fork's own painting
-  adapts to light colour schemes (checked once with Breeze Light); Wayland is untested. The "live" glass mode uses X11 calls.
-- The kind-of-file names in the filter menu and the labels in the preview card are hardcoded in Italian;
-  they should go through i18n.
-- File kinds and their abbreviations come from the file extension, not from the MIME type.
+- Used every day on Plasma 6.8 (Wayland), on Fedora; it was developed on X11 before that. Dark and light colour
+  schemes both work; the "live" glass needs a compositor that blurs (KWin).
+- The interface is in English, and in Italian on an Italian desktop; other languages are not translated yet.
+- File kinds and their abbreviations come from the file extension, not the MIME type.
 - The filter menu is skipped in folders with more than 4000 items.
-- Most settings on the NG page are read at start-up; only the sidebar picture and the row style apply at once.
 - All changes are marked with `dolphin-ng` comments in the source.
+
+## Part of the NG desktop
+
+- [Breeze NG](https://github.com/Morzilla/breeze-ng): the widget style and window decoration it was designed with, and the installer ([KDE Store](https://store.kde.org/p/2381557/))
+- [NeoLine](https://github.com/Morzilla/neoline-icons): the outline icon theme in the screenshots ([KDE Store](https://store.kde.org/p/2381562/))
+- [Dialog NG](https://github.com/Morzilla/dialog-ng): the Open/Save window of every KDE app, in the same look
+- Dolphin NG on the KDE Store: https://store.kde.org/p/2381561/
 
 ## Contributing
 
-Issues and pull requests are welcome. Good first steps: the i18n of the hardcoded strings, live
-settings, Wayland and light-theme testing, and content summaries on the second line (pages, dimensions, row
-counts) from KFileMetaData.
+Issues and pull requests are welcome: bugs, ideas, mockups, translations, testing on other distributions.
 
 ## Licence
 
-Like Dolphin: GPL-2.0-or-later, the whole fork, including the scripts in `ng/` (`LICENSE` holds the text). See also `COPYING` and `LICENSES/`. The theme in `ng/theme/` derives from L4ki's Motto themes and is
-GPL-3.0; see its README.
+Like Dolphin: GPL-2.0-or-later, the whole fork, including the scripts in `ng/` (`LICENSE` holds the text). See also
+`COPYING` and `LICENSES/`. The theme in `ng/theme/` derives from L4ki's Motto themes and is GPL-3.0; see its README.
