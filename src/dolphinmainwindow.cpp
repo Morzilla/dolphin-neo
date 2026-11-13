@@ -97,6 +97,7 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <QMenu>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QPainterPath>
 #include <QToolButton>
@@ -800,6 +801,21 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
                 });
             });
             button->showMenu();
+        });
+    }
+    // for demos: DOLPHIN_NG_DEMO_SELECT="name|name|..." selects those items of the folder once it is shown (no input sent)
+    static bool ngDemoSelectDone = false;
+    if (const QString demo = qEnvironmentVariable("DOLPHIN_NG_DEMO_SELECT"); !demo.isEmpty() && !ngDemoSelectDone) {
+        ngDemoSelectDone = true;
+        QTimer::singleShot(3000, this, [this, demo] {
+            if (!m_activeViewContainer) {
+                return;
+            }
+            QStringList names = demo.split(QLatin1Char('|'), Qt::SkipEmptyParts);
+            for (QString &name : names) {
+                name = QRegularExpression::escape(name);
+            }
+            m_activeViewContainer->view()->selectItems(QRegularExpression(QStringLiteral("^(%1)$").arg(names.join(QLatin1Char('|')))), true);
         });
     }
     // for tests: DOLPHIN_NG_TEST_DOCK_WIDTH narrows the places panel step by step down to that width (no input sent)
