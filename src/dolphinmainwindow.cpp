@@ -95,6 +95,8 @@
 #include <QSharedPointer>
 #include <QShowEvent>
 #include <QStandardPaths>
+#include <QFile>
+#include <QMenu>
 #include <QTimer>
 #include <QPainterPath>
 #include <QToolButton>
@@ -723,6 +725,72 @@ void DolphinMainWindow::showEvent(QShowEvent *event)
             if (m_ngSidebarToggle) {
                 m_ngSidebarToggle->trigger();
             }
+        });
+    }
+    // for demos: DOLPHIN_NG_DEMO_MENU="Button text|Item text|/path/menu.png" opens the menu of the bar button whose text
+    // starts with "Button text", lights "Item text" as if the pointer were on it, saves a picture of the menu, and
+    // writes next to it (".txt") where the button and the menu are in the window. No input is sent
+    static bool ngDemoMenuDone = false;
+    if (const QString demo = qEnvironmentVariable("DOLPHIN_NG_DEMO_MENU"); !demo.isEmpty() && !ngDemoMenuDone) {
+        ngDemoMenuDone = true;
+        const QStringList parts = demo.split(QLatin1Char('|'));
+        const int delay = qEnvironmentVariableIsSet("DOLPHIN_NG_DEMO_MENU_DELAY") ? qEnvironmentVariableIntValue("DOLPHIN_NG_DEMO_MENU_DELAY") : 5000;
+        QTimer::singleShot(delay, this, [this, parts] {
+            if (parts.size() < 3) {
+                return;
+            }
+            QToolButton *button = nullptr;
+            const auto buttons = findChildren<QToolButton *>();
+            for (QToolButton *b : buttons) {
+                if (b->isVisible() && b->menu() && KLocalizedString::removeAcceleratorMarker(b->text()).startsWith(parts[0])) {
+                    button = b;
+                    break;
+                }
+            }
+            if (!button) {
+                QStringList seen;
+                for (QToolButton *b : buttons) {
+                    seen << QStringLiteral("%1 visible=%2 menu=%3").arg(b->text()).arg(b->isVisible()).arg(b->menu() != nullptr);
+                }
+                QFile log(parts[2] + QStringLiteral(".log"));
+                if (log.open(QIODevice::WriteOnly)) {
+                    log.write(seen.join(QLatin1Char('\n')).toUtf8());
+                }
+                return;
+            }
+            const QString item = parts[1], out = parts[2];
+            QTimer::singleShot(700, this, [this, button, item, out] {
+                auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+                if (!menu) {
+                    menu = button->menu(); // the popup may not be "active" when the window is not focused
+                }
+                if (!menu || !menu->isVisible()) {
+                    QFile log(out + QStringLiteral(".log"));
+                    if (log.open(QIODevice::WriteOnly)) {
+                        log.write("menu not visible");
+                    }
+                    return;
+                }
+                const auto actions = menu->actions();
+                for (QAction *a : actions) {
+                    if (!item.isEmpty() && KLocalizedString::removeAcceleratorMarker(a->text()).contains(item)) {
+                        menu->setActiveAction(a);
+                    }
+                }
+                QTimer::singleShot(300, this, [this, button, menu, out] {
+                    menu->grab().save(out);
+                    const QRect b(button->mapTo(this, QPoint(0, 0)), button->size());
+                    const QRect m(mapFromGlobal(menu->geometry().topLeft()), menu->size());
+                    QFile f(out + QStringLiteral(".txt"));
+                    if (f.open(QIODevice::WriteOnly)) {
+                        f.write(QStringLiteral("button %1 %2 %3 %4\nmenu %5 %6 %7 %8\n")
+                                    .arg(b.x()).arg(b.y()).arg(b.width()).arg(b.height())
+                                    .arg(m.x()).arg(m.y()).arg(m.width()).arg(m.height()).toUtf8());
+                    }
+                    menu->close();
+                });
+            });
+            button->showMenu();
         });
     }
     // for tests: DOLPHIN_NG_TEST_DOCK_WIDTH narrows the places panel step by step down to that width (no input sent)
