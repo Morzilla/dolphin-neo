@@ -2935,12 +2935,18 @@ QList<QPair<int, QVariant>> KFileItemModel::sizeRoleGroups() const
         }
 
         if (newGroupValue.isEmpty()) {
-            if (fileSize < 5 * 1024 * 1024) { // < 5 MB
-                newGroupValue = i18nc("@title:group Size", "Small");
-            } else if (fileSize < 10 * 1024 * 1024) { // < 10 MB
-                newGroupValue = i18nc("@title:group Size", "Medium");
+            // dolphin-ng: by order of magnitude, as the sizes read: bytes, KB, MB, GB, TB
+            const KIO::filesize_t kb = 1024;
+            if (fileSize < kb) {
+                newGroupValue = ngTr("Under 1 KB", "Meno di 1 KB");
+            } else if (fileSize < kb * kb) {
+                newGroupValue = QStringLiteral("KB");
+            } else if (fileSize < kb * kb * kb) {
+                newGroupValue = QStringLiteral("MB");
+            } else if (fileSize < kb * kb * kb * kb) {
+                newGroupValue = QStringLiteral("GB");
             } else {
-                newGroupValue = i18nc("@title:group Size", "Big");
+                newGroupValue = QStringLiteral("TB");
             }
         }
 

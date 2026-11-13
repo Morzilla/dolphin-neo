@@ -1060,7 +1060,9 @@ private:
             groups->setIcon(QIcon::fromTheme(QStringLiteral("view-group")));
             groups->setPopupMode(QToolButton::InstantPopup);
             const bool grouped = m_view->groupedSorting();
-            const QByteArray role = grouped ? m_view->groupRole() : QByteArray();
+            // an empty raw role: the groups follow whatever the folder is sorted by ("dynamic")
+            const QByteArray role = grouped ? m_view->rawGroupRole() : QByteArray();
+            const bool dynamicGroups = grouped && role.isEmpty();
             groups->setCheckable(true);
             groups->setChecked(grouped);
             auto *groupMenu = new QMenu(groups);
@@ -1068,6 +1070,7 @@ private:
             QString currentGroup = ngTr("None", "Nessuno");
             const QList<std::tuple<QByteArray, QString, QString>> choices{
                 {QByteArray(), ngTr("None", "Nessuno"), QStringLiteral("view-list-details")},
+                {QByteArrayLiteral("@sort"), ngTr("Like the sorting (dynamic)", "Come l'ordinamento (dinamici)"), QStringLiteral("view-sort")},
                 {QByteArrayLiteral("modificationtime"), ngTr("Date modified", "Data di modifica"), QStringLiteral("view-calendar-day")},
                 {QByteArrayLiteral("creationtime"), ngTr("Date created", "Data di creazione"), QStringLiteral("view-calendar")},
                 {QByteArrayLiteral("type"), ngTr("Type", "Tipo"), QStringLiteral("view-media-genre")},
@@ -1076,18 +1079,25 @@ private:
             for (const auto &[choiceRole, label, icon] : choices) {
                 QAction *action = groupMenu->addAction(QIcon::fromTheme(icon), label);
                 action->setCheckable(true);
-                const bool isCurrent = choiceRole.isEmpty() ? !grouped : (grouped && role == choiceRole);
+                const bool isDynamic = choiceRole == "@sort";
+                const bool isCurrent = choiceRole.isEmpty() ? !grouped : isDynamic ? dynamicGroups : (grouped && role == choiceRole);
                 action->setChecked(isCurrent);
                 groupActions->addAction(action);
                 if (isCurrent) {
-                    currentGroup = label;
+                    currentGroup = isDynamic ? ngTr("dynamic", "dinamici") : label;
                 }
-                if (choiceRole.isEmpty()) {
+                if (isDynamic) {
+                    action->setToolTip(ngTr("The groups follow the sorting: periods by date, letters by name, kinds by type, sizes by size",
+                                            "I gruppi seguono l'ordinamento: periodi per data, lettere per nome, tipi per tipo, taglie per dimensione"));
                     groupMenu->addSeparator();
                 }
                 connect(action, &QAction::triggered, this, [this, choiceRole] {
                     if (choiceRole.isEmpty()) {
                         m_view->setGroupedSorting(false);
+                    } else if (choiceRole == "@sort") {
+                        // dynamic: no group role of its own, so the groups are made from the sort role, whatever it is
+                        m_view->setGroupedSorting(true);
+                        m_view->setGroupRole(QByteArray());
                     } else {
                         // the groups come in the order of the sorting: sorted by something else, the same date would
                         // be split all over the folder. Group by a date: newest first; by kind or size: by that
