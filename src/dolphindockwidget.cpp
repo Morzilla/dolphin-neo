@@ -352,7 +352,9 @@ void DolphinDockWidget::ngApplySettings()
     } else if (qEnvironmentVariableIsSet("DOLPHIN_NG_GLASS")) {
         m_glass = ngEnvInt("DOLPHIN_NG_GLASS", 75);
     } else {
-        m_glass = 75;
+        // the desktop seen through the card: three quarters of it under a dark scheme; under a light one less, or a
+        // dark wallpaper turns the card a muddy grey under black text (Wayland gives no way to look at the backdrop)
+        m_glass = ngIsDark(palette()) ? 75 : 30;
     }
     if (pollBackdrop && !m_glassTimer) {
         m_glassTimer = new QTimer(this);
@@ -1085,6 +1087,10 @@ void DolphinDockWidget::mouseReleaseEvent(QMouseEvent *event)
 
 bool DolphinDockWidget::event(QEvent *event)
 {
+    if (event->type() == QEvent::PaletteChange) {
+        ngApplySettings(); // a light or a dark colour scheme: the card lets more or less of the desktop through
+        update();
+    }
     // dolphin-ng: the compositor blurs only behind the glass cards, so the window tells it where they are
     if (event->type() == QEvent::Resize || event->type() == QEvent::Move || event->type() == QEvent::Show || event->type() == QEvent::Hide) {
         if (QWidget *top = window(); top && top != this && top->metaObject()->indexOfSlot("ngUpdateBlurRegion()") >= 0) {
