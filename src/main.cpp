@@ -33,6 +33,10 @@
 #endif
 
 #include <QApplication>
+#include <QPlatformSurfaceEvent>
+#include <QWidget>
+#include <QWindow>
+#include <cstdio>
 #include <QCommandLineParser>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -72,7 +76,44 @@ int main(int argc, char **argv)
      */
     KIconTheme::initTheme();
 
+    // dolphin-ng: a widget that gets a native window of its own (something asks for its winId()) makes Qt give one
+    // to all its siblings as well, by default. In a translucent main window that turned the toolbar, the sidebar and
+    // the view into separate Wayland subsurfaces as soon as the settings opened: the sidebar was no longer painted in
+    // the window that carries its blur and its see-through hole (trails, flicker, a grey sidebar).
+    QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
+
     QApplication app(argc, argv);
+    // dolphin-ng, for debugging: DOLPHIN_NG_DEBUG_NATIVE=1 prints every widget inside a window that gets a native
+    // window of its own, with its ancestors (straight to stderr: Qt's own messages may go to the journal)
+    struct NgNativeProbe : QObject {
+        bool eventFilter(QObject *object, QEvent *event) override
+        {
+            if (event->type() == QEvent::PlatformSurface
+                && static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated) {
+                auto *window = qobject_cast<QWindow *>(object);
+                if (window && window->parent()) {
+                    QStringList chain;
+                    for (QWindow *w = window; w; w = w->parent()) {
+                        chain << w->objectName();
+                    }
+                    std::fprintf(stderr, "dolphin-ng: native child window %s\n", qPrintable(chain.join(QStringLiteral(" < "))));
+                }
+            } else if (event->type() == QEvent::WinIdChange) {
+                auto *widget = qobject_cast<QWidget *>(object);
+                if (widget && !widget->isWindow()) {
+                    QStringList chain;
+                    for (QWidget *w = widget; w; w = w->parentWidget()) {
+                        chain << QStringLiteral("%1(%2)").arg(QString::fromLatin1(w->metaObject()->className()), w->objectName());
+                    }
+                    std::fprintf(stderr, "dolphin-ng: native widget %s\n", qPrintable(chain.join(QStringLiteral(" < "))));
+                }
+            }
+            return false;
+        }
+    };
+    if (qEnvironmentVariableIsSet("DOLPHIN_NG_DEBUG_NATIVE")) {
+        app.installEventFilter(new NgNativeProbe);
+    }
     app.setWindowIcon(QIcon::fromTheme(QStringLiteral("org.kde.dolphin"), app.windowIcon()));
 
 #if HAVE_STYLE_MANAGER
