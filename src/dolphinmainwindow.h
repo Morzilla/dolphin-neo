@@ -278,6 +278,8 @@ protected:
     void showEvent(QShowEvent *event) override;
     QRegion m_ngBlurRegion;
     bool m_ngBlurSet = false;
+    bool m_ngAurora = false; // Breeze NG Aurora: the widget style paints the window's sheet (see paintEvent)
+    void ngUpdateAurora();
     /** dolphin-ng: with the "live blur" sidebar the window is translucent and paints its own opaque background. */
     void paintEvent(QPaintEvent *event) override;
 

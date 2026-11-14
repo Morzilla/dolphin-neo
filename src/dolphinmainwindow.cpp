@@ -99,6 +99,7 @@
 #include <QMenu>
 #include <QRegularExpression>
 #include <QPlatformSurfaceEvent>
+#include <QStyleOption>
 #include <QTimer>
 #include <QPainterPath>
 #include <QToolButton>
@@ -247,6 +248,7 @@ DolphinMainWindow::DolphinMainWindow()
                 setStyle(nullptr);
             }
         }
+        ngUpdateAurora();
         ngUpdateBlurRegion(); // the blur follows the look of the sidebar (only the live one asks for it)
     };
     applyNgWindowSettings();
@@ -675,6 +677,9 @@ void DolphinMainWindow::showTarget()
 
 bool DolphinMainWindow::event(QEvent *event)
 {
+    if (event->type() == QEvent::StyleChange || event->type() == QEvent::PaletteChange) {
+        QTimer::singleShot(700, this, &DolphinMainWindow::ngUpdateAurora); // a global theme writes the decoration last
+    }
     // dolphin-ng: a new native window (Qt makes one when the translucency changes) has no blur yet: ask again,
     // even for the same region
     if (event->type() == QEvent::PlatformSurface
@@ -703,7 +708,9 @@ void DolphinMainWindow::ngUpdateBlurRegion()
     QRegion region;
     static const bool wholeWindow = qEnvironmentVariable("DOLPHIN_NG_BLUR_REGION") == QLatin1String("window"); // for tests
     const bool live = !DolphinDockWidget::ngGlassPlain() && !DolphinDockWidget::ngGlassImageMode();
-    if (live && wholeWindow) {
+    if (m_ngAurora) {
+        region = rect(); // the whole window is a sheet of glass
+    } else if (live && wholeWindow) {
         region = rect();
     } else if (live) {
         const auto docks = findChildren<DolphinDockWidget *>();
@@ -865,9 +872,32 @@ void DolphinMainWindow::paintEvent(QPaintEvent *event)
 {
     if (testAttribute(Qt::WA_TranslucentBackground)) {
         QPainter painter(this);
-        painter.fillRect(event->rect(), palette().color(QPalette::Window)); // the docks cut their glass out of this
+        if (m_ngAurora) {
+            // Breeze NG Aurora: the whole window is a see-through sheet with the style's lights behind it. The style
+            // paints it (and lays it again under its controls) for a window that carries this property.
+            painter.setClipRegion(event->region());
+            QStyleOption option;
+            option.initFrom(this);
+            style()->drawPrimitive(QStyle::PE_Widget, &option, &painter, this);
+        } else {
+            painter.fillRect(event->rect(), palette().color(QPalette::Window)); // the docks cut their glass out of this
+        }
     }
     KXmlGuiWindow::paintEvent(event);
+}
+
+void DolphinMainWindow::ngUpdateAurora()
+{
+    // the look is the window decoration's theme (what a Breeze NG global theme sets), as the widget style reads it
+    const QString theme = KSharedConfig::openConfig(QStringLiteral("kwinrc"), KConfig::NoGlobals)->group(QStringLiteral("org.kde.kdecoration2")).readEntry("theme", QString());
+    const bool aurora = theme.compare(QLatin1String("Breeze NG Aurora"), Qt::CaseInsensitive) == 0 && QApplication::style()->name().compare(QLatin1String("breezeng"), Qt::CaseInsensitive) == 0;
+    if (aurora != m_ngAurora) {
+        m_ngAurora = aurora;
+        setProperty("_breeze_ng_glass", aurora ? QVariant(true) : QVariant());
+        m_ngBlurSet = false;
+        ngUpdateBlurRegion();
+        update();
+    }
 }
 
 void DolphinMainWindow::closeEvent(QCloseEvent *event)
