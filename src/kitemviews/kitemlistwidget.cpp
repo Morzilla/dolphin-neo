@@ -2370,9 +2370,17 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal 
             if (p < 0.02) {
                 continue;
             }
+            // The bridge spans only what both cards have reached: while two cards grow side by side out of the row
+            // below, a bridge at full height stood above them, a stray line where the cards meet that vanished when
+            // they caught up with it. And only cards that touch the side they share are bridged.
+            const QRectF ga = grownRect(i), gb = grownRect(j);
             if (beside(a, b)) {
                 const qreal gap = b.left() - a.right();
-                area.addRect(QRectF(a.right() - 1, a.top() - grow, gap + 2, a.height() + 2 * grow));
+                const qreal from = qMax(ga.top(), gb.top()), to = qMin(ga.bottom(), gb.bottom());
+                if (to - from < 1 || ga.right() < a.right() + grow - 0.5 || gb.left() > b.left() - grow + 0.5) {
+                    continue;
+                }
+                area.addRect(QRectF(a.right() - 1, from, gap + 2, to - from));
                 // a 2x2 group: fill the gap where the four meet
                 for (int k = 0; k < block.size(); ++k) {
                     if (under(a, block[k])) {
@@ -2385,7 +2393,11 @@ QPainterPath KItemListWidget::ngSelectionBlock(qreal grow, QRectF *reach, qreal 
                 }
             } else {
                 const qreal gap = b.top() - a.bottom();
-                area.addRect(QRectF(a.left() - grow, a.bottom() - 1, a.width() + 2 * grow, gap + 2));
+                const qreal from = qMax(ga.left(), gb.left()), to = qMin(ga.right(), gb.right());
+                if (to - from < 1 || ga.bottom() < a.bottom() + grow - 0.5 || gb.top() > b.top() - grow + 0.5) {
+                    continue;
+                }
+                area.addRect(QRectF(from, a.bottom() - 1, to - from, gap + 2));
             }
         }
     }

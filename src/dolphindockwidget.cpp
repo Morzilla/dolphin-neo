@@ -749,7 +749,11 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
                 QRectF textRect = !mounted ? box.adjusted(10, 0, -10, 0) : compact ? box.adjusted(10, 5, -10, -17) : box.adjusted(10, 8, -10, -24);
                 if (!eject.isNull()) {
                     textRect.setRight(eject.left() - 6);
-                    QIcon::fromTheme(QStringLiteral("media-eject")).paint(&painter, eject.toRect());
+                    // the glyph as tall as the text beside it (it was drawn over the whole hit area, larger than the text);
+                    // the area to click stays the larger square
+                    const int glyph = qMax(10, int(metrics.ascent()) + 1);
+                    const QRect glyphRect(qRound(eject.center().x() - glyph / 2.0), qRound(eject.center().y() - glyph / 2.0), glyph, glyph);
+                    QIcon::fromTheme(QStringLiteral("media-eject")).paint(&painter, glyphRect);
                 }
                 QString left;
                 if (disk.home) {
