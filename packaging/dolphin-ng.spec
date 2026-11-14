@@ -10,7 +10,7 @@
 
 Name:           dolphin-ng
 Version:        26.08.1^%{snapdate}git%{shortcommit}
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        A fork of Dolphin that rethinks how you work with your files
 License:        GPL-2.0-or-later
 URL:            https://github.com/Morzilla/dolphin-ng
@@ -109,6 +109,15 @@ MimeType=inode/directory;
 StartupWMClass=dolphin
 EOT
 
+%post
+# on the first install only: say how to open it (Fedora's Dolphin stays the default file manager)
+if [ "$1" -eq 1 ]; then
+    echo
+    echo "Dolphin NG is installed next to Dolphin. Open it with:  dolphin-ng"
+    echo "or from the application menu: Dolphin NG."
+    echo
+fi
+
 %files
 %license LICENSE COPYING
 %doc NG.md FEATURES.md
@@ -120,6 +129,9 @@ EOT
 %{_datadir}/applications/dolphin-ng.desktop
 
 %changelog
+* Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^202611141104git7bc41d1-2
+- At the first install, say how to open it
+
 * Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^202611141104git7bc41d1-1
 - The same room around every menu arrow in the bar
 
