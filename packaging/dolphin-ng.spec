@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-%global commit      543c404bf67f6c9ed3694dd8d130564f03818793
+%global commit      78ab3b17b969b44825bb4e9f798ac7ced546bef6
 %global shortcommit %(c=%{commit}; echo ${c:0:7})
-%global snapdate    202611141153
+%global snapdate    202611141217
 # installed apart from the system, next to Fedora's own Dolphin
 %global ngprefix    /opt/ng/dolphin-ng
 # its programs find its libraries through an RPATH to /opt/ng/dolphin-ng: on purpose, since they have the same names
@@ -129,6 +129,9 @@ fi
 %{_datadir}/applications/dolphin-ng.desktop
 
 %changelog
+* Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^202611141217git78ab3b1-1
+- The bar follows a change of theme while Dolphin is open
+
 * Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^202611141153git543c404-1
 - Live blur sidebar less see-through under a light colour scheme
 
