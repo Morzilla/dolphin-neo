@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-%global commit      fb176360ccf8f862f9d4972a07db040e05454c9d
+%global commit      5957c2b4eb79287ba8fb362a9fe4492c0931becc
 %global shortcommit %(c=%{commit}; echo ${c:0:7})
 %global snapdate    20261114
 # installed apart from the system, next to Fedora's own Dolphin
@@ -120,5 +120,8 @@ EOT
 %{_datadir}/applications/dolphin-ng.desktop
 
 %changelog
+* Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^20261114git5957c2b-1
+- Default look: Cards view (Scheda), sidebar over the desktop blur
+
 * Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^20261114gitfb17636-1
 - First package
