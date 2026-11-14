@@ -1631,10 +1631,16 @@ void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
         painter->setRenderHint(QPainter::Antialiasing);
         painter->setPen(Qt::NoPen);
         const bool dark = ngIsDark(m_styleOption.palette);
-        painter->setBrush(dark ? QColor(0, 0, 0, 66) : QColor(0, 0, 0, 14)); // darker than the view on either scheme
-        painter->drawRoundedRect(card, 5, 5);
-        painter->setPen(QPen(dark ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
-        painter->drawLine(QPointF(card.left() + 5, card.top() + 0.5), QPointF(card.right() - 5, card.top() + 0.5));
+        if (ngAurora()) {
+            // Breeze NG Aurora: a light veil on the window's glass, no lit edge
+            painter->setBrush(dark ? QColor(255, 255, 255, 15) : QColor(0, 0, 0, 12));
+            painter->drawRoundedRect(card, 8, 8);
+        } else {
+            painter->setBrush(dark ? QColor(0, 0, 0, 66) : QColor(0, 0, 0, 14)); // darker than the view on either scheme
+            painter->drawRoundedRect(card, 5, 5);
+            painter->setPen(QPen(dark ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
+            painter->drawLine(QPointF(card.left() + 5, card.top() + 0.5), QPointF(card.right() - 5, card.top() + 0.5));
+        }
         painter->restore();
     } else if (m_alternateBackground && ngRowStyle() == NgRowStyle::Open) {
         // open rows: no card and no separator; the row is told apart by its colour wash alone

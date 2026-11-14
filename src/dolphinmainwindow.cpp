@@ -898,6 +898,7 @@ void DolphinMainWindow::ngUpdateAurora()
     if (aurora != m_ngAurora) {
         m_ngAurora = aurora;
         ngSetAurora(aurora);
+        setContentsMargins(0, 0, 0, aurora ? 6 : 0); // a little air under the sidebar and the view, inside the glass
         const auto all = findChildren<QWidget *>();
         for (QWidget *child : all) {
             child->update(); // rims come and go everywhere

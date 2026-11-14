@@ -853,7 +853,7 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         painter->setRenderHint(QPainter::Antialiasing);
         painter->setPen(Qt::NoPen);
         const bool darkScheme = ngIsDark(styleOption().palette);
-        painter->setBrush(darkScheme ? QColor(0, 0, 0, 62) : QColor(0, 0, 0, 14));
+        painter->setBrush(ngAurora() ? (darkScheme ? QColor(255, 255, 255, 15) : QColor(0, 0, 0, 12)) : darkScheme ? QColor(0, 0, 0, 62) : QColor(0, 0, 0, 14));
         painter->drawRoundedRect(tile, 12, 12);
         if (!ngAurora()) { // Aurora has no lit edges
             painter->setPen(QPen(darkScheme ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
@@ -5038,10 +5038,16 @@ void KStandardItemListWidget::paintNgCardSheet(QPainter *painter)
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
     painter->setPen(Qt::NoPen);
-    painter->setBrush(dark ? QColor(0, 0, 0, 62) : QColor(0, 0, 0, 14));
-    painter->drawRoundedRect(card, 12, 12);
-    painter->setPen(QPen(dark ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
-    painter->drawLine(QPointF(card.left() + 12, card.top() + 0.5), QPointF(card.right() - 12, card.top() + 0.5));
+    if (ngAurora()) {
+        // Breeze NG Aurora: a light veil on the window's glass, no lit edge
+        painter->setBrush(dark ? QColor(255, 255, 255, 15) : QColor(0, 0, 0, 12));
+        painter->drawRoundedRect(card, 12, 12);
+    } else {
+        painter->setBrush(dark ? QColor(0, 0, 0, 62) : QColor(0, 0, 0, 14));
+        painter->drawRoundedRect(card, 12, 12);
+        painter->setPen(QPen(dark ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
+        painter->drawLine(QPointF(card.left() + 12, card.top() + 0.5), QPointF(card.right() - 12, card.top() + 0.5));
+    }
     painter->restore();
 }
 

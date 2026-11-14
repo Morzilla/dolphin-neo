@@ -765,7 +765,7 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
 
                 if (mounted) {
                     painter.setPen(Qt::NoPen);
-                    painter.setBrush(darkGlass ? QColor(0, 0, 0, 62) : QColor(255, 255, 255, 130));
+                    painter.setBrush(ngAurora() ? (darkGlass ? QColor(255, 255, 255, 15) : QColor(0, 0, 0, 12)) : darkGlass ? QColor(0, 0, 0, 62) : QColor(255, 255, 255, 130));
                 } else {
                     QColor line = palette().color(QPalette::WindowText);
                     line.setAlpha(70);
