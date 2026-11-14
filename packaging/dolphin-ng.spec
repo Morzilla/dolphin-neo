@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-%global commit      17878f75ff27c05d47b6d0f609063f2b4f8dab01
+%global commit      2a92cd3056b9084c81caa8654f2f4d0da9527e12
 %global shortcommit %(c=%{commit}; echo ${c:0:7})
-%global snapdate    202611141225
+%global snapdate    202611141227
 # installed apart from the system, next to Fedora's own Dolphin
 %global ngprefix    /opt/ng/dolphin-ng
 # its programs find its libraries through an RPATH to /opt/ng/dolphin-ng: on purpose, since they have the same names
@@ -129,6 +129,9 @@ fi
 %{_datadir}/applications/dolphin-ng.desktop
 
 %changelog
+* Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^202611141227git2a92cd3-1
+- List, Icons and Classic icons in the menu of the cards button
+
 * Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^202611141225git17878f7-1
 - No stray line where selected cards meet; smaller eject glyph in the disk boxes
 
