@@ -183,10 +183,11 @@ DolphinMainWindow::DolphinMainWindow()
 
     // dolphin-ng: the "live blur" sidebar is a hole in the window showing the compositor's blur, so the window
     // needs an alpha channel. Kvantum used to provide it; with an opaque widget style (Breeze) we do it here,
-    // and paintEvent() fills the rest of the window with the window colour.
-    if (!DolphinDockWidget::ngGlassPlain() && !DolphinDockWidget::ngGlassImageMode()) {
-        setAttribute(Qt::WA_TranslucentBackground);
-    }
+    // and paintEvent() fills the rest of the window with the window colour. Always, in every look of the sidebar:
+    // switching it on an open window left Wayland surfaces without an alpha channel that the compositor took as
+    // opaque (it stopped repainting behind them: trails, flicker, a grey or stale sidebar). Changing the look now
+    // changes only what is painted and where the blur is asked for.
+    setAttribute(Qt::WA_TranslucentBackground);
 
     setStateConfigGroup("State");
 
@@ -246,12 +247,7 @@ DolphinMainWindow::DolphinMainWindow()
                 setStyle(nullptr);
             }
         }
-        const bool translucent = !DolphinDockWidget::ngGlassPlain() && !DolphinDockWidget::ngGlassImageMode();
-        if (translucent != testAttribute(Qt::WA_TranslucentBackground)) {
-            setAttribute(Qt::WA_TranslucentBackground, translucent); // Qt re-creates the native window for this
-            m_ngBlurSet = false; // a new native window: say it again
-            ngUpdateBlurRegion();
-        }
+        ngUpdateBlurRegion(); // the blur follows the look of the sidebar (only the live one asks for it)
     };
     applyNgWindowSettings();
     connect(NgSettings::instance(), &NgSettings::changed, this, applyNgWindowSettings);
@@ -706,9 +702,10 @@ void DolphinMainWindow::ngUpdateBlurRegion()
     // compositor blur again under the file view at every scrolled frame, where nothing of it shows.
     QRegion region;
     static const bool wholeWindow = qEnvironmentVariable("DOLPHIN_NG_BLUR_REGION") == QLatin1String("window"); // for tests
-    if (testAttribute(Qt::WA_TranslucentBackground) && wholeWindow) {
+    const bool live = !DolphinDockWidget::ngGlassPlain() && !DolphinDockWidget::ngGlassImageMode();
+    if (live && wholeWindow) {
         region = rect();
-    } else if (testAttribute(Qt::WA_TranslucentBackground)) {
+    } else if (live) {
         const auto docks = findChildren<DolphinDockWidget *>();
         for (const DolphinDockWidget *dock : docks) {
             if (dock->isVisible() && !dock->isFloating()) {
