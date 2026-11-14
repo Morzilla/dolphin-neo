@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-%global commit      7bc41d1b47f2a3661444e8827b23a4f7aba4fb61
+%global commit      543c404bf67f6c9ed3694dd8d130564f03818793
 %global shortcommit %(c=%{commit}; echo ${c:0:7})
-%global snapdate    202611141104
+%global snapdate    202611141153
 # installed apart from the system, next to Fedora's own Dolphin
 %global ngprefix    /opt/ng/dolphin-ng
 # its programs find its libraries through an RPATH to /opt/ng/dolphin-ng: on purpose, since they have the same names
@@ -10,7 +10,7 @@
 
 Name:           dolphin-ng
 Version:        26.08.1^%{snapdate}git%{shortcommit}
-Release:        2%{?dist}
+Release:        1%{?dist}
 Summary:        A fork of Dolphin that rethinks how you work with your files
 License:        GPL-2.0-or-later
 URL:            https://github.com/Morzilla/dolphin-ng
@@ -129,6 +129,9 @@ fi
 %{_datadir}/applications/dolphin-ng.desktop
 
 %changelog
+* Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^202611141153git543c404-1
+- Live blur sidebar less see-through under a light colour scheme
+
 * Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^202611141104git7bc41d1-2
 - At the first install, say how to open it
 
