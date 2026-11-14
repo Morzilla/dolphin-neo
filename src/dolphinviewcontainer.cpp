@@ -974,10 +974,10 @@ private:
             cards->setChecked(cardsOn);
             cards->setPopupMode(QToolButton::MenuButtonPopup);
             cards->setText(cardsOn ? ngTr("Cards: %1", "Card: %1").arg(QLatin1String(looks[int(ngCardStyle())])) : ngTr("Cards", "Card"));
-            cards->setToolTip(cardsOn ? ngTr("A click goes to the next kind of card (Tessera, Scheda, Dossier); the arrow picks one, or goes back to the list.",
-                                             "Un clic passa al tipo di card seguente (Tessera, Scheda, Dossier); la freccia ne sceglie uno, o torna alla lista.")
-                                      : ngTr("Cards view: every item is a card with all its details. The arrow picks the kind of card.",
-                                             "Vista a card: ogni elemento è una scheda con tutti i dettagli. La freccia sceglie il tipo di card."));
+            cards->setToolTip(cardsOn ? ngTr("A click goes to the next kind of card (Tessera, Scheda, Dossier); the arrow picks one, or another view (list, icons).",
+                                             "Un clic passa al tipo di card seguente (Tessera, Scheda, Dossier); la freccia ne sceglie uno, o un'altra vista (lista, icone).")
+                                      : ngTr("Cards view: every item is a card with all its details. The arrow picks the kind of card, or another view (list, icons).",
+                                             "Vista a card: ogni elemento è una scheda con tutti i dettagli. La freccia sceglie il tipo di card, o un'altra vista (lista, icone)."));
             auto *menu = new QMenu(cards);
             auto *group = new QActionGroup(menu);
             for (int i = 0; i < 3; ++i) {
@@ -1010,12 +1010,38 @@ private:
                     ngSettingsInvalidate();
                 });
             }
-            if (cardsOn) {
-                menu->addSeparator();
-                QAction *back = menu->addAction(QIcon::fromTheme(QStringLiteral("view-list-details")), ngTr("Back to the list", "Torna alla lista"));
-                connect(back, &QAction::triggered, this, [this] {
-                    m_view->setViewMode(m_modeBeforeCards == DolphinView::CardsView ? DolphinView::DetailsView : m_modeBeforeCards);
-                });
+            // the other views, one click away from the bar too: the list, the icons as Dolphin NG draws them (tiles)
+            // and the classic icons (the icon with its name under it, as in Dolphin)
+            menu->addSeparator();
+            {
+                const struct {
+                    QString label;
+                    const char *icon;
+                    DolphinView::Mode mode;
+                    int tiles; // -1: does not matter, 1: with tiles, 0: classic
+                } others[] = {{ngTr("List", "Lista"), "view-list-details", DolphinView::DetailsView, -1},
+                              {ngTr("Icons", "Icone"), "view-list-icons", DolphinView::IconsView, 1},
+                              {ngTr("Classic icons", "Icone classiche"), "view-list-icons", DolphinView::IconsView, 0}};
+                auto *views = new QActionGroup(menu);
+                for (const auto &other : others) {
+                    QAction *action = menu->addAction(QIcon::fromTheme(QLatin1String(other.icon)), other.label);
+                    action->setCheckable(true);
+                    action->setChecked(m_view->viewMode() == other.mode && (other.tiles < 0 || ngTiles() == (other.tiles == 1)));
+                    views->addAction(action);
+                    const DolphinView::Mode mode = other.mode;
+                    const int tiles = other.tiles;
+                    connect(action, &QAction::triggered, this, [this, mode, tiles] {
+                        if (tiles >= 0 && ngTiles() != (tiles == 1)) {
+                            setNgSetting("TILES", tiles == 1 ? QString() : QStringLiteral("off"));
+                            ngSettingsInvalidate();
+                        }
+                        if (m_view->viewMode() != mode) {
+                            m_view->setViewMode(mode);
+                        } else {
+                            rebuild();
+                        }
+                    });
+                }
             }
             cards->setMenu(menu);
             menuButton(cards);
