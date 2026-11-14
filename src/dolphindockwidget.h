@@ -40,6 +40,9 @@ public:
      */
     bool paintNgGlass(QPainter &painter);
     /** dolphin-ng: true when the sidebar glass is off (SIDEBAR=plain) / when it shows the static image (not GLASS_MODE=live). */
+    /** dolphin-ng: paints over @p rect of @p from (in its coordinates) what the main window paints under the panels: the
+     *  window colour, or the style's see-through sheet with its lights under Breeze NG Aurora. Replaces what is there. */
+    static void ngPaintWindowGround(QPainter &painter, QWidget *from, const QRect &rect);
     static bool ngGlassPlain();
     static bool ngGlassImageMode();
     /**

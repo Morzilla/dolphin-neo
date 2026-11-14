@@ -328,9 +328,7 @@ void PlacesPanel::ngPaintPills()
         // (with the live blur the glass is translucent: start again from the window colour, which is what the main
         // window paints under the panel before the glass thins it out. Starting from nothing left these rows fully
         // see-through, a bright band over a light desktop)
-        painter.setCompositionMode(QPainter::CompositionMode_Source);
-        painter.fillRect(rect, window()->palette().color(QPalette::Window));
-        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        DolphinDockWidget::ngPaintWindowGround(painter, viewport(), rect);
         painter.save();
         painter.translate(-offset);
         dock->paintNgGlass(painter);
@@ -588,9 +586,7 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
         painter.setClipRegion(headers);
         // with the live blur the glass is translucent: put the window colour back under the title areas first (the
         // old text would show through otherwise), then the glass thins it out as everywhere else
-        painter.setCompositionMode(QPainter::CompositionMode_Source);
-        painter.fillRect(headers.boundingRect(), window()->palette().color(QPalette::Window));
-        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        DolphinDockWidget::ngPaintWindowGround(painter, viewport(), headers.boundingRect());
         painter.translate(-offset);
         dock->paintNgGlass(painter);
         painter.restore();
@@ -981,9 +977,10 @@ protected:
         const qreal dpr = devicePixelRatioF();
         QImage ground((QSizeF(size()) * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
         ground.setDevicePixelRatio(dpr);
-        ground.fill(window()->palette().color(QPalette::Window));
+        ground.fill(Qt::transparent);
         {
             QPainter painter(&ground);
+            DolphinDockWidget::ngPaintWindowGround(painter, this, rect());
             painter.save();
             painter.translate(-mapTo(dock, QPoint(0, 0)));
             dock->paintNgGlass(painter);

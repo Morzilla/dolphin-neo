@@ -1581,6 +1581,18 @@ int KItemListWidget::ngActionAt(const QPointF &pos) const
     return 0;
 }
 
+static bool s_ngAurora = false;
+
+bool ngAurora()
+{
+    return s_ngAurora;
+}
+
+void ngSetAurora(bool aurora)
+{
+    s_ngAurora = aurora;
+}
+
 bool ngTiles()
 {
     const bool off = ngSetting("TILES").toLower() == QLatin1String("off");

@@ -609,7 +609,9 @@ private:
         // the outline of a menu in Breeze NG: 10 % of ink (Soft), 16 % (Glass); the open button continues it
         const bool glass = KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("org.kde.kdecoration2")).readEntry("theme", QString()).contains(QLatin1String("Glass"));
         const QString menuEdge = glass ? QStringLiteral("0.16") : QStringLiteral("0.10");
-        const QString sheet = QStringLiteral("QToolButton { border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; background: transparent; color: %4; }"
+        // Breeze NG Aurora: glass without rims
+        const bool aurora = KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("org.kde.kdecoration2")).readEntry("theme", QString()).contains(QLatin1String("Aurora"));
+        QString sheet = QStringLiteral("QToolButton { border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; background: transparent; color: %4; }"
                                      "QToolButton:hover { background: rgba(%1, 0.08); }"
                                      "QToolButton:pressed { background: rgba(%1, 0.14); }"
                                      "QToolButton:checked { background: rgba(%1, 0.16); border-color: rgba(%1, 0.20); }"
@@ -628,6 +630,11 @@ private:
                                      "QLineEdit:hover { border-color: rgba(%1, 0.22); }"
                                      "QLineEdit:focus { border-color: rgba(%1, 0.34); background: rgba(%1, 0.08); }")
                           .arg(ink, menuSheet.name(), menuEdge, palette().color(QPalette::WindowText).name());
+        if (aurora) {
+            sheet.replace(QStringLiteral("QToolButton:checked { background: rgba(%1, 0.16); border-color: rgba(%1, 0.20); }").arg(ink), QStringLiteral("QToolButton:checked { background: rgba(%1, 0.16); }").arg(ink));
+            sheet.replace(QStringLiteral("QLineEdit { border: 1px solid rgba(%1, 0.14);").arg(ink), QStringLiteral("QLineEdit { border: 1px solid transparent;"));
+            sheet.replace(QStringLiteral("QLineEdit:hover { border-color: rgba(%1, 0.22); }").arg(ink), QStringLiteral("QLineEdit:hover { background: rgba(%1, 0.10); }").arg(ink));
+        }
         m_sheetApplying = true; // setting a sheet sends style changes of its own: changeEvent() ignores them
         if (force) {
             setStyleSheet(QString()); // have every child polished again from the palette of now

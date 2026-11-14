@@ -7,6 +7,7 @@
  */
 
 #include "dolphinmainwindow.h"
+#include "kitemviews/kitemlistcontainer.h"
 
 #include "kitemviews/kitemlistwidget.h"
 
@@ -219,6 +220,9 @@ DolphinMainWindow::DolphinMainWindow()
     m_tabWidget->setObjectName("tabWidget");
     connect(m_tabWidget, &DolphinTabWidget::activeViewChanged, this, &DolphinMainWindow::activeViewChanged);
     connect(m_tabWidget, &DolphinTabWidget::tabCountChanged, this, &DolphinMainWindow::tabCountChanged);
+    // dolphin-ng: a new tab or a split view is a new file view: give it the Aurora background too
+    connect(m_tabWidget, &DolphinTabWidget::tabCountChanged, this, &DolphinMainWindow::ngApplyAuroraViews, Qt::QueuedConnection);
+    connect(m_tabWidget, &DolphinTabWidget::activeViewChanged, this, &DolphinMainWindow::ngApplyAuroraViews, Qt::QueuedConnection);
     connect(m_tabWidget, &DolphinTabWidget::currentUrlChanged, this, &DolphinMainWindow::updateWindowTitle);
     {
         // dolphin-ng: the sort/filter bar sits above the tabs and follows the active view
@@ -893,10 +897,33 @@ void DolphinMainWindow::ngUpdateAurora()
     const bool aurora = theme.compare(QLatin1String("Breeze NG Aurora"), Qt::CaseInsensitive) == 0 && QApplication::style()->name().compare(QLatin1String("breezeng"), Qt::CaseInsensitive) == 0;
     if (aurora != m_ngAurora) {
         m_ngAurora = aurora;
+        ngSetAurora(aurora);
+        const auto all = findChildren<QWidget *>();
+        for (QWidget *child : all) {
+            child->update(); // rims come and go everywhere
+        }
         setProperty("_breeze_ng_glass", aurora ? QVariant(true) : QVariant());
         m_ngBlurSet = false;
         ngUpdateBlurRegion();
         update();
+    }
+    ngApplyAuroraViews();
+}
+
+void DolphinMainWindow::ngApplyAuroraViews()
+{
+    // Aurora: the file views stand on the window's glass (no background of their own), as the Folders panel's list
+    // does; in the other looks they keep their own sheet
+    if (!m_tabWidget) {
+        return;
+    }
+    const auto containers = m_tabWidget->findChildren<KItemListContainer *>();
+    for (KItemListContainer *container : containers) {
+        if (container->property("_ng_aurora_view").toBool() != m_ngAurora) {
+            container->setProperty("_ng_aurora_view", m_ngAurora);
+            container->setEnabledFrame(!m_ngAurora);
+            container->update();
+        }
     }
 }
 

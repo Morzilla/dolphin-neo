@@ -9,6 +9,8 @@
 #include "dolphinplacesmodelsingleton.h"
 #include "kitemviews/kitemlistwidget.h"
 
+#include <QStyleOption>
+
 #include <KFilePlacesModel>
 #include <Solid/Device>
 #include <Solid/StorageAccess>
@@ -480,6 +482,23 @@ void DolphinDockWidget::updateGlass()
 
 DolphinDockWidget::~DolphinDockWidget() = default;
 
+void DolphinDockWidget::ngPaintWindowGround(QPainter &painter, QWidget *from, const QRect &rect)
+{
+    QWidget *top = from->window();
+    painter.save();
+    painter.setClipRect(rect, Qt::IntersectClip);
+    if (ngAurora()) {
+        painter.translate(-from->mapTo(top, QPoint(0, 0)));
+        QStyleOption option;
+        option.initFrom(top);
+        top->style()->drawPrimitive(QStyle::PE_Widget, &option, &painter, top);
+    } else {
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.fillRect(rect, top->palette().color(QPalette::Window));
+    }
+    painter.restore();
+}
+
 bool DolphinDockWidget::ngGlassPlain()
 {
     const bool plain = ngSetting("SIDEBAR").toLower() == QLatin1String("plain");
@@ -641,6 +660,13 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
         tint.setAlphaF(1.0 - qBound(0, ngSettingInt("GLASS", 55), 100) / 100.0); // how much of the picture shows
         painter.fillRect(card, tint);
         painter.restore();
+    } else if (ngAurora()) {
+        // Breeze NG Aurora: the whole window is already glass; the card is a faint veil of ink on it, not a hole
+        opaque = false;
+        QColor ink = palette().color(QPalette::WindowText);
+        ink.setAlphaF(ngIsDark(palette()) ? 0.055 : 0.045);
+        painter.setBrush(ink);
+        painter.drawRoundedRect(card, radius, radius);
     } else {
         // live blur: thin out the window tint under the card, so the compositor's blur shows through
         opaque = false;
@@ -650,16 +676,19 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     }
 
-    // light veil, a little stronger at the top
-    QLinearGradient veil(card.topLeft(), card.bottomLeft());
-    veil.setColorAt(0.0, QColor(255, 255, 255, 24));
-    veil.setColorAt(0.2, QColor(255, 255, 255, 10));
-    veil.setColorAt(1.0, QColor(255, 255, 255, 6));
-    painter.setBrush(veil);
-    painter.drawRoundedRect(card, radius, radius);
+    if (!ngAurora()) {
+        // light veil, a little stronger at the top
+        QLinearGradient veil(card.topLeft(), card.bottomLeft());
+        veil.setColorAt(0.0, QColor(255, 255, 255, 24));
+        veil.setColorAt(0.2, QColor(255, 255, 255, 10));
+        veil.setColorAt(1.0, QColor(255, 255, 255, 6));
+        painter.setBrush(veil);
+        painter.drawRoundedRect(card, radius, radius);
+    }
 
     // rim around the card. GLASS_RIM: none (default) | diagonal | soft | bevel | glow | top
-    const QString rimStyle = ngSetting("GLASS_RIM").toLower() == QLatin1String("show") ? QStringLiteral("diagonal") : ngSetting("GLASS_RIM").toLower();
+    // (Breeze NG Aurora: glass without rims, the card has none whatever the setting)
+    const QString rimStyle = ngAurora() ? QString() : ngSetting("GLASS_RIM").toLower() == QLatin1String("show") ? QStringLiteral("diagonal") : ngSetting("GLASS_RIM").toLower();
     const bool dark = ngIsDark(palette());
     const QRectF edge = card.adjusted(0.5, 0.5, -0.5, -0.5);
     painter.setBrush(Qt::NoBrush);

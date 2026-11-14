@@ -855,8 +855,10 @@ void KStandardItemListWidget::paint(QPainter *painter, const QStyleOptionGraphic
         const bool darkScheme = ngIsDark(styleOption().palette);
         painter->setBrush(darkScheme ? QColor(0, 0, 0, 62) : QColor(0, 0, 0, 14));
         painter->drawRoundedRect(tile, 12, 12);
-        painter->setPen(QPen(darkScheme ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
-        painter->drawLine(QPointF(tile.left() + 12, tile.top() + 0.5), QPointF(tile.right() - 12, tile.top() + 0.5));
+        if (!ngAurora()) { // Aurora has no lit edges
+            painter->setPen(QPen(darkScheme ? QColor(255, 255, 255, 11) : QColor(255, 255, 255, 170), 1));
+            painter->drawLine(QPointF(tile.left() + 12, tile.top() + 0.5), QPointF(tile.right() - 12, tile.top() + 0.5));
+        }
         painter->restore();
     }
 

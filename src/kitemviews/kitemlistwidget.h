@@ -231,6 +231,9 @@ DOLPHIN_EXPORT QColor ngAccent(const QColor &colour, bool dark);
 
 /** dolphin-ng: in the icons view every item is a dark rounded tile and previews have rounded corners. DOLPHIN_NG_TILES=off disables. */
 DOLPHIN_EXPORT bool ngTiles();
+/** dolphin-ng: the Aurora look of Breeze NG is in use (glass without rims): set by the main window. */
+DOLPHIN_EXPORT bool ngAurora();
+DOLPHIN_EXPORT void ngSetAurora(bool aurora);
 
 /**
  * dolphin-ng: the look of the cards view (DOLPHIN_NG_CARDS = a | b | c):
