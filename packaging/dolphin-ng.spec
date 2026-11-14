@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-%global commit      5957c2b4eb79287ba8fb362a9fe4492c0931becc
+%global commit      3900dd7c3bfefef81e9e09aef19c2e591bea7673
 %global shortcommit %(c=%{commit}; echo ${c:0:7})
-%global snapdate    20261114
+%global snapdate    202611140945
 # installed apart from the system, next to Fedora's own Dolphin
 %global ngprefix    /opt/ng/dolphin-ng
 # its programs find its libraries through an RPATH to /opt/ng/dolphin-ng: on purpose, since they have the same names
@@ -120,6 +120,10 @@ EOT
 %{_datadir}/applications/dolphin-ng.desktop
 
 %changelog
+* Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^202611140945git3900dd7-1
+- Live blur asked again on a new native window
+- Snapshot versions carry the time of the commit, so builds of the same day sort right
+
 * Sat Nov 14 2026 Morzilla <3956663+Morzilla@users.noreply.github.com> - 26.08.1^20261114git5957c2b-1
 - Default look: Cards view (Scheda), sidebar over the desktop blur
 
