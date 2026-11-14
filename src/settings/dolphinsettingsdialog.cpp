@@ -137,8 +137,10 @@ DolphinSettingsDialog::DolphinSettingsDialog(const QUrl &url, QWidget *parent, K
 
     const KConfigGroup dialogConfig(KSharedConfig::openStateConfig(), QStringLiteral("SettingsDialog"));
     // dolphin-ng: the stored size needs the native window, which does not exist yet in the constructor (the
-    // dialog used to open at its minimum size every time); and the NG page wants room for its tiles
-    winId();
+    // dialog used to open at its minimum size every time); and the NG page wants room for its tiles. create(), not
+    // winId(): winId() on a dialog made the main window's children (toolbar, sidebar, view) native as its
+    // "siblings", and the sidebar fell out of the window that carries its blur.
+    create();
     KWindowConfig::restoreWindowSize(windowHandle(), dialogConfig);
     QSize wanted = size().expandedTo(QSize(1080, 720));
     if (const QScreen *target = parent && parent->screen() ? parent->screen() : screen()) {
