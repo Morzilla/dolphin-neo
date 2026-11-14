@@ -575,18 +575,32 @@ protected:
     void changeEvent(QEvent *event) override
     {
         QWidget::changeEvent(event);
-        if (event->type() == QEvent::PaletteChange) {
+        // A global theme changes the colours, the widget style and the window decoration one after the other (the
+        // decoration's name, read below, is written last). Rebuilding the sheet at the first sign left the colours of
+        // the old theme in it: a button with its menu open stayed light under a dark theme. So: at every sign, and
+        // once more when the change has settled. Setting the sheet is itself a style change: applyChipStyle() skips
+        // a sheet that did not change, which ends the round.
+        if (!m_sheetApplying && (event->type() == QEvent::PaletteChange || event->type() == QEvent::StyleChange)) {
             applyChipStyle();
+            if (!m_sheetSettling) {
+                m_sheetSettling = true;
+                QTimer::singleShot(700, this, [this] {
+                    m_sheetSettling = false;
+                    applyChipStyle(true);
+                });
+            }
         }
     }
 
 private:
+    bool m_sheetSettling = false;
+    bool m_sheetApplying = false;
     // what the filter shows: everything, files only (no folders), or one NgKind::Category
     enum { All = -1, FilesOnly = NgKind::CategoryCount };
 
     // The chips and the search box draw themselves, the same under every widget style: a translucent
     // pill for the checked one, a fainter one on hover, no outlines that depend on the style's hover tracking.
-    void applyChipStyle()
+    void applyChipStyle(bool force = false)
     {
         const QString ink = ngIsDark(palette()) ? QStringLiteral("255, 255, 255") : QStringLiteral("0, 0, 0");
         // the sheet of a menu, as Breeze paints it: the window colour mixed with 30 % of the base colour
@@ -595,7 +609,7 @@ private:
         // the outline of a menu in Breeze NG: 10 % of ink (Soft), 16 % (Glass); the open button continues it
         const bool glass = KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("org.kde.kdecoration2")).readEntry("theme", QString()).contains(QLatin1String("Glass"));
         const QString menuEdge = glass ? QStringLiteral("0.16") : QStringLiteral("0.10");
-        setStyleSheet(QStringLiteral("QToolButton { border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; background: transparent; color: palette(window-text); }"
+        const QString sheet = QStringLiteral("QToolButton { border: 1px solid transparent; border-radius: 6px; padding: 3px 7px; background: transparent; color: %4; }"
                                      "QToolButton:hover { background: rgba(%1, 0.08); }"
                                      "QToolButton:pressed { background: rgba(%1, 0.14); }"
                                      "QToolButton:checked { background: rgba(%1, 0.16); border-color: rgba(%1, 0.20); }"
@@ -609,10 +623,19 @@ private:
                                      "QToolButton[popupMode=\"1\"] { padding-right: 12px; }"
                                      "QToolButton::menu-button { border: none; width: 18px; padding-right: 6px; }"
                                      "QToolButton[menuOpen=\"true\"], QToolButton[menuOpen=\"true\"]:hover, QToolButton[menuOpen=\"true\"]:checked, QToolButton[menuOpen=\"true\"]:pressed { background: %2; border-color: rgba(%1, %3); border-bottom-color: %2; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }"
-                                     "QLineEdit { border: 1px solid rgba(%1, 0.14); border-radius: 6px; padding: 3px 8px; background: rgba(%1, 0.06); color: palette(window-text); }"
+                                     "QLineEdit { border: 1px solid rgba(%1, 0.14); border-radius: 6px; padding: 3px 8px; background: rgba(%1, 0.06); color: %4; }"
+                                     "QLineEdit { placeholder-text-color: rgba(%1, 0.5); }"
                                      "QLineEdit:hover { border-color: rgba(%1, 0.22); }"
                                      "QLineEdit:focus { border-color: rgba(%1, 0.34); background: rgba(%1, 0.08); }")
-                          .arg(ink, menuSheet.name(), menuEdge));
+                          .arg(ink, menuSheet.name(), menuEdge, palette().color(QPalette::WindowText).name());
+        m_sheetApplying = true; // setting a sheet sends style changes of its own: changeEvent() ignores them
+        if (force) {
+            setStyleSheet(QString()); // have every child polished again from the palette of now
+        }
+        if (sheet != styleSheet()) {
+            setStyleSheet(sheet);
+        }
+        m_sheetApplying = false;
     }
 
     QToolButton *chip(const QString &text, bool checked)
