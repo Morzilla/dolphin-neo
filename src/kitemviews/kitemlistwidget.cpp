@@ -163,6 +163,21 @@ QString ngTr(const char *english, const char *italian)
     return QString::fromUtf8(useItalian ? italian : english);
 }
 
+// The look Dolphin NG starts with, where it differs from "not set": the sidebar over the blurred desktop, cards
+// in look B that fill the row, the type badge inside the card, a diagonal rim, the object mark.
+static QString ngDefault(const QByteArray &name)
+{
+    static const QHash<QByteArray, QString> defaults = {
+        {"GLASS_MODE", QStringLiteral("live")},
+        {"GLASS_RIM", QStringLiteral("diagonal")},
+        {"CARDS", QStringLiteral("b")},
+        {"CARDS_FIT", QStringLiteral("stretch")},
+        {"CARDS_BADGE", QStringLiteral("inside")},
+        {"MARK", QStringLiteral("object")},
+    };
+    return defaults.value(name);
+}
+
 // Values are cached: the row painting asks for them many times per frame. ngSettingsInvalidate() clears the cache.
 QString ngSetting(const char *name, const QString &fallback)
 {
@@ -178,6 +193,10 @@ QString ngSetting(const char *name, const QString &fallback)
             const KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG"));
             entry.present = group.hasKey(name);
             entry.value = group.readEntry(name, QString());
+            if (!entry.present && !ngDefault(key).isEmpty()) {
+                entry.present = true;
+                entry.value = ngDefault(key);
+            }
         }
         it = ngCache().insert(key, entry);
     }
@@ -233,7 +252,7 @@ void ngDrawChevron(QPainter *painter, const QRectF &box, bool collapsed, const Q
 void setNgSetting(const char *name, const QString &value)
 {
     KConfigGroup group = KSharedConfig::openConfig()->group(QStringLiteral("DolphinNG"));
-    if (value.isEmpty()) {
+    if (value.isEmpty() && ngDefault(QByteArray(name)).isEmpty()) {
         group.deleteEntry(name);
     } else {
         group.writeEntry(name, value);

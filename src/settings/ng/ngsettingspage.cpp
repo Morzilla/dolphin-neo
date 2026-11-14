@@ -1716,8 +1716,9 @@ void NgSettingsPage::applySettings()
 
 void NgSettingsPage::restoreDefaults()
 {
+    // the same look as ngDefault() in kitemlistwidget.cpp
     m_glassPanel->setChecked(true);
-    m_backdrop->setCurrentIndex(0);
+    m_backdrop->setCurrentIndex(qMax(0, m_backdrop->findData(QStringLiteral("live"))));
     m_image->clear();
     m_glass->setValue(55);
     m_blur->setValue(45);
@@ -1726,7 +1727,7 @@ void NgSettingsPage::restoreDefaults()
     m_lavaSize->setValue(55);
     m_lavaSpeed->setValue(30);
     m_lavaColours->setCurrentIndex(0);
-    m_rim->setCurrentIndex(0);
+    m_rim->setCurrentIndex(qMax(0, m_rim->findData(QStringLiteral("diagonal"))));
     m_devices->setCurrentIndex(0);
     m_disksPos->setCurrentIndex(0);
     fillSectionOrder({QStringLiteral("places"), QStringLiteral("pinned"), QStringLiteral("filters"), QStringLiteral("disks")}, true, true, true);
@@ -1736,7 +1737,7 @@ void NgSettingsPage::restoreDefaults()
     m_twoLines->setChecked(true);
     m_rows->setCurrentIndex(0);
     m_icons->setChecked(false);
-    m_mark->setCurrentIndex(0);
+    m_mark->setCurrentIndex(qMax(0, m_mark->findData(QStringLiteral("object"))));
     m_sigla->setCurrentIndex(0);
     m_ago->setChecked(true);
     m_rowDates->setChecked(true);
@@ -1752,12 +1753,12 @@ void NgSettingsPage::restoreDefaults()
     m_sidebarFilters->setChecked(true);
     m_sidebarPinned->setChecked(true);
     m_folderContentDate->setChecked(true);
-    m_cards->setCurrentIndex(0);
-    m_cardsFit->setCurrentIndex(0);
+    m_cards->setCurrentIndex(qMax(0, m_cards->findData(QStringLiteral("b"))));
+    m_cardsFit->setCurrentIndex(qMax(0, m_cardsFit->findData(QStringLiteral("stretch"))));
     m_cardsInfo->setCurrentIndex(0);
     m_cardsMark->setCurrentIndex(0);
     m_activitySize->setCurrentIndex(1);
-    m_cardsBadge->setCurrentIndex(0);
+    m_cardsBadge->setCurrentIndex(qMax(0, m_cardsBadge->findData(QStringLiteral("inside"))));
     m_quickView->setChecked(true);
     m_quickDelay->setValue(0);
     m_quickSide->setCurrentIndex(0);
@@ -1779,7 +1780,6 @@ void NgSettingsPage::applyPreset(const QString &name)
         m_glassPanel->setChecked(false);
         m_devices->setCurrentIndex(1);
     } else {
-        m_rim->setCurrentIndex(qMax(0, m_rim->findData(QStringLiteral("diagonal"))));
         m_cardsMark->setCurrentIndex(1); // the type as the background of the cards
     }
     updateDependencies();
