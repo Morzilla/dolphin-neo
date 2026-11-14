@@ -14,6 +14,7 @@
 #include <QGraphicsOpacityEffect>
 #include <QLinearGradient>
 #include <QScrollBar>
+#include <QPropertyAnimation>
 
 #include "dolphindockwidget.h"
 
@@ -1159,10 +1160,40 @@ void PlacesPanel::ngPlaceScrollBar()
         connect(real, &QScrollBar::valueChanged, m_ngOverlayBar, &QScrollBar::setValue);
         connect(m_ngOverlayBar, &QScrollBar::valueChanged, real, &QScrollBar::setValue);
         sync();
+        // out of sight until the pointer is over the panel: it fades in and out
+        m_ngBarOpacity = new QGraphicsOpacityEffect(m_ngOverlayBar);
+        m_ngBarOpacity->setOpacity(underMouse() ? 1.0 : 0.0);
+        m_ngOverlayBar->setGraphicsEffect(m_ngBarOpacity);
+        m_ngBarFade = new QPropertyAnimation(m_ngBarOpacity, "opacity", this);
+        m_ngBarFade->setDuration(220);
+        m_ngBarFade->setEasingCurve(QEasingCurve::InOutQuad);
     }
     const QRect list = viewport()->geometry();
     m_ngOverlayBar->setGeometry(width() - 7 - 5, list.top() + 4, 7, qMax(20, list.height() - 8));
     m_ngOverlayBar->raise();
+}
+
+void PlacesPanel::ngFadeBar(bool in)
+{
+    if (!m_ngBarFade) {
+        return;
+    }
+    m_ngBarFade->stop();
+    m_ngBarFade->setStartValue(m_ngBarOpacity->opacity());
+    m_ngBarFade->setEndValue(in ? 1.0 : 0.0);
+    m_ngBarFade->start();
+}
+
+void PlacesPanel::enterEvent(QEnterEvent *event)
+{
+    ngFadeBar(true);
+    KFilePlacesView::enterEvent(event);
+}
+
+void PlacesPanel::leaveEvent(QEvent *event)
+{
+    ngFadeBar(false);
+    KFilePlacesView::leaveEvent(event);
 }
 
 void PlacesPanel::ngSetSections(QWidget *pinned, QWidget *filters)

@@ -2548,15 +2548,22 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
             if (dark && accent.lightness() < 150) {
                 accent = QColor::fromHsl(accent.hslHue() < 0 ? 210 : accent.hslHue(), qMax(accent.hslSaturation(), 150), 150);
             }
+            const bool aurora = ngAurora();
+            if (aurora) {
+                accent = ngAuroraAccent(m_styleOption.palette, 1.0);
+            }
             const QRectF card = selectionRectFull();
             painter->save();
             painter->setRenderHint(QPainter::Antialiasing);
             QColor ring = accent;
             if (!selected) {
                 ring.setAlphaF(0.38);
+            } else if (aurora) {
+                ring.setAlphaF(0.90);
             }
-            const qreal width = selected ? 2.5 : 1.5;
-            const qreal gap = 2.5 + width / 2.0;
+            // Breeze NG Aurora: the ring runs on the card's own edge and the card is tinted with the accent (no gap)
+            const qreal width = aurora ? (selected ? 2.0 : 1.5) : selected ? 2.5 : 1.5;
+            const qreal gap = aurora ? -width / 2.0 : 2.5 + width / 2.0;
             if (selected || m_ngSelProgress > 0.001) {
                 // one outline around the block of selected cards next to each other, with a faint veil inside
                 QRectF reach;
@@ -2564,7 +2571,7 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
                 const QPainterPath block = ngSelectionBlock(gap, &reach, &alpha);
                 painter->setClipRect(reach, Qt::IntersectClip);
                 QColor veil = accent;
-                veil.setAlphaF(0.07 * alpha);
+                veil.setAlphaF((aurora ? 0.20 : 0.07) * alpha);
                 ring.setAlphaF(ring.alphaF() * alpha);
                 painter->setPen(QPen(ring, width));
                 painter->setBrush(veil);
@@ -2593,6 +2600,18 @@ void KItemListWidget::drawItemStyleOption(QPainter *painter, QWidget *widget, QS
             QColor accent = m_styleOption.palette.color(QPalette::Highlight);
             if (dark && accent.lightness() < 150) {
                 accent = QColor::fromHsl(accent.hslHue() < 0 ? 210 : accent.hslHue(), qMax(accent.hslSaturation(), 150), 150);
+            }
+            if (ngAurora()) {
+                // Breeze NG Aurora: a sheet tinted with the accent and a ring of it on the edge, nothing else
+                accent = ngAuroraAccent(m_styleOption.palette, 1.0);
+                QColor fill = accent, ring = accent;
+                fill.setAlphaF(hovered ? 0.28 : 0.20);
+                ring.setAlphaF(0.90);
+                painter->setPen(QPen(ring, 2.0));
+                painter->setBrush(fill);
+                painter->drawRoundedRect(card.adjusted(1, 1, -1, -1), radius, radius);
+                painter->restore();
+                return;
             }
             QColor fill = accent;
             fill.setAlphaF(hovered ? 0.34 : 0.26);

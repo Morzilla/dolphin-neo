@@ -52,6 +52,9 @@ private:
     void ngUpdateFade();
     void ngPlaceScrollBar();
     class QScrollBar *m_ngOverlayBar = nullptr;
+    class QGraphicsOpacityEffect *m_ngBarOpacity = nullptr;
+    class QPropertyAnimation *m_ngBarFade = nullptr;
+    void ngFadeBar(bool in);
     bool m_ngFadeWatched = false;
     QWidget *m_ngFadeTop = nullptr; // live blur: the list fades into the glass where it continues, see ngUpdateFade()
     QWidget *m_ngFadeBottom = nullptr;
@@ -97,6 +100,8 @@ public:
 
 protected:
     void paintEvent(QPaintEvent *event) override; // dolphin-ng: section titles as pills
+    void enterEvent(QEnterEvent *event) override; // dolphin-ng: the scroll bar shows while the pointer is over the panel
+    void leaveEvent(QEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override; // dolphin-ng: a click on a section title folds it
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
