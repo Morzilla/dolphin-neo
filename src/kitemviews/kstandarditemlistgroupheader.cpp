@@ -6,6 +6,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+#include "kitemviews/kitemlistwidget.h"
 #include "kstandarditemlistgroupheader.h"
 
 #include <KRatingPainter>
@@ -41,6 +42,9 @@ void KStandardItemListGroupHeader::paintRole(QPainter *painter, const QRectF &ro
 
 void KStandardItemListGroupHeader::paintSeparator(QPainter *painter, const QColor &color)
 {
+    if (ngAurora()) {
+        return; // Breeze NG Aurora has no lines: the group's title and the air above it separate
+    }
     if (itemIndex() == 0) {
         // No top- or left-line should be drawn for the first group-header
         return;

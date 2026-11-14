@@ -147,6 +147,8 @@ public:
 public Q_SLOTS:
     /** dolphin-ng: tells the compositor to blur only behind the glass cards of the panels. */
     void ngUpdateBlurRegion();
+    /** Breeze NG's settings changed (its settings window says so over D-Bus): the veils of Aurora may have. */
+    void ngStyleReparsed();
 
     /**
      * Opens each directory in \p dirs in a separate tab. If \a splitView is set,

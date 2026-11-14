@@ -5,6 +5,7 @@
  */
 
 #include "dolphinstatusbar.h"
+#include "kitemviews/kitemlistwidget.h"
 
 #include "dolphin_generalsettings.h"
 #include "statusbarspaceinfo.h"
@@ -461,11 +462,19 @@ void DolphinStatusBar::paintEvent(QPaintEvent *paintEvent)
             }
             path.addRect(clipRect);
             p.setClipPath(path);
-            opt.palette.setColor(QPalette::Base, palette().window().color());
-            p.setBrush(palette().window().color());
-            p.setPen(Qt::transparent);
-            p.drawRoundedRect(opt.rect, 5, 5); // Radius is from Breeze style.
-            style()->drawPrimitive(QStyle::PE_Frame, &opt, &p, this);
+            if (ngAurora()) {
+                // Breeze NG Aurora: a veil on the window's glass, as every other surface
+                p.setRenderHint(QPainter::Antialiasing);
+                p.setBrush(ngAuroraVeil(palette().window().color().lightnessF() < 0.5));
+                p.setPen(Qt::NoPen);
+                p.drawRoundedRect(opt.rect, 8, 8);
+            } else {
+                opt.palette.setColor(QPalette::Base, palette().window().color());
+                p.setBrush(palette().window().color());
+                p.setPen(Qt::transparent);
+                p.drawRoundedRect(opt.rect, 5, 5); // Radius is from Breeze style.
+                style()->drawPrimitive(QStyle::PE_Frame, &opt, &p, this);
+            }
         }
     }
     // Draw regular statusbar.

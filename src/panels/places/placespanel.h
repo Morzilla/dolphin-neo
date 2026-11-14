@@ -11,6 +11,8 @@
 
 #include "panels/panel.h"
 
+#include <QPersistentModelIndex>
+#include <QRectF>
 #include <KFilePlacesView>
 #include <QPalette>
 
@@ -125,6 +127,10 @@ private:
     QString m_ngAnimKey; // the section sliding now
     qreal m_ngAnimFactor = 1.0;
     QVariantAnimation *m_ngAnim = nullptr;
+    // the pill of the selected entry slides from the old entry to the new one
+    QPersistentModelIndex m_ngPillIndex;
+    QRectF m_ngPillRect;
+    QVariantAnimation *m_ngPillAnim = nullptr;
     QString m_ngTitleHover;
     QPalette m_ngPalette;
     void connectDeviceSignals(const QModelIndex &idx);

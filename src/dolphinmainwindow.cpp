@@ -257,6 +257,7 @@ DolphinMainWindow::DolphinMainWindow()
     };
     applyNgWindowSettings();
     connect(NgSettings::instance(), &NgSettings::changed, this, applyNgWindowSettings);
+    QDBusConnection::sessionBus().connect(QString(), QStringLiteral("/BreezeStyle"), QStringLiteral("org.kde.Breeze.Style"), QStringLiteral("reparseConfiguration"), this, SLOT(ngStyleReparsed()));
 
     m_actionTextHelper = new SelectionMode::ActionTextHelper(this);
     setupActions();
@@ -890,8 +891,23 @@ void DolphinMainWindow::paintEvent(QPaintEvent *event)
     KXmlGuiWindow::paintEvent(event);
 }
 
+void DolphinMainWindow::ngStyleReparsed()
+{
+    ngLoadAuroraSettings();
+    const auto all = findChildren<QWidget *>();
+    for (QWidget *child : all) {
+        if (child->objectName() == QLatin1String("ngSortBar")) {
+            QEvent change(QEvent::PaletteChange); // the bar builds its sheet again, with the veils of now
+            QApplication::sendEvent(child, &change);
+        }
+        child->update();
+    }
+    update();
+}
+
 void DolphinMainWindow::ngUpdateAurora()
 {
+    ngLoadAuroraSettings();
     // the look is the window decoration's theme (what a Breeze NG global theme sets), as the widget style reads it
     const QString theme = KSharedConfig::openConfig(QStringLiteral("kwinrc"), KConfig::NoGlobals)->group(QStringLiteral("org.kde.kdecoration2")).readEntry("theme", QString());
     const bool aurora = theme.compare(QLatin1String("Breeze NG Aurora"), Qt::CaseInsensitive) == 0 && QApplication::style()->name().compare(QLatin1String("breezeng"), Qt::CaseInsensitive) == 0;

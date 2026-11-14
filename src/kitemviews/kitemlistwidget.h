@@ -234,6 +234,13 @@ DOLPHIN_EXPORT bool ngTiles();
 /** dolphin-ng: the Aurora look of Breeze NG is in use (glass without rims): set by the main window. */
 DOLPHIN_EXPORT bool ngAurora();
 DOLPHIN_EXPORT void ngSetAurora(bool aurora);
+// Breeze NG Aurora: the veil every surface wears at rest (ink over the window's glass), one intensity for the sidebar,
+// the cards and the lists, one for buttons and fields; both from Breeze NG's settings (breezengrc), the same by default
+DOLPHIN_EXPORT void ngLoadAuroraSettings();
+DOLPHIN_EXPORT qreal ngAuroraVeilAlpha(bool dark, bool button = false);
+DOLPHIN_EXPORT QColor ngAuroraVeil(bool dark, bool button = false);
+// the accent as a light: its hue, always luminous (as the style's Helper::auroraAccent)
+DOLPHIN_EXPORT QColor ngAuroraAccent(const QPalette &palette, qreal alpha);
 
 /**
  * dolphin-ng: the look of the cards view (DOLPHIN_NG_CARDS = a | b | c):

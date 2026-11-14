@@ -295,9 +295,46 @@ void PlacesPanel::ngPaintPills()
         return;
     }
     const QModelIndexList selected = selectionModel() ? selectionModel()->selectedIndexes() : QModelIndexList();
+    const int plainRow = ngPlainRowHeight();
+    auto pillRectOf = [&](const QModelIndex &index) {
+        QRect rect = visualRect(index);
+        if (rect.isValid() && plainRow > 0 && rect.height() > plainRow + 2) {
+            rect.setTop(rect.bottom() - plainRow + 1);
+        }
+        return rect;
+    };
+    // the selection slides from the old entry to the new one
+    const QModelIndex current = selected.size() == 1 ? selected.first() : QModelIndex();
+    const QRect target = current.isValid() ? pillRectOf(current) : QRect();
+    if (current != m_ngPillIndex) {
+        const bool slide = m_ngPillIndex.isValid() && current.isValid() && m_ngPillRect.isValid() && target.isValid() && isVisible()
+            && style()->styleHint(QStyle::SH_Widget_Animation_Duration, nullptr, this) > 0;
+        m_ngPillIndex = current;
+        if (m_ngPillAnim) {
+            m_ngPillAnim->stop();
+        }
+        if (slide) {
+            if (!m_ngPillAnim) {
+                m_ngPillAnim = new QVariantAnimation(this);
+                m_ngPillAnim->setEasingCurve(QEasingCurve::OutCubic);
+                m_ngPillAnim->setDuration(260);
+                connect(m_ngPillAnim, &QVariantAnimation::valueChanged, this, [this] {
+                    viewport()->update();
+                });
+            }
+            m_ngPillAnim->setStartValue(m_ngPillRect);
+            m_ngPillAnim->setEndValue(QRectF(target));
+            m_ngPillAnim->start();
+        }
+    }
+    const bool sliding = m_ngPillAnim && m_ngPillAnim->state() == QAbstractAnimation::Running;
+    m_ngPillRect = sliding ? m_ngPillAnim->currentValue().toRectF() : QRectF(target);
+
     QList<std::pair<QModelIndex, qreal>> rows;
     for (const QModelIndex &index : selected) {
-        rows.append({index, 1.0});
+        if (!sliding) {
+            rows.append({index, 1.0});
+        }
     }
     if (viewport()->underMouse()) {
         const QModelIndex hovered = indexAt(viewport()->mapFromGlobal(QCursor::pos()));
@@ -305,10 +342,63 @@ void PlacesPanel::ngPaintPills()
             rows.append({hovered, 0.5});
         }
     }
-    if (rows.isEmpty()) {
+    if (rows.isEmpty() && !sliding) {
         return;
     }
     const bool dark = ngIsDark(palette());
+    // the pill: a faint veil with a hairline edge, round ends; Aurora: the accent for the selected entry, the veil of
+    // every other surface for the hovered one, no edge
+    auto drawPill = [&](QPainter &painter, const QRectF &rect, qreal strength) {
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QRectF pill = rect.adjusted(2.5, 2.5, -2.5, -2.5);
+        const qreal radius = pill.height() / 2.0;
+        if (ngAurora()) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(strength >= 1.0 ? ngAuroraAccent(palette(), dark ? 0.34 : 0.30) : ngAuroraVeil(dark, true));
+        } else {
+            painter.setPen(QPen(dark ? QColor(255, 255, 255, qRound(46 * strength)) : QColor(0, 0, 0, qRound(30 * strength)), 1));
+            painter.setBrush(dark ? QColor(255, 255, 255, qRound(30 * strength)) : QColor(255, 255, 255, qRound(150 * strength)));
+        }
+        painter.drawRoundedRect(pill, radius, radius);
+    };
+    auto drawContents = [&](QPainter &painter, const QModelIndex &index) {
+        QStyleOptionViewItem option;
+        initViewItemOption(&option);
+        option.rect = visualRect(index); // the delegate lays the row out in its full rect (with the title space)
+        option.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver | QStyle::State_HasFocus);
+        option.showDecorationSelected = false;
+        if (QAbstractItemDelegate *delegate = itemDelegateForIndex(index)) {
+            delegate->paint(&painter, option, index);
+        }
+    };
+    if (sliding) {
+        // on its way the pill crosses other entries: each one it touches is painted again inside the pill's
+        // rectangle (backdrop, pill, then its icon and text on top)
+        QPainter painter(viewport());
+        const QRect area = m_ngPillRect.toAlignedRect();
+        QModelIndexList crossed;
+        for (int y = area.top(); y <= area.bottom() + 1; y += qMax(4, area.height() / 3)) {
+            const QModelIndex index = indexAt(QPoint(area.center().x(), qMin(y, area.bottom())));
+            if (index.isValid() && !crossed.contains(index)) {
+                crossed.append(index);
+            }
+        }
+        painter.save();
+        painter.setClipRect(area);
+        DolphinDockWidget::ngPaintWindowGround(painter, viewport(), area);
+        const QPoint dockOffset = viewport()->mapTo(dock, QPoint(0, 0));
+        painter.save();
+        painter.translate(-dockOffset);
+        dock->paintNgGlass(painter);
+        painter.restore();
+        drawPill(painter, m_ngPillRect, 1.0);
+        for (const QModelIndex &index : std::as_const(crossed)) {
+            if (!ngHeaderOnly(index)) {
+                drawContents(painter, index);
+            }
+        }
+        painter.restore();
+    }
     const QPoint offset = viewport()->mapTo(dock, QPoint(0, 0));
     // the first row of a group is taller: its rect holds the group title too; the pill keeps to the bottom part,
     // a plain row's height
@@ -333,22 +423,10 @@ void PlacesPanel::ngPaintPills()
         painter.translate(-offset);
         dock->paintNgGlass(painter);
         painter.restore();
-        // 2. the pill, the same as the section titles: a faint white veil with a hairline edge, round ends
-        painter.setRenderHint(QPainter::Antialiasing);
-        const QRectF pill = QRectF(rect).adjusted(2.5, 2.5, -2.5, -2.5);
-        const qreal radius = pill.height() / 2.0;
-        painter.setPen(QPen(dark ? QColor(255, 255, 255, qRound(46 * strength)) : QColor(0, 0, 0, qRound(30 * strength)), 1));
-        painter.setBrush(dark ? QColor(255, 255, 255, qRound(30 * strength)) : QColor(255, 255, 255, qRound(150 * strength)));
-        painter.drawRoundedRect(pill, radius, radius);
+        // 2. the pill, the same as the section titles
+        drawPill(painter, QRectF(rect), strength);
         // 3. icon and text, by the delegate, as a plain row
-        QStyleOptionViewItem option;
-        initViewItemOption(&option);
-        option.rect = visualRect(index); // the delegate lays the row out in its full rect (with the title space)
-        option.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver | QStyle::State_HasFocus);
-        option.showDecorationSelected = false;
-        if (QAbstractItemDelegate *delegate = itemDelegateForIndex(index)) {
-            delegate->paint(&painter, option, index);
-        }
+        drawContents(painter, index);
         painter.restore();
     }
 }
@@ -607,6 +685,12 @@ void PlacesPanel::paintEvent(QPaintEvent *event)
         const QRectF rect = QRectF(pill.rect).adjusted(0.5, 0.5, -0.5, -0.5);
         painter.setPen(QPen(hovered ? QColor(95, 168, 216, 150) : dark ? QColor(255, 255, 255, 46) : QColor(0, 0, 0, 30), 1));
         painter.setBrush(hovered ? QColor(95, 168, 216, 50) : dark ? QColor(255, 255, 255, 30) : QColor(255, 255, 255, 150));
+        if (ngAurora()) { // no edges; the veil of every other surface, a little more under the pointer
+            painter.setPen(Qt::NoPen);
+            QColor veil = ngAuroraVeil(dark, true);
+            veil.setAlphaF(veil.alphaF() + (hovered ? 0.06 : 0.0));
+            painter.setBrush(veil);
+        }
         painter.drawRoundedRect(rect, rect.height() / 2.0, rect.height() / 2.0);
         ngDrawChevron(&painter, QRectF(pill.rect.left() + 6, pill.rect.top(), 12, pill.rect.height()), pill.folded, dim);
         const QRect textRect = pill.rect.adjusted(19, 0, -9, 0);

@@ -463,6 +463,7 @@ public:
         : QWidget(parent)
         , m_view(nullptr)
     {
+        setObjectName(QStringLiteral("ngSortBar"));
         applyChipStyle();
         auto *row = new QHBoxLayout(this);
         row->setContentsMargins(14, 4, 14, 11); // a little air between the bar and the files
@@ -628,12 +629,24 @@ private:
                                      "QLineEdit { border: 1px solid rgba(%1, 0.14); border-radius: 6px; padding: 3px 8px; background: rgba(%1, 0.06); color: %4; }"
                                      "QLineEdit { placeholder-text-color: rgba(%1, 0.5); }"
                                      "QLineEdit:hover { border-color: rgba(%1, 0.22); }"
-                                     "QLineEdit:focus { border-color: rgba(%1, 0.34); background: rgba(%1, 0.08); }")
+                                     "QLineEdit:focus { border-color: rgba(%1, 0.34); background: rgba(%1, 0.08); }"
+                                     // back and forward in one pill, round ends (its height is fixed: 32)
+                                     "QWidget#navPill { background: rgba(%1, 0.05); border: 1px solid rgba(%1, 0.09); border-radius: 16px; }"
+                                     "QWidget#navPill QToolButton { padding: 2px 11px; border-radius: 13px; }")
                           .arg(ink, menuSheet.name(), menuEdge, palette().color(QPalette::WindowText).name());
         if (aurora) {
             sheet.replace(QStringLiteral("QToolButton:checked { background: rgba(%1, 0.16); border-color: rgba(%1, 0.20); }").arg(ink), QStringLiteral("QToolButton:checked { background: rgba(%1, 0.16); }").arg(ink));
             sheet.replace(QStringLiteral("QLineEdit { border: 1px solid rgba(%1, 0.14);").arg(ink), QStringLiteral("QLineEdit { border: 1px solid transparent;"));
             sheet.replace(QStringLiteral("QLineEdit:hover { border-color: rgba(%1, 0.22); }").arg(ink), QStringLiteral("QLineEdit:hover { background: rgba(%1, 0.10); }").arg(ink));
+            // one intensity for every surface at rest (Breeze NG's setting), the accent for what is on
+            const bool dark = ngIsDark(palette());
+            const QString veil = QString::number(ngAuroraVeilAlpha(dark, true), 'f', 3);
+            const QColor accent = ngAuroraAccent(palette(), 1.0);
+            const QString accentRgb = QStringLiteral("%1, %2, %3").arg(accent.red()).arg(accent.green()).arg(accent.blue());
+            sheet.replace(QStringLiteral("padding: 3px 8px; background: rgba(%1, 0.06);").arg(ink), QStringLiteral("padding: 3px 8px; background: rgba(%1, %2);").arg(ink, veil));
+            sheet.replace(QStringLiteral("QWidget#navPill { background: rgba(%1, 0.05); border: 1px solid rgba(%1, 0.09);").arg(ink), QStringLiteral("QWidget#navPill { background: rgba(%1, %2); border: 0;").arg(ink, veil));
+            sheet.replace(QStringLiteral("QToolButton:checked { background: rgba(%1, 0.16); }").arg(ink), QStringLiteral("QToolButton:checked { background: rgba(%1, 0.34); }").arg(accentRgb));
+            sheet.replace(QStringLiteral("QToolButton:checked:hover { background: rgba(%1, 0.20); }").arg(ink), QStringLiteral("QToolButton:checked:hover { background: rgba(%1, 0.42); }").arg(accentRgb));
         }
         m_sheetApplying = true; // setting a sheet sends style changes of its own: changeEvent() ignores them
         if (force) {
@@ -733,11 +746,21 @@ public:
             }
             delete item;
         }
+        // back and forward share one pill
+        auto *navPill = new QWidget(m_leading);
+        navPill->setObjectName(QStringLiteral("navPill"));
+        navPill->setAttribute(Qt::WA_StyledBackground);
+        navPill->setFixedHeight(32);
+        auto *navLayout = new QHBoxLayout(navPill);
+        navLayout->setContentsMargins(3, 3, 3, 3);
+        navLayout->setSpacing(0);
+        layout->addWidget(navPill);
+        layout = navLayout;
         for (QAction *action : actions) {
             if (action->isSeparator()) {
                 continue;
             }
-            auto *button = new QToolButton(m_leading);
+            auto *button = new QToolButton(navPill);
             button->setDefaultAction(action);
             button->setAutoRaise(true);
             button->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -820,8 +843,8 @@ public:
                 line = qMax(line, widget->sizeHint().height());
             }
         }
-        if (auto *first = m_leading->findChild<QToolButton *>()) {
-            button = first->sizeHint().height();
+        if (auto *pill = m_leading->findChild<QWidget *>(QStringLiteral("navPill"))) {
+            button = pill->height();
         }
         m_leadingLayout->setContentsMargins(0, qMax(0, (line - button) / 2), 4, 0);
     }
@@ -958,11 +981,13 @@ private:
             // fully rounded ends: the radius is half the height (a larger one would switch the rounding off)
             const QString ink = ngIsDark(palette()) ? QStringLiteral("255, 255, 255") : QStringLiteral("0, 0, 0");
             const int inner = pill->findChild<QToolButton *>() ? pill->findChild<QToolButton *>()->sizeHint().height() : 24;
-            pill->setStyleSheet(QStringLiteral("QWidget#sortPill { background: rgba(%1, 0.05); border: 1px solid rgba(%1, 0.09); border-radius: %2px; }"
+            pill->setStyleSheet(QStringLiteral("QWidget#sortPill { background: rgba(%1, %4); border: %5; border-radius: %2px; }"
                                                "QToolButton { border-radius: %3px; padding: 3px 11px; }")
                                     .arg(ink)
                                     .arg(inner / 2 + 2) // the pill is the button plus 3 px of margin and the border on each side
-                                    .arg(inner / 2 - 1));
+                                    .arg(inner / 2 - 1)
+                                    .arg(ngAurora() ? QString::number(ngAuroraVeilAlpha(ngIsDark(palette()), true), 'f', 3) : QStringLiteral("0.05"),
+                                         ngAurora() ? QStringLiteral("1px solid transparent") : QStringLiteral("1px solid rgba(%1, 0.09)").arg(ink)));
         }
 
         // ---- the cards view: the button switches it on and off, its menu picks the look
@@ -3957,8 +3982,9 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing);
         const bool dark = ngIsDark(palette());
         const QColor text = palette().color(QPalette::WindowText);
-        const QColor veil = dark ? QColor(255, 255, 255, 30) : QColor(0, 0, 0, 22);
-        const QColor edge = dark ? QColor(255, 255, 255, 40) : QColor(0, 0, 0, 30);
+        // (Aurora: the veil of every other surface, no edges, the accent for the filter that is on)
+        const QColor veil = ngAurora() ? ngAuroraVeil(dark, true) : dark ? QColor(255, 255, 255, 30) : QColor(0, 0, 0, 22);
+        const QColor edge = ngAurora() ? QColor(0, 0, 0, 0) : dark ? QColor(255, 255, 255, 40) : QColor(0, 0, 0, 30);
         QColor dim = text;
         dim.setAlphaF(0.6);
 
@@ -3990,6 +4016,9 @@ protected:
             if (active || hovered) {
                 QColor fill = veil;
                 fill.setAlpha(active ? veil.alpha() : veil.alpha() / 2);
+                if (ngAurora()) {
+                    fill = active ? ngAuroraAccent(palette(), hovered ? 0.42 : 0.34) : veil;
+                }
                 painter.setPen(active ? QPen(edge, 1) : QPen(Qt::NoPen));
                 painter.setBrush(fill);
                 painter.drawRoundedRect(row.adjusted(0.5, 1.5, -0.5, -1.5), (row.height() - 3) / 2.0, (row.height() - 3) / 2.0);

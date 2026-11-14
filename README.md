@@ -1,3 +1,12 @@
+> **Fedora 44 and 45: there are ready-made packages on COPR**, no building needed:
+> 
+> ```
+> sudo dnf copr enable morzilla/desktop-ng
+> sudo dnf install dolphin-ng
+> ```
+> 
+> It installs next to Fedora's Dolphin; open it with `dolphin-ng` or from the application menu. The same repository has the rest of the NG desktop: `breeze-ng`, `dolphin-ng`, `dialog-ng`, `neoline-icons` ([project page](https://copr.fedorainfracloud.org/coprs/morzilla/desktop-ng/)).
+>
 > **This is dolphin-ng**, an experimental fork of Dolphin with a different file list.
 >
 > **Try it with the graphical installer:** [how it works and how to run it](https://github.com/Morzilla/breeze-ng/blob/ng/NG.md#everything-at-once) (it sets up Dolphin NG and, if you want, the rest of the NG desktop, all in your home folder).

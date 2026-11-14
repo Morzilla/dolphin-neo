@@ -1593,6 +1593,40 @@ void ngSetAurora(bool aurora)
     s_ngAurora = aurora;
 }
 
+static int s_ngAuroraPanel = 7;
+static int s_ngAuroraButton = 7;
+
+void ngLoadAuroraSettings()
+{
+    auto config = KSharedConfig::openConfig(QStringLiteral("breezengrc"));
+    config->reparseConfiguration();
+    const KConfigGroup common = config->group(QStringLiteral("Common"));
+    s_ngAuroraPanel = qBound(0, common.readEntry("AuroraPanelVeil", 7), 40);
+    s_ngAuroraButton = qBound(0, common.readEntry("AuroraButtonVeil", 7), 40);
+}
+
+qreal ngAuroraVeilAlpha(bool dark, bool button)
+{
+    return (button ? s_ngAuroraButton : s_ngAuroraPanel) / 100.0 * (dark ? 1.0 : 0.75);
+}
+
+QColor ngAuroraVeil(bool dark, bool button)
+{
+    QColor ink = dark ? QColor(255, 255, 255) : QColor(0, 0, 0);
+    ink.setAlphaF(ngAuroraVeilAlpha(dark, button));
+    return ink;
+}
+
+QColor ngAuroraAccent(const QPalette &palette, qreal alpha)
+{
+    const QColor highlight = QGuiApplication::palette().color(QPalette::Active, QPalette::Highlight); // the application's: panels blank their own
+    const qreal hue = highlight.hslHueF() < 0 ? 0.58 : highlight.hslHueF();
+    const qreal saturation = qBound(0.55, highlight.hslSaturationF() * 1.3, 0.90);
+    QColor accent = QColor::fromHslF(hue, saturation, palette.color(QPalette::Window).lightnessF() < 0.5 ? 0.66 : 0.52);
+    accent.setAlphaF(alpha);
+    return accent;
+}
+
 bool ngTiles()
 {
     const bool off = ngSetting("TILES").toLower() == QLatin1String("off");
@@ -1633,7 +1667,7 @@ void KItemListWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
         const bool dark = ngIsDark(m_styleOption.palette);
         if (ngAurora()) {
             // Breeze NG Aurora: a light veil on the window's glass, no lit edge
-            painter->setBrush(dark ? QColor(255, 255, 255, 15) : QColor(0, 0, 0, 12));
+            painter->setBrush(ngAuroraVeil(dark));
             painter->drawRoundedRect(card, 8, 8);
         } else {
             painter->setBrush(dark ? QColor(0, 0, 0, 66) : QColor(0, 0, 0, 14)); // darker than the view on either scheme
