@@ -98,6 +98,7 @@
 #include <QFile>
 #include <QMenu>
 #include <QRegularExpression>
+#include <QPlatformSurfaceEvent>
 #include <QTimer>
 #include <QPainterPath>
 #include <QToolButton>
@@ -678,6 +679,13 @@ void DolphinMainWindow::showTarget()
 
 bool DolphinMainWindow::event(QEvent *event)
 {
+    // dolphin-ng: a new native window (Qt makes one when the translucency changes) has no blur yet: ask again,
+    // even for the same region
+    if (event->type() == QEvent::PlatformSurface
+        && static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated) {
+        m_ngBlurSet = false;
+        QMetaObject::invokeMethod(this, "ngUpdateBlurRegion", Qt::QueuedConnection);
+    }
     if (event->type() == QEvent::ShortcutOverride) {
         const QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
         if (keyEvent->key() == Qt::Key_Space && m_activeViewContainer->view()->handleSpaceAsNormalKey()) {
@@ -697,7 +705,10 @@ void DolphinMainWindow::ngUpdateBlurRegion()
     // Only the cards of the panels are see-through. Asking for the blur behind the whole window made the
     // compositor blur again under the file view at every scrolled frame, where nothing of it shows.
     QRegion region;
-    if (testAttribute(Qt::WA_TranslucentBackground)) {
+    static const bool wholeWindow = qEnvironmentVariable("DOLPHIN_NG_BLUR_REGION") == QLatin1String("window"); // for tests
+    if (testAttribute(Qt::WA_TranslucentBackground) && wholeWindow) {
+        region = rect();
+    } else if (testAttribute(Qt::WA_TranslucentBackground)) {
         const auto docks = findChildren<DolphinDockWidget *>();
         for (const DolphinDockWidget *dock : docks) {
             if (dock->isVisible() && !dock->isFloating()) {
