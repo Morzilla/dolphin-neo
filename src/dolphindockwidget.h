@@ -55,6 +55,7 @@ public:
         qint64 total = 0;
         qint64 free = 0;
         bool home = false;
+        bool removable = false; // a USB stick, a card: it can be removed safely
     };
     static QList<NgDisk> ngSidebarDisks();
     /** dolphin-ng: the height the disk boxes take at the foot of the card, with the gap above the card's edge. */
@@ -93,7 +94,12 @@ private:
         QRectF rect;
         QString root;
         QString udi;
+        bool removable = false;
+        QRectF eject; // the eject button of a mounted removable device
     };
+    void ngDiskMenu(const NgDiskHit &target, const QPoint &globalPos); // right click: open, mount, unmount, remove
+    void ngDiskMount(const QString &udi); // mount it, then open its root
+    void ngDiskUnmount(const QString &udi); // unmount it (a removable device: safely, ready to be pulled out)
     QList<NgDiskHit> m_ngDiskBoxes; // where the disk boxes were drawn, in this widget's coordinates
     int m_ngDiskPressed = -1; // the box the press began on
     bool m_ngDiskHover = false;

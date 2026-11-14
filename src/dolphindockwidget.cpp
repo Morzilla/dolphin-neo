@@ -32,6 +32,7 @@
 #include <QMouseEvent>
 #include <QHash>
 #include <QImageReader>
+#include <QMenu>
 #include <QPainter>
 #include <QPainterPath>
 #include <QScreen>
@@ -723,7 +724,13 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
                 const qreal height = !mounted ? 32 : compact ? 40 : 54;
                 const QRectF box(card.left() + 8, top, card.width() - 16, height);
                 top += height + 6;
-                m_ngDiskBoxes.append({box, disk.root, disk.udi});
+                // a mounted USB stick or card: an eject button at the right, as in KDE's own list
+                QRectF eject;
+                if (mounted && disk.removable) {
+                    const qreal side = metrics.height() + 4;
+                    eject = QRectF(box.right() - 8 - side, (!compact ? box.top() + 8 : box.top() + 5) + (metrics.height() - side) / 2.0, side, side);
+                }
+                m_ngDiskBoxes.append({box, disk.root, disk.udi, disk.removable, eject});
 
                 if (mounted) {
                     painter.setPen(Qt::NoPen);
@@ -737,7 +744,11 @@ bool DolphinDockWidget::paintNgGlass(QPainter &painter)
                 painter.drawRoundedRect(mounted ? box : box.adjusted(0.5, 0.5, -0.5, -0.5), 10, 10);
 
                 // the name (or, for the home disk alone, its size) on the left, the free space on the right
-                const QRectF textRect = !mounted ? box.adjusted(10, 0, -10, 0) : compact ? box.adjusted(10, 5, -10, -17) : box.adjusted(10, 8, -10, -24);
+                QRectF textRect = !mounted ? box.adjusted(10, 0, -10, 0) : compact ? box.adjusted(10, 5, -10, -17) : box.adjusted(10, 8, -10, -24);
+                if (!eject.isNull()) {
+                    textRect.setRight(eject.left() - 6);
+                    QIcon::fromTheme(QStringLiteral("media-eject")).paint(&painter, eject.toRect());
+                }
                 QString left;
                 if (disk.home) {
                     left = alone ? KIO::convertSize(disk.total) : ngTr("Home", "Home") + QStringLiteral(" · ") + KIO::convertSize(disk.total);
@@ -868,6 +879,7 @@ QList<DolphinDockWidget::NgDisk> DolphinDockWidget::ngSidebarDisks()
         NgDisk disk;
         disk.udi = device.udi();
         disk.name = places->text(index);
+        disk.removable = group == KFilePlacesModel::RemovableDevicesType;
         if (const auto *volume = device.as<Solid::StorageVolume>()) {
             disk.fs = ngFsName(volume->fsType());
         }
@@ -955,6 +967,11 @@ bool DolphinDockWidget::ngDiskBoxEvent(QEvent *event)
         return false;
     }
     if (event->type() == QEvent::MouseButtonPress) {
+        if (inside && mouse->button() == Qt::RightButton) {
+            const NgDiskHit target = m_ngDiskBoxes.at(hit);
+            ngDiskMenu(target, mouse->globalPosition().toPoint());
+            return true;
+        }
         m_ngDiskPressed = inside && mouse->button() == Qt::LeftButton ? hit : -1;
         return m_ngDiskPressed >= 0;
     }
@@ -967,11 +984,68 @@ bool DolphinDockWidget::ngDiskBoxEvent(QEvent *event)
         return true;
     }
     const NgDiskHit target = m_ngDiskBoxes.at(hit);
+    if (!target.eject.isNull() && target.eject.contains(at)) {
+        ngDiskUnmount(target.udi); // the eject button
+        return true;
+    }
     if (!target.root.isEmpty()) {
         Q_EMIT ngDiskRootRequested(QUrl::fromLocalFile(target.root));
         return true;
     }
+    ngDiskMount(target.udi);
+    return true;
+}
+
+void DolphinDockWidget::ngDiskMenu(const NgDiskHit &target, const QPoint &globalPos)
+{
+    QMenu menu(this);
+    if (!target.root.isEmpty()) {
+        menu.addAction(QIcon::fromTheme(QStringLiteral("document-open")), ngTr("Open", "Apri"), this, [this, root = target.root] {
+            Q_EMIT ngDiskRootRequested(QUrl::fromLocalFile(root));
+        });
+        if (!target.udi.isEmpty()) { // not the home disk
+            menu.addSeparator();
+            menu.addAction(QIcon::fromTheme(target.removable ? QStringLiteral("media-eject") : QStringLiteral("media-mount")),
+                           target.removable ? ngTr("Safely Remove", "Rimuovi in sicurezza") : ngTr("Unmount", "Smonta"), this, [this, udi = target.udi] {
+                               ngDiskUnmount(udi);
+                           });
+        }
+    } else if (!target.udi.isEmpty()) {
+        menu.addAction(QIcon::fromTheme(QStringLiteral("media-mount")), ngTr("Mount and Open", "Monta e apri"), this, [this, udi = target.udi] {
+            ngDiskMount(udi);
+        });
+    }
+    if (!menu.isEmpty()) {
+        menu.exec(globalPos);
+    }
+}
+
+void DolphinDockWidget::ngDiskUnmount(const QString &udi)
+{
+    // the places model unmounts it (a removable device also powered down where it can be); errors reach the places panel
+    KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel();
+    for (int row = 0; row < places->rowCount(); ++row) {
+        const QModelIndex index = places->index(row, 0);
+        if (places->deviceForIndex(index).udi() == udi) {
+            auto connection = std::make_shared<QMetaObject::Connection>();
+            *connection = connect(places, &KFilePlacesModel::teardownDone, this, [this, places, udi, connection](const QModelIndex &done) {
+                if (places->deviceForIndex(done).udi() != udi) {
+                    return;
+                }
+                disconnect(*connection);
+                s_ngDisksDirty = true;
+                update();
+            });
+            places->requestTeardown(index);
+            return;
+        }
+    }
+}
+
+void DolphinDockWidget::ngDiskMount(const QString &udi)
+{
     // not mounted: the places model mounts it (asking for a password if needed; errors reach the places panel)
+    const NgDiskHit target{QRectF(), QString(), udi, false, QRectF()};
     KFilePlacesModel *places = DolphinPlacesModelSingleton::instance().placesModel();
     for (int row = 0; row < places->rowCount(); ++row) {
         const QModelIndex index = places->index(row, 0);
@@ -993,7 +1067,6 @@ bool DolphinDockWidget::ngDiskBoxEvent(QEvent *event)
         places->requestSetup(index);
         break;
     }
-    return true;
 }
 
 void DolphinDockWidget::mousePressEvent(QMouseEvent *event)
